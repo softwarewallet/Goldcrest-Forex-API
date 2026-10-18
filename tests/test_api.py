@@ -212,3 +212,16 @@ def test_persisted_prediction_timestamps_are_utc_aware(monkeypatch):
     expires_at = datetime.fromisoformat(fetched.json()["expires_at"])
     assert generated_at.utcoffset() == timedelta(0)
     assert expires_at.utcoffset() == timedelta(0)
+
+
+def test_performance_returns_database_aggregate_counts():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/performance", headers={"X-API-Key": api_key()})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["predictions_total"], int)
+    assert body["predictions_total"] >= 0
+    assert isinstance(body["outcomes_recorded"], int)
+    assert body["outcomes_recorded"] >= 0
+    assert "not published" in body["note"]

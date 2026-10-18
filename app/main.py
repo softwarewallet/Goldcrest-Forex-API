@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -126,8 +126,8 @@ async def record_outcome(payload: OutcomeRequest, db: Session = Depends(get_db))
 @app.get("/api/v1/performance", dependencies=[Depends(require_api_key)])
 async def performance(db: Session = Depends(get_db)):
     return {
-        "predictions_total": len(db.scalars(select(PredictionRecord)).all()),
-        "outcomes_recorded": len(db.scalars(select(OutcomeRecord)).all()),
+        "predictions_total": db.scalar(select(func.count()).select_from(PredictionRecord)) or 0,
+        "outcomes_recorded": db.scalar(select(func.count()).select_from(OutcomeRecord)) or 0,
         "note": "Directional metrics are not published until outcome definitions and scoring are finalized.",
     }
 
