@@ -225,3 +225,17 @@ def test_performance_returns_database_aggregate_counts():
     assert isinstance(body["outcomes_recorded"], int)
     assert body["outcomes_recorded"] >= 0
     assert "not published" in body["note"]
+
+
+def test_outcome_details_payload_is_size_limited():
+    import pytest
+    from pydantic import ValidationError
+    from app.schemas import OutcomeRequest
+
+    with pytest.raises(ValidationError, match="8 KiB"):
+        OutcomeRequest(
+            prediction_id="prediction-test",
+            outcome_label="UNKNOWN",
+            observed_at=datetime.now(timezone.utc),
+            details={"payload": "x" * 9000},
+        )
