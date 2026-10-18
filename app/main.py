@@ -107,6 +107,9 @@ async def predict(payload: PredictionRequest, settings: Settings = Depends(get_s
                 return _prediction_response(existing)
             raise HTTPException(status_code=409, detail="request_id already used with a different payload") from exc
         raise HTTPException(status_code=503, detail="Prediction persistence failed; retry with the same request_id") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Prediction persistence failed; retry with the same request_id") from exc
 
 
 @app.get("/api/v1/predictions/{prediction_id}", response_model=PredictionResponse,
