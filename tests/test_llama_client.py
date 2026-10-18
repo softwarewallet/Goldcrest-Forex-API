@@ -1,4 +1,4 @@
-import pytest
+import asyncio
 
 from app.config import get_settings
 from app.llama_client import LlamaClient
@@ -44,8 +44,7 @@ class FakeAsyncClient:
         })
 
 
-@pytest.mark.asyncio
-async def test_llama_client_uses_completion_endpoint_and_model_id(monkeypatch):
+def test_llama_client_uses_completion_endpoint_and_model_id(monkeypatch):
     import app.llama_client as module
 
     FakeAsyncClient.calls = []
@@ -55,7 +54,7 @@ async def test_llama_client_uses_completion_endpoint_and_model_id(monkeypatch):
         "llama_base_url": "http://127.0.0.1:8080",
     })
 
-    model_id, content = await LlamaClient(settings).analyze({"readiness_probe": True})
+    model_id, content = asyncio.run(LlamaClient(settings).analyze({"readiness_probe": True}))
 
     assert model_id == "/home/jarvis/llama-models/qwen.gguf"
     assert '"decision":"NO_TRADE"' in content
