@@ -1,9 +1,9 @@
-"Deterministic, offline Forex outcome labels for historical research.
+"""Deterministic, offline Forex outcome labels for historical research.
 
 Labels use the entry bar's close and inspect only subsequent bars. OHLC bars cannot
 reveal intrabar order when target and stop are both touched; an explicit conservative
 ambiguity policy is required. This module never calls a model or broker.
-"
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -65,6 +65,8 @@ def label_outcome(
         raise ValueError("ambiguous_policy must be EXCLUDE or STOP_FIRST")
     if entry_index < 0 or entry_index >= len(bars):
         raise ValueError("entry_index is outside the supplied bars")
+    if not bars:
+        raise ValueError("bars must not be empty")
     if len({(bar.symbol, bar.timeframe) for bar in bars}) != 1:
         raise ValueError("bars must contain one symbol/timeframe")
     times = [bar.timestamp for bar in bars]
