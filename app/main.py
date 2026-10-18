@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -119,7 +119,15 @@ async def record_outcome(payload: OutcomeRequest, db: Session = Depends(get_db))
                          details=payload.details))
     db.add(AuditEvent(event_type="outcome", request_id=prediction.request_id, symbol=prediction.symbol,
                       outcome=payload.outcome_label, details={"prediction_id": payload.prediction_id}))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # A concurrent submission may have recorded this prediction's outcome first.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Outcome already recorded") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Outcome persistence failed; retry the request") from exc
     return {"status": "recorded", "prediction_id": payload.prediction_id}
 
 
