@@ -208,5 +208,7 @@ def test_persisted_prediction_timestamps_are_utc_aware(monkeypatch):
 
     assert created.status_code == 200
     assert fetched.status_code == 200
-    assert fetched.json()["generated_at"].endswith("Z")
-    assert fetched.json()["expires_at"].endswith("Z")
+    generated_at = datetime.fromisoformat(fetched.json()["generated_at"])
+    expires_at = datetime.fromisoformat(fetched.json()["expires_at"])
+    assert generated_at.utcoffset() == timedelta(0)
+    assert expires_at.utcoffset() == timedelta(0)
