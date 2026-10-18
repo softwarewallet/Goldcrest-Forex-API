@@ -239,3 +239,37 @@ def test_outcome_details_payload_is_size_limited():
             observed_at=datetime.now(timezone.utc),
             details={"payload": "x" * 9000},
         )
+
+
+def test_inference_readiness_runs_and_validates_completion(monkeypatch):
+    from app.llama_client import LlamaClient
+
+    async def fake_analyze(self, payload):
+        assert payload["readiness_probe"] is True
+        return "test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
+        )
+
+    monkeypatch.setattr(LlamaClient, "analyze", fake_analyze)
+    with TestClient(app) as client:
+        response = client.get("/api/v1/readiness/inference", headers={"X-API-Key": api_key()})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok", "model_id": "test-model", "completion_valid": True
+    }
+
+
+def test_inference_readiness_fails_closed_when_model_unavailable(monkeypatch):
+    from app.llama_client import InferenceUnavailable, LlamaClient
+
+    async def failed_analyze(self, payload):
+        raise InferenceUnavailable("simulated outage")
+
+    monkeypatch.setattr(LlamaClient, "analyze", failed_analyze)
+    with TestClient(app) as client:
+        response = client.get("/api/v1/readiness/inference", headers={"X-API-Key": api_key()})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Inference completion or response validation failed"
