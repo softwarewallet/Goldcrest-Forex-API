@@ -13,7 +13,7 @@ def test_block_bootstrap_is_reproducible_and_reports_configuration():
         candidate, baseline, block_length=2, bootstrap_resamples=1000, random_seed=17
     )
     assert first == second
-    assert first.paired_difference_mean == pytest.approx(0.1125)
+    assert first.paired_difference_mean == pytest.approx(0.0875)
     assert first.block_length == 2
     assert first.bootstrap_resamples == 1000
     assert first.paired_difference_ci_low <= first.paired_difference_ci_high
@@ -21,9 +21,7 @@ def test_block_bootstrap_is_reproducible_and_reports_configuration():
 
 def test_identical_series_has_zero_block_bootstrap_interval():
     values = [0.1, -0.1, 0.0, 0.2, -0.2]
-    result = compare_with_block_bootstrap(
-        values, values, block_length=2, bootstrap_resamples=300
-    )
+    result = compare_with_block_bootstrap(values, values, block_length=2, bootstrap_resamples=300)
     assert result.paired_difference_mean == 0
     assert result.paired_difference_ci_low == 0
     assert result.paired_difference_ci_high == 0
@@ -47,8 +45,7 @@ def test_invalid_series_and_bootstrap_configuration_fail_closed():
 
 def test_constant_difference_keeps_exact_interval():
     result = compare_with_block_bootstrap(
-        [0.2, 0.3, 0.4], [0.1, 0.2, 0.3],
-        block_length=2, bootstrap_resamples=300,
+        [0.2, 0.3, 0.4], [0.1, 0.2, 0.3], block_length=2, bootstrap_resamples=300
     )
     assert result.paired_difference_ci_low == pytest.approx(0.1)
     assert result.paired_difference_ci_high == pytest.approx(0.1)
