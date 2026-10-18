@@ -11,7 +11,7 @@ from app.config import Settings, get_settings
 from app.db import Base, _engine, get_db
 from app.llama_client import InferenceUnavailable, LlamaClient
 from app.models import AuditEvent, OutcomeRecord, PredictionRecord
-from app.prediction_service import create_prediction, request_fingerprint
+from app.prediction_service import _parse_model_output, create_prediction, request_fingerprint
 from app.schemas import HealthResponse, OutcomeRequest, PredictionRequest, PredictionResponse
 from app.security import require_api_key
 
@@ -57,6 +57,19 @@ async def health(settings: Settings = Depends(get_settings), db: Session = Depen
     overall = "ok" if db_status == "ok" and inference_status == "ok" else "degraded"
     return HealthResponse(status=overall, application=settings.app_name,
                           inference_status=inference_status, database_status=db_status)
+
+
+@app.get("/api/v1/readiness/inference", dependencies=[Depends(require_api_key)])
+async def inference_readiness(settings: Settings = Depends(get_settings)):
+    """Perform a small real completion to verify inference, not merely model listing."""
+    try:
+        model_id, raw = await LlamaClient(settings).analyze({"readiness_probe": True, "instructions": "Return JSON only."})
+        _parse_model_output(raw)
+    except (InferenceUnavailable, ValueError) as exc:
+        raise HTTPException(status_code=503, detail="Inference completion or response validation failed") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Inference readiness check failed") from exc
+    return {"status": "ok", "model_id": model_id, "completion_valid": True}
 
 
 @app.get("/api/v1/models", dependencies=[Depends(require_api_key)])
