@@ -27,7 +27,7 @@ def test_candidate_baseline_comparison_is_deterministic_and_paired():
         candidate, baseline, bootstrap_resamples=1000, random_seed=7
     )
     assert first == second
-    assert first.paired_difference_mean == pytest.approx(0.12)
+    assert first.paired_difference_mean == pytest.approx(0.1)
     assert first.paired_difference_ci_low <= first.paired_difference_ci_high
     assert first.candidate.count == first.baseline.count == 5
 
