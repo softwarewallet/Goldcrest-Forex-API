@@ -208,7 +208,7 @@ class XGBoostResearchModel:
         if params:
             options.update(dict(params))
         classifier = xgb.XGBClassifier(**options)
-        classifier.fit(matrix, target, feature_names=list(self.feature_names))
+        classifier.fit(matrix, target)
         self._classifier = classifier
         return self
 
