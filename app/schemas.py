@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Annotated
@@ -116,6 +117,17 @@ class OutcomeRequest(BaseModel):
     outcome_label: str = Field(pattern=r"^(TARGET_FIRST|STOP_FIRST|HORIZON_EXPIRED|INVALIDATED|UNKNOWN)$")
     observed_at: datetime
     details: dict = Field(default_factory=dict)
+
+    @field_validator("details")
+    @classmethod
+    def bound_details_size(cls, value: dict) -> dict:
+        try:
+            encoded = json.dumps(value, allow_nan=False, separators=(",", ":"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("details must contain valid JSON values") from exc
+        if len(encoded.encode("utf-8")) > 8192:
+            raise ValueError("details must not exceed 8 KiB when serialized")
+        return value
 
     @field_validator("observed_at")
     @classmethod
