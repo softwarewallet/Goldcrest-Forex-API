@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -107,5 +108,10 @@ async def create_prediction(request: PredictionRequest, db: Session, settings: S
     db.add(AuditEvent(event_type="prediction", request_id=request.request_id, symbol=request.symbol,
                       outcome=response.decision.value,
                       details={"prediction_id": prediction_id, "reason_codes": reasons}))
-    db.commit()
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        # Keep the request-scoped session usable and avoid partial persistence.
+        db.rollback()
+        raise
     return response
