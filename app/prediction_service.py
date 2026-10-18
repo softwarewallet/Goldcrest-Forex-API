@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -15,6 +16,13 @@ _ALLOWED_REASONS = {
     "MOMENTUM_CONFIRMED", "TREND_UNCLEAR", "MODEL_OUTPUT_INVALID",
     "MODEL_DISAGREES_WITH_BASELINE", "BASELINE_ONLY_NO_VALIDATED_EDGE",
 }
+
+
+def request_fingerprint(request: PredictionRequest) -> str:
+    """Stable SHA-256 binding between an idempotency key and its request body."""
+    canonical = request.model_dump(mode="json", exclude={"request_id"})
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _parse_model_output(raw: str) -> tuple[Decision, MarketRegime, list[str]]:
@@ -51,6 +59,7 @@ async def create_prediction(request: PredictionRequest, db: Session, settings: S
 
     features = calculate_features(request.market_data.candles)
     safe_payload = {
+        "request_fingerprint": request_fingerprint(request),
         "symbol": request.symbol, "timeframe": request.timeframe,
         "snapshot_at": snapshot_time.isoformat(), "bid": request.market_data.bid,
         "ask": request.market_data.ask, "spread": request.market_data.ask - request.market_data.bid,

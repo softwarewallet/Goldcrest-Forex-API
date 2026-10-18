@@ -140,3 +140,75 @@ def test_inference_failure_fails_safe(monkeypatch):
     result = response.json()
     assert result["decision"] == "NO_TRADE"
     assert result["probability"] is None
+
+
+def test_reusing_request_id_with_different_payload_returns_conflict(monkeypatch):
+    from app.llama_client import LlamaClient
+
+    async def fake_analyze(self, payload):
+        return "test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
+        )
+
+    monkeypatch.setattr(LlamaClient, "analyze", fake_analyze)
+    body = market_payload("test-id-payload-conflict")
+    headers = {"X-API-Key": api_key()}
+    with TestClient(app) as client:
+        first = client.post("/api/v1/predictions", headers=headers, json=body)
+        assert first.status_code == 200
+        changed = {**body, "market_data": {**body["market_data"], "bid": 1.0999}}
+        second = client.post("/api/v1/predictions", headers=headers, json=changed)
+
+    assert second.status_code == 409
+    assert second.json()["detail"] == "request_id already used with a different payload"
+
+
+def test_same_request_id_and_same_payload_returns_existing_prediction(monkeypatch):
+    from app.llama_client import LlamaClient
+
+    calls = {"count": 0}
+
+    async def fake_analyze(self, payload):
+        calls["count"] += 1
+        return "test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
+        )
+
+    monkeypatch.setattr(LlamaClient, "analyze", fake_analyze)
+    body = market_payload("test-idempotent-replay")
+    headers = {"X-API-Key": api_key()}
+    with TestClient(app) as client:
+        first = client.post("/api/v1/predictions", headers=headers, json=body)
+        second = client.post("/api/v1/predictions", headers=headers, json=body)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["prediction_id"] == first.json()["prediction_id"]
+    assert calls["count"] == 1
+
+
+def test_persisted_prediction_timestamps_are_utc_aware(monkeypatch):
+    from app.llama_client import LlamaClient
+
+    async def fake_analyze(self, payload):
+        return "test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
+        )
+
+    monkeypatch.setattr(LlamaClient, "analyze", fake_analyze)
+    body = market_payload("test-persisted-utc-timestamps")
+    headers = {"X-API-Key": api_key()}
+    with TestClient(app) as client:
+        created = client.post("/api/v1/predictions", headers=headers, json=body)
+        prediction_id = created.json()["prediction_id"]
+        fetched = client.get(f"/api/v1/predictions/{prediction_id}", headers=headers)
+
+    assert created.status_code == 200
+    assert fetched.status_code == 200
+    generated_at = datetime.fromisoformat(fetched.json()["generated_at"])
+    expires_at = datetime.fromisoformat(fetched.json()["expires_at"])
+    assert generated_at.utcoffset() == timedelta(0)
+    assert expires_at.utcoffset() == timedelta(0)
