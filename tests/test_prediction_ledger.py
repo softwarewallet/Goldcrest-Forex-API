@@ -264,3 +264,33 @@ def test_recovery_requires_aware_cutoff(tmp_path):
     ledger = PredictionLedger(tmp_path / "ledger.sqlite")
     with pytest.raises(ValueError, match="timezone-aware"):
         ledger.mark_interrupted_runs(older_than=datetime(2026, 1, 1))
+
+
+def test_finish_run_rejects_missing_expected_prediction_rows(tmp_path):
+    ledger = PredictionLedger(tmp_path / "expected-count.sqlite")
+    ledger.start_run("expected-count", {"dataset": "fixture"}, expected_prediction_rows=1)
+    with pytest.raises(ValueError, match="prediction row count mismatch: expected 1, found 0"):
+        ledger.finish_run("expected-count", "a" * 64)
+    assert ledger.get_run_status("expected-count")["status"] == "running"
+
+
+def test_finish_run_completes_when_expected_prediction_count_matches(tmp_path):
+    ledger = PredictionLedger(tmp_path / "expected-count-ok.sqlite")
+    ledger.start_run("expected-count-ok", {"dataset": "fixture"}, expected_prediction_rows=1)
+    ledger.record(PredictionRecord(
+        run_id="expected-count-ok", symbol="EUR/USD", timeframe="M5",
+        observation_timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        fold_index=0, partition="test", model_name="candidate", model_version="v1",
+        probability=0.6,
+    ))
+    ledger.finish_run("expected-count-ok", "a" * 64)
+    assert ledger.get_run_status("expected-count-ok")["status"] == "completed"
+
+
+def test_run_contract_rejects_changed_expected_prediction_count(tmp_path):
+    ledger = PredictionLedger(tmp_path / "expected-count-retry.sqlite")
+    manifest = {"dataset": "fixture"}
+    ledger.start_run("expected-count-retry", manifest, expected_prediction_rows=2)
+    ledger.fail_run("expected-count-retry", "simulated failure")
+    with pytest.raises(ValueError, match="different manifest|different expected prediction count"):
+        ledger.start_run("expected-count-retry", manifest, expected_prediction_rows=3)
