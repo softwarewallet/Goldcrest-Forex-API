@@ -137,6 +137,8 @@ def run_offline_experiment(
                 raise ValueError("every fold must have non-empty train, validation, and test partitions")
             if (train_times & validation_times) or (train_times & test_times) or (validation_times & test_times):
                 raise ValueError("fold partitions must not share observation timestamps")
+            if max(train_times) >= min(validation_times) or max(validation_times) >= min(test_times):
+                raise ValueError("fold partitions must be strictly chronological: train before validation before test")
             required_times = train_times | validation_times | test_times
             missing_times = required_times - by_time.keys()
             if missing_times:
