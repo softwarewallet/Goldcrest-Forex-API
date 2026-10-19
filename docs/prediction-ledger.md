@@ -82,3 +82,8 @@ available with their bounded diagnostic and timestamps. Only one attempt may be 
 for a run ID at a time. A completed run ID cannot be restarted or have its report digest
 cleared: create a new run ID for an intentional rerun. The current run status remains a
 convenient summary, while attempt rows preserve the lifecycle history.
+
+
+## Completion integrity
+
+The offline runner registers an expected out-of-sample prediction-row count as part of the immutable run contract. `finish_run` compares that count with the rows actually persisted before it can mark a run completed. A mismatch leaves the run non-completed and is captured by the runner's failure lifecycle. Legacy/manual runs may omit an expected count; new runner-managed experiments always supply it. The count check is a completeness check, not evidence of prediction quality or source-data correctness.
