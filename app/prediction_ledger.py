@@ -91,7 +91,8 @@ class PredictionLedger:
                     status TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
                     report_sha256 TEXT,
                     error TEXT,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    expected_prediction_rows INTEGER CHECK(expected_prediction_rows IS NULL OR expected_prediction_rows >= 0)
                 )
             """)
             # Older versions stored ledger lifecycle rows in experiment_runs, which
@@ -133,6 +134,9 @@ class PredictionLedger:
                     UNIQUE(run_id, attempt_number)
                 )
             """)
+            run_columns = {row["name"] for row in connection.execute("PRAGMA table_info(prediction_ledger_runs)")}
+            if "expected_prediction_rows" not in run_columns:
+                connection.execute("ALTER TABLE prediction_ledger_runs ADD COLUMN expected_prediction_rows INTEGER")
             # Backfill one historical attempt for existing lifecycle rows. This preserves
             # compatibility with databases created before attempt history existed.
             connection.execute("""
@@ -184,7 +188,7 @@ class PredictionLedger:
             0,
         )
 
-    def start_run(self, run_id: str, manifest: dict) -> None:
+    def start_run(self, run_id: str, manifest: dict, *, expected_prediction_rows: int | None = None) -> None:
         """Start an attempt without rewriting completed results or hiding prior attempts.
 
         Failed attempts may be retried with the identical run contract. A completed run
@@ -193,24 +197,31 @@ class PredictionLedger:
         """
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("run_id must be non-empty")
-        canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        if expected_prediction_rows is not None and (isinstance(expected_prediction_rows, bool) or not isinstance(expected_prediction_rows, int) or expected_prediction_rows < 0):
+            raise ValueError("expected_prediction_rows must be a non-negative integer or None")
+        contract = manifest if expected_prediction_rows is None else {"manifest": manifest, "expected_prediction_rows": expected_prediction_rows}
+        canonical = json.dumps(contract, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
         manifest_sha = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         with self._connect() as connection:
             existing = connection.execute(
-                "SELECT manifest_sha256, status FROM prediction_ledger_runs WHERE run_id=?", (run_id,)
+                "SELECT manifest_sha256, status, expected_prediction_rows FROM prediction_ledger_runs WHERE run_id=?", (run_id,)
             ).fetchone()
             if existing is not None and existing["manifest_sha256"] != manifest_sha:
                 raise ValueError("run_id already registered with a different manifest")
+            if existing is not None and existing["expected_prediction_rows"] != expected_prediction_rows:
+                raise ValueError("run_id already registered with a different expected prediction count")
             if existing is not None and existing["status"] == "completed":
                 raise ValueError("run_id already completed; completed results are immutable")
             if existing is not None and existing["status"] == "running":
                 raise ValueError("run_id already has a running attempt")
             connection.execute(
-                """INSERT INTO prediction_ledger_runs (run_id, manifest_sha256, status, report_sha256, error, updated_at)
-                   VALUES (?, ?, 'running', NULL, NULL, ?)
-                   ON CONFLICT(run_id) DO UPDATE SET status='running', report_sha256=NULL, error=NULL, updated_at=excluded.updated_at""",
-                (run_id, manifest_sha, now),
+                """INSERT INTO prediction_ledger_runs
+                   (run_id, manifest_sha256, status, report_sha256, error, updated_at, expected_prediction_rows)
+                   VALUES (?, ?, 'running', NULL, NULL, ?, ?)
+                   ON CONFLICT(run_id) DO UPDATE SET status='running', report_sha256=NULL, error=NULL,
+                     updated_at=excluded.updated_at, expected_prediction_rows=excluded.expected_prediction_rows""",
+                (run_id, manifest_sha, now, expected_prediction_rows),
             )
             attempt_number = connection.execute(
                 "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM prediction_ledger_attempts WHERE run_id=?",
@@ -235,7 +246,7 @@ class PredictionLedger:
         return [dict(row) for row in rows]
 
     def finish_run(self, run_id: str, report_sha256: str) -> None:
-        """Mark a run complete only after its report has been built and optionally written."""
+        """Complete only after the report is built and expected prediction rows reconcile."""
         if not isinstance(report_sha256, str) or len(report_sha256) != 64:
             raise ValueError("report_sha256 must be a SHA-256 hex digest")
         try:
@@ -244,6 +255,18 @@ class PredictionLedger:
             raise ValueError("report_sha256 must be a SHA-256 hex digest") from exc
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         with self._connect() as connection:
+            run = connection.execute(
+                "SELECT status, expected_prediction_rows FROM prediction_ledger_runs WHERE run_id=?", (run_id,)
+            ).fetchone()
+            if run is None or run["status"] != "running":
+                raise ValueError("run must be registered as running before completion")
+            expected = run["expected_prediction_rows"]
+            if expected is not None:
+                actual = connection.execute(
+                    "SELECT COUNT(*) FROM oos_predictions WHERE run_id=?", (run_id,)
+                ).fetchone()[0]
+                if actual != expected:
+                    raise ValueError(f"prediction row count mismatch: expected {expected}, found {actual}")
             cursor = connection.execute(
                 """UPDATE prediction_ledger_runs SET status='completed', report_sha256=?, error=NULL, updated_at=?
                    WHERE run_id=? AND status='running'""",
@@ -317,7 +340,7 @@ class PredictionLedger:
         """Return the durable lifecycle state for an experiment run, if registered."""
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT run_id, manifest_sha256, status, report_sha256, error, updated_at FROM prediction_ledger_runs WHERE run_id=?",
+                "SELECT run_id, manifest_sha256, status, report_sha256, error, updated_at, expected_prediction_rows FROM prediction_ledger_runs WHERE run_id=?",
                 (run_id,),
             ).fetchone()
         return dict(row) if row is not None else None
