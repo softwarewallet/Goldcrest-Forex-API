@@ -161,10 +161,6 @@ def run_offline_experiment(
             ],
         )
         saved_path = str(write_experiment_report(report, report_path)) if report_path is not None else None
-        return OfflineExperimentResult(
-            run_id=run_id, report=report, prediction_rows_inserted=inserted,
-            ledger_path=ledger.database_path, report_path=saved_path, actionable=False,
-        )
         ledger.finish_run(run_id, report["report_sha256"])
         return OfflineExperimentResult(
             run_id=run_id, report=report, prediction_rows_inserted=inserted,
