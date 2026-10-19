@@ -273,3 +273,63 @@ def test_inference_readiness_fails_closed_when_model_unavailable(monkeypatch):
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Inference completion or response validation failed"
+
+
+def test_prediction_history_requires_api_key():
+    with TestClient(app) as client:
+        response = client.get("/api/v1/predictions?limit=5")
+    assert response.status_code == 401
+
+
+def test_prediction_history_returns_recent_records_with_limit(monkeypatch):
+    from app.llama_client import LlamaClient
+
+    async def fake_analyze(self, payload):
+        return "dashboard-test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["DASHBOARD_HISTORY_TEST"]}'
+        )
+
+    monkeypatch.setattr(LlamaClient, "analyze", fake_analyze)
+    headers = {"X-API-Key": api_key()}
+    body = market_payload("dashboard-history-list-test")
+    with TestClient(app) as client:
+        created = client.post("/api/v1/predictions", headers=headers, json=body)
+        assert created.status_code == 200
+        response = client.get("/api/v1/predictions?limit=1", headers=headers)
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert isinstance(rows, list)
+    assert len(rows) <= 1
+    assert rows[0]["prediction_id"] == created.json()["prediction_id"]
+    assert rows[0]["decision"] == "NO_TRADE"
+
+
+def test_dashboard_cors_allows_configured_origin_and_api_key_header():
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/v1/predictions",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "x-api-key",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "X-API-Key" in response.headers["access-control-allow-headers"]
+
+
+def test_dashboard_cors_rejects_unconfigured_origin():
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/v1/predictions",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "x-api-key",
+            },
+        )
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers

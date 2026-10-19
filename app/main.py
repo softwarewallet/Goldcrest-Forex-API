@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -24,6 +25,15 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Goldcrest Forex API", version="0.1.0",
               description="AI market-analysis API; no broker execution routes.", lifespan=lifespan)
+
+# Keep browser access explicit; configure trusted dashboard origins through GOLDCREST_CORS_ORIGINS.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origin_list,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
+)
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -110,6 +120,17 @@ async def predict(payload: PredictionRequest, settings: Settings = Depends(get_s
     except SQLAlchemyError as exc:
         db.rollback()
         raise HTTPException(status_code=503, detail="Prediction persistence failed; retry with the same request_id") from exc
+
+
+@app.get("/api/v1/predictions", response_model=list[PredictionResponse],
+         dependencies=[Depends(require_api_key)])
+async def list_predictions(limit: int = Query(default=30, ge=1, le=100),
+                           db: Session = Depends(get_db)):
+    """Return recent stored prediction records for the research dashboard."""
+    rows = db.scalars(
+        select(PredictionRecord).order_by(PredictionRecord.generated_at.desc(), PredictionRecord.id.desc()).limit(limit)
+    ).all()
+    return [_prediction_response(item) for item in rows]
 
 
 @app.get("/api/v1/predictions/{prediction_id}", response_model=PredictionResponse,
