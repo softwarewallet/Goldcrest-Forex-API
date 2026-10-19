@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     llama_max_tokens: int = Field(default=300, ge=32, le=2048)
     max_candle_count: int = Field(default=500, ge=20, le=5000)
     max_snapshot_age_seconds: int = Field(default=120, ge=1, le=3600)
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://192.168.29.80:5173,http://localhost:4173,http://127.0.0.1:4173,http://192.168.29.80:4173"
+    cors_origins: str = Field(default="http://localhost:5173,http://127.0.0.1:5173,http://192.168.29.80:5173,http://localhost:4173,http://127.0.0.1:4173,http://192.168.29.80:4173", validation_alias=AliasChoices("GOLDCREST_CORS_ORIGINS", "CORS_ORIGINS"))
 
     @property
     def cors_origin_list(self) -> list[str]:
