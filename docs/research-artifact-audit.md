@@ -3,9 +3,9 @@
 `app/research_artifact_audit.py` adds a read-only, end-to-end consistency check for a
 completed offline experiment. It loads a report from disk, verifies the canonical report
 SHA-256 against the completed SQLite run record, validates that the report and every fold
-remain `actionable=false`, derives the expected prediction count from per-model/per-fold
-validation and test sample counts, and compares that count with the actual run rows in the
-prediction ledger.
+remain `actionable=false`, derives expected counts for each model name, fitted model version, fold, and validation/test
+partition, then reconciles those groups against SQLite. This catches misplaced rows even
+when the overall ledger row count happens to match the report.
 
 The audit fails closed if the report is missing/malformed/tampered, its completed-run
 binding does not match, a fold metric count is missing/invalid, the persisted row count
