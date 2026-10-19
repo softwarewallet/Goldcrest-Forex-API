@@ -14,7 +14,7 @@ The Vite development server listens on all interfaces. Restrict access with your
 
 ## Connect
 
-Use the settings control to enter the API base URL and `X-API-Key`. The URL is saved in local storage; the API key is held in session storage only. The key is sent to the API URL you configure, so connect only to an endpoint you trust. URLs are restricted to HTTP/HTTPS and embedded URL credentials are rejected. The dashboard polls health, performance, prediction history, and audit endpoints every 15 seconds. The **Test Inference** control separately calls the protected readiness endpoint to run an actual model completion and validate its JSON output; it is not called on every poll.
+Use the settings control to enter the API base URL and `X-API-Key`. The URL is saved in local storage; the API key is held in session storage only. The key is sent to the API URL you configure, so connect only to an endpoint you trust. URLs are restricted to HTTP/HTTPS and embedded URL credentials are rejected. The dashboard polls health, performance, prediction history, and audit endpoints every 15 seconds. It also retrieves the protected read-only model inventory; inventory errors are shown separately so they do not hide otherwise successful dashboard data. The **Test Inference** control separately calls the protected readiness endpoint to run an actual model completion and validate its JSON output; it is not called on every poll.
 
 ## Signal-flow integrity
 
@@ -29,5 +29,6 @@ The dashboard uses:
 - `GET /api/v1/performance`
 - `GET /api/v1/predictions?limit=30`
 - `GET /api/v1/audit?limit=12`
+- `GET /api/v1/models` (protected; read-only model inventory)
 
 The last three require `X-API-Key`.
