@@ -121,6 +121,19 @@ class PredictionLedger:
                         backup_name = f"legacy_prediction_ledger_runs_v{suffix}"
                     connection.execute(f'ALTER TABLE experiment_runs RENAME TO "{backup_name}"')
             connection.execute("""
+                CREATE TABLE IF NOT EXISTS prediction_ledger_attempts (
+                    attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    attempt_number INTEGER NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT,
+                    report_sha256 TEXT,
+                    error TEXT,
+                    UNIQUE(run_id, attempt_number)
+                )
+            """)
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS oos_predictions (
                     run_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
@@ -159,7 +172,12 @@ class PredictionLedger:
         )
 
     def start_run(self, run_id: str, manifest: dict) -> None:
-        """Register/retry a run while preventing run_id reuse for a different manifest."""
+        """Start an attempt without rewriting completed results or hiding prior attempts.
+
+        Failed attempts may be retried with the identical run contract. A completed run
+        is immutable under its run_id; use a new run_id for a deliberate rerun.
+        Concurrent attempts for the same run_id are rejected.
+        """
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("run_id must be non-empty")
         canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
@@ -167,16 +185,41 @@ class PredictionLedger:
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         with self._connect() as connection:
             existing = connection.execute(
-                "SELECT manifest_sha256 FROM prediction_ledger_runs WHERE run_id=?", (run_id,)
+                "SELECT manifest_sha256, status FROM prediction_ledger_runs WHERE run_id=?", (run_id,)
             ).fetchone()
             if existing is not None and existing["manifest_sha256"] != manifest_sha:
                 raise ValueError("run_id already registered with a different manifest")
+            if existing is not None and existing["status"] == "completed":
+                raise ValueError("run_id already completed; completed results are immutable")
+            if existing is not None and existing["status"] == "running":
+                raise ValueError("run_id already has a running attempt")
             connection.execute(
                 """INSERT INTO prediction_ledger_runs (run_id, manifest_sha256, status, report_sha256, error, updated_at)
                    VALUES (?, ?, 'running', NULL, NULL, ?)
                    ON CONFLICT(run_id) DO UPDATE SET status='running', report_sha256=NULL, error=NULL, updated_at=excluded.updated_at""",
                 (run_id, manifest_sha, now),
             )
+            attempt_number = connection.execute(
+                "SELECT COALESCE(MAX(attempt_number), 0) + 1 FROM prediction_ledger_attempts WHERE run_id=?",
+                (run_id,),
+            ).fetchone()[0]
+            connection.execute(
+                """INSERT INTO prediction_ledger_attempts
+                   (run_id, attempt_number, status, started_at, finished_at, report_sha256, error)
+                   VALUES (?, ?, 'running', ?, NULL, NULL, NULL)""",
+                (run_id, attempt_number, now),
+            )
+
+    def get_run_attempts(self, run_id: str) -> list[dict]:
+        """Return append-only attempt history in execution order."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT attempt_id, run_id, attempt_number, status, started_at,
+                          finished_at, report_sha256, error
+                   FROM prediction_ledger_attempts WHERE run_id=? ORDER BY attempt_number""",
+                (run_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def finish_run(self, run_id: str, report_sha256: str) -> None:
         """Mark a run complete only after its report has been built and optionally written."""
@@ -195,6 +238,14 @@ class PredictionLedger:
             )
             if cursor.rowcount != 1:
                 raise ValueError("run must be registered as running before completion")
+            attempt = connection.execute(
+                """UPDATE prediction_ledger_attempts
+                   SET status='completed', finished_at=?, report_sha256=?, error=NULL
+                   WHERE run_id=? AND status='running'""",
+                (now, report_sha256, run_id),
+            )
+            if attempt.rowcount != 1:
+                raise ValueError("exactly one running attempt is required for completion")
 
     def fail_run(self, run_id: str, error: str) -> None:
         """Record a bounded failure diagnostic; partial prediction rows remain auditable."""
@@ -205,6 +256,12 @@ class PredictionLedger:
                 """UPDATE prediction_ledger_runs SET status='failed', error=?, updated_at=?
                    WHERE run_id=? AND status='running'""",
                 (message, now, run_id),
+            )
+            connection.execute(
+                """UPDATE prediction_ledger_attempts
+                   SET status='failed', finished_at=?, error=?
+                   WHERE run_id=? AND status='running'""",
+                (now, message, run_id),
             )
 
     def get_run_status(self, run_id: str) -> dict | None:
