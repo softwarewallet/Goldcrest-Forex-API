@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 
 import pytest
 
@@ -97,4 +98,42 @@ def test_fails_closed_when_training_labels_have_one_class():
         evaluate_binary_walk_forward(
             plan, rows, feature_names=("close_delta", "hour_bucket"),
             model_factory=FakeModel,
+        )
+
+
+def test_rejects_nonchronological_or_missing_fold_partitions():
+    bars = make_bars()
+    plan = generate_walk_forward_folds(
+        bars, initial_train_bars=60, validation_bars=20,
+        test_bars=20, step_bars=10, horizon_bars=2,
+    )
+    fold = plan.folds[0]
+    reordered_fold = replace(fold, validation=fold.test, test=fold.validation)
+    reordered_plan = replace(plan, folds=(reordered_fold,))
+    with pytest.raises(ValueError, match="strictly chronological"):
+        evaluate_binary_walk_forward(
+            reordered_plan, examples_for(bars),
+            feature_names=("close_delta", "hour_bucket"), model_factory=FakeModel,
+        )
+
+    missing_time = fold.validation[0].timestamp
+    missing_examples = [row for row in examples_for(bars) if row.timestamp != missing_time]
+    with pytest.raises(ValueError, match="timestamps missing from examples"):
+        evaluate_binary_walk_forward(
+            plan, missing_examples,
+            feature_names=("close_delta", "hour_bucket"), model_factory=FakeModel,
+        )
+
+
+def test_rejects_float_labels_instead_of_silently_accepting_them():
+    bars = make_bars()
+    plan = generate_walk_forward_folds(
+        bars, initial_train_bars=60, validation_bars=20,
+        test_bars=20, step_bars=10, horizon_bars=2,
+    )
+    rows = examples_for(bars)
+    rows[0] = TimedBinaryExample(rows[0].timestamp, rows[0].features, 1.0, rows[0].label_available_at)
+    with pytest.raises(ValueError, match="integer 0 or 1"):
+        evaluate_binary_walk_forward(
+            plan, rows, feature_names=("close_delta", "hour_bucket"), model_factory=FakeModel,
         )

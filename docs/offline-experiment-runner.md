@@ -71,3 +71,28 @@ in the caller's manifest/evaluation contract. Factory identity is not a substitu
 code-content fingerprint. Training failures that occur before the durable run contract is
 registered are still surfaced as exceptions; the runner does not claim that every possible
 preflight/training failure is durably registered as a failed run.
+
+
+## Full run lifecycle and fitted-model identity
+
+The durable run record is registered after deterministic input-contract construction and
+before fold validation/model fitting. Failures during fold checks, fitting, scoring, ledger
+persistence, comparison, or report generation are recorded as `failed` when the ledger
+remains available; the original experiment exception is preserved if failure logging also
+fails. Static preflight errors rejected before registration are still ordinary exceptions.
+
+The runner records each version from the actual fitted model instance used to produce the
+out-of-sample probabilities. It no longer constructs an extra, unfitted model just to
+read its version. If a factory reports a different model version across folds under the
+same run contract, the run fails closed rather than comparing against a version that does
+not match the stored prediction rows.
+
+
+## Temporal partition integrity
+
+Both the end-to-end runner and the standalone binary walk-forward evaluator now reject
+folds whose training, validation, and test windows are not strictly forward in time,
+whose partitions overlap, or whose referenced timestamps are missing from the supplied
+examples. The standalone evaluator also rejects duplicate/invalid fold indices and labels
+that are numerically equal to 0/1 but are not actual integers. These checks prevent a
+malformed caller-supplied plan from silently creating a leakage-prone evaluation.

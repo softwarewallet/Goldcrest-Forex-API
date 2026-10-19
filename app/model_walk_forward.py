@@ -77,7 +77,7 @@ def _validate_examples(examples: Sequence[TimedBinaryExample], feature_names: Se
         previous = timestamp
         if available < timestamp:
             raise ValueError("label cannot be available before its feature timestamp")
-        if example.label not in (0, 1) or isinstance(example.label, bool):
+        if isinstance(example.label, bool) or not isinstance(example.label, int) or example.label not in (0, 1):
             raise ValueError("labels must be explicitly supplied as integer 0 or 1")
         if set(example.features) != set(names):
             raise ValueError("feature schema mismatch")
@@ -125,16 +125,33 @@ def evaluate_binary_walk_forward(
     _validate_examples(examples, feature_names)
     by_time = {_utc(row.timestamp, "feature"): row for row in examples}
     results: list[ModelFoldResult] = []
+    if not plan.folds:
+        raise ValueError("walk-forward plan contains no folds")
+    seen_fold_indices: set[int] = set()
     for fold in plan.folds:
+        if isinstance(fold.fold_index, bool) or not isinstance(fold.fold_index, int) or fold.fold_index < 0:
+            raise ValueError("fold indices must be non-negative integers")
+        if fold.fold_index in seen_fold_indices:
+            raise ValueError("walk-forward plan contains duplicate fold indices")
+        seen_fold_indices.add(fold.fold_index)
         train_times = {_utc(bar.timestamp, "fold") for bar in fold.train}
         validation_times = {_utc(bar.timestamp, "fold") for bar in fold.validation}
         test_times = {_utc(bar.timestamp, "fold") for bar in fold.test}
+        if not train_times or not validation_times or not test_times:
+            raise ValueError("each fold requires non-empty train, validation, and test partitions")
+        if (train_times & validation_times) or (train_times & test_times) or (validation_times & test_times):
+            raise ValueError("fold partitions must not share observation timestamps")
+        if max(train_times) >= min(validation_times) or max(validation_times) >= min(test_times):
+            raise ValueError("fold partitions must be strictly chronological: train before validation before test")
+        missing_times = (train_times | validation_times | test_times) - by_time.keys()
+        if missing_times:
+            raise ValueError(f"fold references {len(missing_times)} timestamps missing from examples")
         train_end = max(train_times)
-        train_all = [by_time[t] for t in sorted(train_times) if t in by_time]
+        train_all = [by_time[t] for t in sorted(train_times)]
         train = [row for row in train_all if _utc(row.label_available_at, "label availability") <= train_end]
         unmatured = len(train_all) - len(train)
-        validation = [by_time[t] for t in sorted(validation_times) if t in by_time]
-        test = [by_time[t] for t in sorted(test_times) if t in by_time]
+        validation = [by_time[t] for t in sorted(validation_times)]
+        test = [by_time[t] for t in sorted(test_times)]
         if not train or not validation or not test:
             raise ValueError("each fold requires feature/label records in train, validation, and test")
         if len({row.label for row in train}) != 2:

@@ -67,67 +67,8 @@ def run_offline_experiment(
     factories["training_prevalence"] = TrainingPrevalenceBaseline
     fold_results: dict[str, list[ModelFoldResult]] = {name: [] for name in factories}
     prediction_records: list[PredictionRecord] = []
+    model_versions: dict[str, str] = {}
 
-    for fold in plan.folds:
-        train_times = {_utc(bar.timestamp, "fold") for bar in fold.train}
-        validation_times = {_utc(bar.timestamp, "fold") for bar in fold.validation}
-        test_times = {_utc(bar.timestamp, "fold") for bar in fold.test}
-        if not train_times or not validation_times or not test_times:
-            raise ValueError("every fold must have non-empty train, validation, and test partitions")
-        if (train_times & validation_times) or (train_times & test_times) or (validation_times & test_times):
-            raise ValueError("fold partitions must not share observation timestamps")
-        required_times = train_times | validation_times | test_times
-        missing_times = required_times - by_time.keys()
-        if missing_times:
-            raise ValueError(f"fold references {len(missing_times)} timestamps missing from examples")
-        train_end = max(train_times)
-        train_all = [by_time[t] for t in sorted(train_times)]
-        train = [row for row in train_all if _utc(row.label_available_at, "label availability") <= train_end]
-        validation = [by_time[t] for t in sorted(validation_times)]
-        test = [by_time[t] for t in sorted(test_times)]
-        if not train or not validation or not test:
-            raise ValueError("every fold needs labeled examples in train, validation, and test")
-        if len({row.label for row in train}) != 2:
-            raise ValueError("matured training labels must contain both classes")
-
-        for name, factory in factories.items():
-            model = factory()
-            model.fit([row.features for row in train], [row.label for row in train])
-            if getattr(model, "actionable", False) is not False:
-                raise ValueError("research model must remain actionable=False")
-
-            def score(rows: Sequence[TimedBinaryExample], partition: str):
-                probabilities = []
-                for row in rows:
-                    output = model.predict(row.features)
-                    if getattr(output, "actionable", False) is not False:
-                        raise ValueError("model output must remain actionable=False")
-                    probability = getattr(output, "probability_class_1", None)
-                    if probability is None:
-                        raise ValueError("model output lacks probability_class_1")
-                    probability = float(probability)
-                    probabilities.append(probability)
-                    prediction_records.append(PredictionRecord(
-                        run_id=run_id, symbol=plan.symbol, timeframe=plan.timeframe,
-                        observation_timestamp=row.timestamp, fold_index=fold.fold_index,
-                        partition=partition, model_name=name,
-                        model_version=str(getattr(model, "model_version", "unknown")),
-                        probability=probability, label=row.label,
-                        label_available_at=row.label_available_at, actionable=False,
-                    ))
-                return _metrics([row.label for row in rows], probabilities)
-
-            fold_results[name].append(ModelFoldResult(
-                fold_index=fold.fold_index,
-                model_type=str(getattr(model, "model_type", type(model).__name__)),
-                model_version=str(getattr(model, "model_version", "unknown")),
-                train_rows_available=len(train),
-                train_rows_excluded_unmatured=len(train_all) - len(train),
-                validation=score(validation, "validation"),
-                test=score(test, "test"),
-                probability_semantics="uncalibrated research probability; not trading performance",
-                actionable=False,
-            ))
 
     # Fingerprint the actual examples and exact fold membership, not only caller-supplied
     # manifest metadata. This makes same-run-ID retries fail closed when the supplied
@@ -186,11 +127,81 @@ def run_offline_experiment(
         "random_seed": random_seed,
     }
     ledger.start_run(run_id, run_contract)
+
     try:
+        for fold in plan.folds:
+            train_times = {_utc(bar.timestamp, "fold") for bar in fold.train}
+            validation_times = {_utc(bar.timestamp, "fold") for bar in fold.validation}
+            test_times = {_utc(bar.timestamp, "fold") for bar in fold.test}
+            if not train_times or not validation_times or not test_times:
+                raise ValueError("every fold must have non-empty train, validation, and test partitions")
+            if (train_times & validation_times) or (train_times & test_times) or (validation_times & test_times):
+                raise ValueError("fold partitions must not share observation timestamps")
+            if max(train_times) >= min(validation_times) or max(validation_times) >= min(test_times):
+                raise ValueError("fold partitions must be strictly chronological: train before validation before test")
+            required_times = train_times | validation_times | test_times
+            missing_times = required_times - by_time.keys()
+            if missing_times:
+                raise ValueError(f"fold references {len(missing_times)} timestamps missing from examples")
+            train_end = max(train_times)
+            train_all = [by_time[t] for t in sorted(train_times)]
+            train = [row for row in train_all if _utc(row.label_available_at, "label availability") <= train_end]
+            validation = [by_time[t] for t in sorted(validation_times)]
+            test = [by_time[t] for t in sorted(test_times)]
+            if not train or not validation or not test:
+                raise ValueError("every fold needs labeled examples in train, validation, and test")
+            if len({row.label for row in train}) != 2:
+                raise ValueError("matured training labels must contain both classes")
+
+            for name, factory in factories.items():
+                model = factory()
+                model_version = str(getattr(model, "model_version", "unknown"))
+                prior_version = model_versions.setdefault(name, model_version)
+                if prior_version != model_version:
+                    raise ValueError(f"model version changed across folds for {name!r}")
+                model.fit([row.features for row in train], [row.label for row in train])
+                if getattr(model, "actionable", False) is not False:
+                    raise ValueError("research model must remain actionable=False")
+
+                def score(rows: Sequence[TimedBinaryExample], partition: str):
+                    probabilities = []
+                    for row in rows:
+                        output = model.predict(row.features)
+                        if getattr(output, "actionable", False) is not False:
+                            raise ValueError("model output must remain actionable=False")
+                        probability = getattr(output, "probability_class_1", None)
+                        if probability is None:
+                            raise ValueError("model output lacks probability_class_1")
+                        probability = float(probability)
+                        probabilities.append(probability)
+                        prediction_records.append(PredictionRecord(
+                            run_id=run_id, symbol=plan.symbol, timeframe=plan.timeframe,
+                            observation_timestamp=row.timestamp, fold_index=fold.fold_index,
+                            partition=partition, model_name=name,
+                            model_version=model_version,
+                            probability=probability, label=row.label,
+                            label_available_at=row.label_available_at, actionable=False,
+                        ))
+                    return _metrics([row.label for row in rows], probabilities)
+
+                fold_results[name].append(ModelFoldResult(
+                    fold_index=fold.fold_index,
+                    model_type=str(getattr(model, "model_type", type(model).__name__)),
+                    model_version=model_version,
+                    train_rows_available=len(train),
+                    train_rows_excluded_unmatured=len(train_all) - len(train),
+                    validation=score(validation, "validation"),
+                    test=score(test, "test"),
+                    probability_semantics="uncalibrated research probability; not trading performance",
+                    actionable=False,
+                ))
+
         inserted = ledger.record_many(prediction_records)
         comparisons = []
-        versions = {name: str(getattr(factory(), "model_version", "candidate-v1"))
-                    for name, factory in factories.items()}
+        versions = model_versions
+        missing_versions = set(factories) - set(versions)
+        if missing_versions:
+            raise ValueError(f"missing fitted model versions: {sorted(missing_versions)}")
         for candidate_name in factories:
             if candidate_name == "training_prevalence":
                 continue
@@ -225,5 +236,9 @@ def run_offline_experiment(
             ledger_path=ledger.database_path, report_path=saved_path, actionable=False,
         )
     except Exception as exc:
-        ledger.fail_run(run_id, f"{type(exc).__name__}: {exc}")
+        # Preserve the original experiment error if the ledger itself is unavailable.
+        try:
+            ledger.fail_run(run_id, f"{type(exc).__name__}: {exc}")
+        except Exception:
+            pass
         raise
