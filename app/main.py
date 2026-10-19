@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -25,7 +26,15 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Goldcrest Forex API", version="0.1.0",
               description="AI market-analysis API; no broker execution routes.", lifespan=lifespan)
 
-# Keep browser access explicit; configure trusted dashboard origins through GOLDCREST_CORS_ORIGINS.\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=get_settings().cors_origin_list,\n    allow_credentials=False,\n    allow_methods=["GET", "POST", "OPTIONS"],\n    allow_headers=["Content-Type", "X-API-Key"],\n)\n
+# Keep browser access explicit; configure trusted dashboard origins through GOLDCREST_CORS_ORIGINS.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origin_list,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
+)
+
 
 def _as_utc(value: datetime) -> datetime:
     """SQLite may return naive datetimes even for timezone-aware columns."""
