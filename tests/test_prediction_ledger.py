@@ -113,7 +113,7 @@ def test_run_lifecycle_rejects_manifest_reuse_and_records_completion(tmp_path):
     assert status["error"] is None
 
 
-def test_run_lifecycle_records_failure_and_allows_same_manifest_retry(tmp_path):
+def test_run_lifecycle_records_each_failed_and_retried_attempt(tmp_path):
     ledger = PredictionLedger(tmp_path / "ledger.sqlite")
     manifest = {"dataset": "fixture"}
     ledger.start_run("run-failed", manifest)
@@ -123,6 +123,35 @@ def test_run_lifecycle_records_failure_and_allows_same_manifest_retry(tmp_path):
     assert status["error"] == "OSError: report write failed"
     ledger.start_run("run-failed", manifest)
     assert ledger.get_run_status("run-failed")["status"] == "running"
+    ledger.fail_run("run-failed", "RuntimeError: retry interrupted")
+    attempts = ledger.get_run_attempts("run-failed")
+    assert [attempt["status"] for attempt in attempts] == ["failed", "failed"]
+    assert [attempt["attempt_number"] for attempt in attempts] == [1, 2]
+    assert "report write failed" in attempts[0]["error"]
+    assert "retry interrupted" in attempts[1]["error"]
+
+
+def test_completed_run_cannot_be_reopened_or_have_report_fingerprint_erased(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    manifest = {"dataset": "fixture"}
+    ledger.start_run("immutable-run", manifest)
+    ledger.finish_run("immutable-run", "a" * 64)
+    before = ledger.get_run_status("immutable-run")
+    with pytest.raises(ValueError, match="already completed"):
+        ledger.start_run("immutable-run", manifest)
+    assert ledger.get_run_status("immutable-run") == before
+    attempts = ledger.get_run_attempts("immutable-run")
+    assert len(attempts) == 1
+    assert attempts[0]["status"] == "completed"
+    assert attempts[0]["report_sha256"] == "a" * 64
+
+
+def test_concurrent_running_attempt_is_rejected(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ledger.start_run("active-run", {"dataset": "fixture"})
+    with pytest.raises(ValueError, match="running attempt"):
+        ledger.start_run("active-run", {"dataset": "fixture"})
+    assert len(ledger.get_run_attempts("active-run")) == 1
 
 
 def test_completed_report_verification_checks_payload_and_ledger_fingerprint(tmp_path):
