@@ -7,6 +7,7 @@ made unique through the explicitly recorded fold index.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sqlite3
@@ -84,6 +85,16 @@ class PredictionLedger:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute("""
+                CREATE TABLE IF NOT EXISTS experiment_runs (
+                    run_id TEXT PRIMARY KEY,
+                    manifest_sha256 TEXT NOT NULL,
+                    status TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+                    report_sha256 TEXT,
+                    error TEXT,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS oos_predictions (
                     run_id TEXT NOT NULL,
                     symbol TEXT NOT NULL,
@@ -120,6 +131,60 @@ class PredictionLedger:
             None if record.label_available_at is None else _utc_iso(record.label_available_at, "label_available_at"),
             0,
         )
+
+    def start_run(self, run_id: str, manifest: dict) -> None:
+        """Register/retry a run while preventing run_id reuse for a different manifest."""
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("run_id must be non-empty")
+        canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        manifest_sha = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT manifest_sha256 FROM experiment_runs WHERE run_id=?", (run_id,)
+            ).fetchone()
+            if existing is not None and existing["manifest_sha256"] != manifest_sha:
+                raise ValueError("run_id already registered with a different manifest")
+            connection.execute(
+                """INSERT INTO experiment_runs (run_id, manifest_sha256, status, report_sha256, error, updated_at)
+                   VALUES (?, ?, 'running', NULL, NULL, ?)
+                   ON CONFLICT(run_id) DO UPDATE SET status='running', report_sha256=NULL, error=NULL, updated_at=excluded.updated_at""",
+                (run_id, manifest_sha, now),
+            )
+
+    def finish_run(self, run_id: str, report_sha256: str) -> None:
+        """Mark a run complete only after its report has been built and optionally written."""
+        if not isinstance(report_sha256, str) or len(report_sha256) != 64:
+            raise ValueError("report_sha256 must be a SHA-256 hex digest")
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """UPDATE experiment_runs SET status='completed', report_sha256=?, error=NULL, updated_at=?
+                   WHERE run_id=? AND status='running'""",
+                (report_sha256, now, run_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("run must be registered as running before completion")
+
+    def fail_run(self, run_id: str, error: str) -> None:
+        """Record a bounded failure diagnostic; partial prediction rows remain auditable."""
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        message = str(error).replace("\\x00", "")[:2000]
+        with self._connect() as connection:
+            connection.execute(
+                """UPDATE experiment_runs SET status='failed', error=?, updated_at=?
+                   WHERE run_id=? AND status='running'""",
+                (message, now, run_id),
+            )
+
+    def get_run_status(self, run_id: str) -> dict | None:
+        """Return the durable lifecycle state for an experiment run, if registered."""
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT run_id, manifest_sha256, status, report_sha256, error, updated_at FROM experiment_runs WHERE run_id=?",
+                (run_id,),
+            ).fetchone()
+        return dict(row) if row is not None else None
 
     def record(self, record: PredictionRecord) -> bool:
         """Insert a record; identical retries return False, conflicting retries fail."""
