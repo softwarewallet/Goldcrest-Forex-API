@@ -15,11 +15,12 @@ def _fixture(tmp_path):
     timestamp = datetime(2025, 1, 1, tzinfo=timezone.utc)
     for model, probability in (("candidate", 0.7), ("training_prevalence", 0.5)):
         for partition in ("validation", "test"):
+            observed_at = timestamp if partition == "validation" else datetime(2025, 1, 1, 0, 5, tzinfo=timezone.utc)
             ledger.record(PredictionRecord(
                 run_id=run_id, symbol="EUR/USD", timeframe="M5",
-                observation_timestamp=timestamp if partition == "validation" else datetime(2025, 1, 1, 0, 5, tzinfo=timezone.utc),
+                observation_timestamp=observed_at,
                 fold_index=0, partition=partition, model_name=model, model_version="fixture-v1",
-                probability=probability, label=1, label_available_at=timestamp,
+                probability=probability, label=1, label_available_at=observed_at,
             ))
     metrics = {"sample_count": 1}
     report = build_experiment_report(
