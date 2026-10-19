@@ -64,7 +64,7 @@ def test_audit_rejects_ledger_row_count_mismatch(tmp_path):
             "DELETE FROM oos_predictions WHERE run_id=? AND model_name=? AND partition=?",
             ("audit-fixture", "candidate", "test"),
         )
-    with pytest.raises(ValueError, match="row count mismatch"):
+    with pytest.raises(ValueError, match="group mismatch"):
         verify_research_artifacts(report_path, ledger=ledger)
 
 
