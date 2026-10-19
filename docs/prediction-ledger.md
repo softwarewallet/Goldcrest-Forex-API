@@ -72,3 +72,13 @@ SQLite file without conflicting table schemas, regardless of initialization orde
 startup, the ledger detects the legacy ledger-specific `experiment_runs` schema by its
 columns and copies its lifecycle records into `prediction_ledger_runs`; it does not reinterpret
 or overwrite the manifest registry's differently shaped table.
+
+
+## Durable attempt history and completed-run immutability
+
+Each call that starts a run creates a durable attempt row in
+`prediction_ledger_attempts`. Failed retries append a new attempt; prior failures remain
+available with their bounded diagnostic and timestamps. Only one attempt may be running
+for a run ID at a time. A completed run ID cannot be restarted or have its report digest
+cleared: create a new run ID for an intentional rerun. The current run status remains a
+convenient summary, while attempt rows preserve the lifecycle history.
