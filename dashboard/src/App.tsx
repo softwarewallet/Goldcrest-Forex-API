@@ -46,6 +46,8 @@ function StatusPill({ state, children }: { state: "good" | "warn" | "bad" | "mut
 export default function App() {
   const [base, setBase] = useState(initialBase);
   const [key, setKey] = useState(initialKey);
+  const [baseInput, setBaseInput] = useState(initialBase);
+  const [keyInput, setKeyInput] = useState(initialKey);
   const [showSettings, setShowSettings] = useState(!initialKey);
   const [health, setHealth] = useState<Health | null>(null);
   const [performance, setPerformance] = useState<Performance | null>(null);
@@ -86,12 +88,13 @@ export default function App() {
 
   const latestSignals = useMemo(() => predictions.slice(0, 6), [predictions]);
   const saveSettings = () => {
-    const normalized = base.trim().replace(/\/$/, "");
-    setBase(normalized || "http://192.168.29.80:8090");
-    localStorage.setItem("goldcrest-api-base", normalized || "http://192.168.29.80:8090");
-    sessionStorage.setItem("goldcrest-api-key", key);
+    const normalized = baseInput.trim().replace(/\/$/, "");
+    const nextBase = normalized || "http://192.168.29.80:8090";
+    setBase(nextBase);
+    setKey(keyInput);
+    localStorage.setItem("goldcrest-api-base", nextBase);
+    sessionStorage.setItem("goldcrest-api-key", keyInput);
     setShowSettings(false);
-    void refresh();
   };
   const signalTone = (decision: string) => decision === "BUY" ? "buy" : decision === "SELL" ? "sell" : "neutral";
   const stateLabel = state === "connected" ? "SYSTEM ONLINE" : state === "degraded" ? "DEGRADED" : state === "loading" ? "CONNECTING" : "DISCONNECTED";
@@ -111,7 +114,7 @@ export default function App() {
 
       <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> AI RESEARCH ENVIRONMENT / 01</div><h1>Neural <span>Signal Console</span></h1><p>Observe market inputs move through inference and emerge as research signals.</p></div><button className="refresh-button" onClick={() => void refresh()} disabled={busy}><span className={busy ? "refresh-spin" : ""}>↻</span> {busy ? "SYNCING" : "REFRESH DATA"}</button></section>
 
-      {showSettings && <section className="settings-panel"><div><b>Connect to GoldcrestAI API</b><p>Requests use your API key in this browser session. The key is not written to local storage.</p></div><label>API BASE URL<input value={base} onChange={e => setBase(e.target.value)} placeholder="http://192.168.29.80:8090" /></label><label>API KEY<input value={key} onChange={e => setKey(e.target.value)} type="password" placeholder="Enter X-API-Key" autoComplete="off" /></label><button onClick={saveSettings}>SAVE & CONNECT</button></section>}
+      {showSettings && <section className="settings-panel"><div><b>Connect to GoldcrestAI API</b><p>Requests use your API key in this browser session. The key is not written to local storage.</p></div><label>API BASE URL<input value={baseInput} onChange={e => setBaseInput(e.target.value)} placeholder="http://192.168.29.80:8090" /></label><label>API KEY<input value={keyInput} onChange={e => setKeyInput(e.target.value)} type="password" placeholder="Enter X-API-Key" autoComplete="off" /></label><button onClick={saveSettings}>SAVE & CONNECT</button></section>}
 
       {error && <div className="error-banner"><span>!</span><div><b>Research API unavailable</b><p>{error}</p><small>Check the API address, network access, and key. Existing signal data is not presented as live.</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}
 
