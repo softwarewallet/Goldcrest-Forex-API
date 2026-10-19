@@ -110,6 +110,16 @@ class PredictionLedger:
                         SELECT run_id, manifest_sha256, status, report_sha256, error, updated_at
                         FROM experiment_runs
                     """)
+                    # Preserve the old table under a legacy name so ExperimentRegistry
+                    # can create its own, schema-compatible experiment_runs table later.
+                    backup_name = "legacy_prediction_ledger_runs_v1"
+                    suffix = 1
+                    while connection.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (backup_name,)
+                    ).fetchone() is not None:
+                        suffix += 1
+                        backup_name = f"legacy_prediction_ledger_runs_v{suffix}"
+                    connection.execute(f'ALTER TABLE experiment_runs RENAME TO "{backup_name}"')
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS oos_predictions (
                     run_id TEXT NOT NULL,
