@@ -96,6 +96,6 @@ def test_runner_trains_records_compares_and_writes_non_actionable_report(tmp_pat
         ledger=ledger,
         evaluation_contract={"label_definition": "same fixture", "timeframe": "M5"},
         exclusions={"unlabeled": 0, "invalid": 0},
-        block_length=1, bootstrap_resamples=30, random_seed=7,
+        block_length=1, bootstrap_resamples=100, random_seed=7,
     )
     assert second.prediction_rows_inserted == 0
