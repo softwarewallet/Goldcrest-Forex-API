@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 type Health = { status: string; application: string; inference_status: string; database_status: string };
 type Performance = { predictions_total: number; outcomes_recorded: number; note?: string };
@@ -39,7 +40,7 @@ function Icon({ name }: { name: string }) {
   return <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] || paths.pulse} /></svg>;
 }
 
-function StatusPill({ state, children }: { state: "good" | "warn" | "bad" | "muted"; children: React.ReactNode }) {
+function StatusPill({ state, children }: { state: "good" | "warn" | "bad" | "muted"; children: ReactNode }) {
   return <span className={`status-pill ${state}`}><i />{children}</span>;
 }
 
