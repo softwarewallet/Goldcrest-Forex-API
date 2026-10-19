@@ -252,3 +252,25 @@ def test_model_version_change_across_folds_fails_closed_and_records_failure(tmp_
             exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
         )
     assert ledger.get_run_status("changing-version-run")["status"] == "failed"
+
+
+def test_runner_rejects_temporally_reordered_validation_and_test(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(36)]
+    examples = [TimedBinaryExample(t, {"x": float(i % 3)}, i % 2, t) for i, t in enumerate(times)]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (Fold(0, tuple(Bar(t) for t in times[:20]),
+              tuple(Bar(t) for t in times[28:36]),
+              tuple(Bar(t) for t in times[20:28])),),
+    )
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    with pytest.raises(ValueError, match="strictly chronological"):
+        run_offline_experiment(
+            plan, examples, feature_names=("x",),
+            manifest={"run_id": "reordered-fold-run", "dataset_id": "fixture"},
+            model_factories={"candidate": ConstantModel}, ledger=ledger,
+            evaluation_contract={"label_definition": "synthetic fixture only"},
+            exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
+        )
+    assert ledger.get_run_status("reordered-fold-run")["status"] == "failed"
