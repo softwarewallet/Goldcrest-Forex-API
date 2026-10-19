@@ -10,6 +10,7 @@ type Prediction = {
 };
 type AuditEvent = { id: string; event_type: string; request_id?: string | null; symbol?: string | null; outcome?: string | null; duration_ms?: number | null; details?: Record<string, unknown>; created_at: string };
 type LoadState = "loading" | "connected" | "degraded" | "offline";
+type ProbeState = "not-run" | "running" | "passed" | "failed";
 
 const initialBase = localStorage.getItem("goldcrest-api-base") || "http://192.168.29.80:8090";
 const initialKey = sessionStorage.getItem("goldcrest-api-key") || "";
@@ -56,6 +57,9 @@ export default function App() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [busy, setBusy] = useState(false);
+  const [probeState, setProbeState] = useState<ProbeState>("not-run");
+  const [probeModel, setProbeModel] = useState("");
+  const [probeError, setProbeError] = useState("");
   const [lastSync, setLastSync] = useState<string>();
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Prediction | null>(null);
@@ -88,6 +92,16 @@ export default function App() {
   }, [refresh]);
 
   const latestSignals = useMemo(() => predictions.slice(0, 6), [predictions]);
+  const probeInference = async () => {
+    setProbeState("running"); setProbeError(""); setProbeModel("");
+    try {
+      const result = await request<{ status: string; model_id: string; completion_valid: boolean }>(base, key, "/api/v1/readiness/inference");
+      if (result.status !== "ok" || !result.completion_valid) throw new Error("Inference readiness response was invalid");
+      setProbeState("passed"); setProbeModel(result.model_id || "Model ID not reported");
+    } catch (e) {
+      setProbeState("failed"); setProbeError(e instanceof Error ? e.message : "Inference probe failed");
+    }
+  };
   const saveSettings = () => {
     const normalized = baseInput.trim().replace(/\/$/, "");
     const nextBase = normalized || "http://192.168.29.80:8090";
@@ -113,26 +127,27 @@ export default function App() {
     <main className="main">
       <header className="topbar"><div className="breadcrumbs">WORKSPACE <span>/</span> <b>NEURAL CONSOLE</b></div><div className="top-actions"><span className="clock-label"><Icon name="clock" /> {lastSync ? `SYNC ${new Date(lastSync).toLocaleTimeString()}` : "WAITING FOR SYNC"}</span><StatusPill state={state === "connected" ? "good" : state === "degraded" ? "warn" : state === "offline" ? "bad" : "muted"}>{stateLabel}</StatusPill><button className="icon-button" onClick={() => setShowSettings(v => !v)} aria-label="Connection settings">⚙</button></div></header>
 
-      <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> AI RESEARCH ENVIRONMENT / 01</div><h1>Neural <span>Signal Console</span></h1><p>Observe market inputs move through inference and emerge as research signals.</p></div><button className="refresh-button" onClick={() => void refresh()} disabled={busy}><span className={busy ? "refresh-spin" : ""}>↻</span> {busy ? "SYNCING" : "REFRESH DATA"}</button></section>
+      <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> AI RESEARCH ENVIRONMENT / 01</div><h1>Neural <span>Signal Console</span></h1><p>Observe market inputs move through inference and emerge as research signals.</p></div><div className="heading-actions"><button className="probe-button" onClick={() => void probeInference()} disabled={probeState === "running"}><Icon name="pulse" /> {probeState === "running" ? "PROBING MODEL" : "TEST INFERENCE"}</button><button className="refresh-button" onClick={() => void refresh()} disabled={busy}><span className={busy ? "refresh-spin" : ""}>↻</span> {busy ? "SYNCING" : "REFRESH DATA"}</button></div></section>
 
       {showSettings && <section className="settings-panel"><div><b>Connect to GoldcrestAI API</b><p>Requests use your API key in this browser session. The key is not written to local storage.</p></div><label>API BASE URL<input value={baseInput} onChange={e => setBaseInput(e.target.value)} placeholder="http://192.168.29.80:8090" /></label><label>API KEY<input value={keyInput} onChange={e => setKeyInput(e.target.value)} type="password" placeholder="Enter X-API-Key" autoComplete="off" /></label><button onClick={saveSettings}>SAVE & CONNECT</button></section>}
 
+      {probeState !== "not-run" && <div className={`probe-banner ${probeState}`}><span>{probeState === "passed" ? "✓" : probeState === "failed" ? "!" : "…"}</span><div><b>{probeState === "passed" ? "Actual model inference probe passed" : probeState === "failed" ? "Actual model inference probe failed" : "Running a real model completion…"}</b><p>{probeState === "passed" ? `Validated JSON completion from ${probeModel}. This confirms connectivity and response format only—not prediction quality.` : probeState === "failed" ? probeError : "Waiting for the inference endpoint to complete."}</p></div><button onClick={() => { setProbeState("not-run"); setProbeError(""); }}>DISMISS</button></div>}
       {error && <div className="error-banner"><span>!</span><div><b>Research API unavailable</b><p>{error}</p><small>Check the API address, network access, and key. Existing signal data is not presented as live.</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}
 
       <section className="metrics-grid">
-        <article className="metric-card"><div className="metric-head"><span>INFERENCE ENGINE</span><Icon name="pulse" /></div><strong className={health?.inference_status === "ok" ? "metric-good" : ""}>{health?.inference_status === "ok" ? "READY" : health?.inference_status?.toUpperCase() ?? "—"}</strong><div className="metric-foot"><i className={health?.inference_status === "ok" ? "live-dot" : "idle-dot"} /> llama.cpp model endpoint</div></article>
+        <article className="metric-card"><div className="metric-head"><span>MODEL SERVER</span><Icon name="pulse" /></div><strong className={health?.inference_status === "ok" ? "metric-good" : ""}>{health?.inference_status?.toUpperCase() ?? "—"}</strong><div className="metric-foot"><i className={health?.inference_status === "ok" ? "live-dot" : "idle-dot"} /> Model listing / server connectivity</div></article>
         <article className="metric-card"><div className="metric-head"><span>DATA PERSISTENCE</span><Icon name="database" /></div><strong className={health?.database_status === "ok" ? "metric-good" : ""}>{health?.database_status?.toUpperCase() ?? "—"}</strong><div className="metric-foot"><i className={health?.database_status === "ok" ? "live-dot" : "idle-dot"} /> SQLite / SQLAlchemy</div></article>
         <article className="metric-card"><div className="metric-head"><span>PREDICTIONS RECORDED</span><Icon name="activity" /></div><strong>{performance?.predictions_total ?? "—"}</strong><div className="metric-foot">Durable prediction records</div></article>
         <article className="metric-card"><div className="metric-head"><span>OUTCOMES OBSERVED</span><Icon name="shield" /></div><strong>{performance?.outcomes_recorded ?? "—"}</strong><div className="metric-foot">Outcome labels received</div></article>
       </section>
 
       <section className="flow-panel">
-        <div className="section-heading"><div><div className="eyebrow">LIVE SYSTEM MAP</div><h2>Intelligence pipeline</h2></div><div className="panel-status"><span className={busy ? "processing-dot" : "idle-dot"} /> {busy ? "API REQUEST IN FLIGHT" : state === "connected" ? "AWAITING NEXT POLL" : "STREAM NOT CONNECTED"}</div></div>
-        <div className={`flow-canvas ${busy ? "flow-active" : ""}`}>
+        <div className="section-heading"><div><div className="eyebrow">LIVE SYSTEM MAP</div><h2>Intelligence pipeline</h2></div><div className="panel-status"><span className={busy || probeState === "running" ? "processing-dot" : "idle-dot"} /> {probeState === "running" ? "INFERENCE PROBE IN FLIGHT" : busy ? "API REQUEST IN FLIGHT" : state === "connected" ? "AWAITING NEXT POLL" : "STREAM NOT CONNECTED"}</div></div>
+        <div className={`flow-canvas ${busy || probeState === "running" ? "flow-active" : ""}`}>
           <div className="flow-grid" />
           <div className="flow-node input-node"><div className="node-icon"><Icon name="database" /></div><div className="node-title">DATA INPUT</div><div className="node-sub">OHLC · context</div><div className="node-state">{state === "connected" ? "API REACHABLE" : "NO CONNECTION"}</div></div>
           <div className="flow-track track-one"><span /><span /><span /></div>
-          <div className="flow-node core-node"><div className="core-rings"><div className="core-ring ring-a" /><div className="core-ring ring-b" /><div className="core-ring ring-c" /><div className="core-center"><div className="brand-mark"><span /><span /><span /></div></div></div><div className="node-title">AI INFERENCE CORE</div><div className="node-sub">{health?.application ?? "GoldcrestAI API"}</div><div className="node-state">{health?.inference_status === "ok" ? "MODEL ENDPOINT READY" : "READINESS UNCONFIRMED"}</div></div>
+          <div className="flow-node core-node"><div className="core-rings"><div className="core-ring ring-a" /><div className="core-ring ring-b" /><div className="core-ring ring-c" /><div className="core-center"><div className="brand-mark"><span /><span /><span /></div></div></div><div className="node-title">AI INFERENCE CORE</div><div className="node-sub">{health?.application ?? "GoldcrestAI API"}</div><div className="node-state">{probeState === "passed" ? "COMPLETION VALIDATED" : probeState === "running" ? "RUNNING COMPLETION" : "LISTING ≠ INFERENCE TEST"}</div></div>
           <div className="flow-track track-two"><span /><span /><span /></div>
           <div className="flow-node output-node"><div className="node-icon output-icon"><Icon name="activity" /></div><div className="node-title">RESEARCH SIGNALS</div><div className="node-sub">BUY · SELL · NO TRADE</div><div className="node-state">{predictions.length} STORED RECORDS</div></div>
           <div className="flow-caption"><span className="legend-dot cyan" /> Input/API <span className="legend-dot violet" /> Model inference <span className="legend-dot green" /> Persisted output</div>
@@ -142,7 +157,7 @@ export default function App() {
 
       <section className="lower-grid">
         <div className="signals-panel">
-          <div className="section-heading"><div><div className="eyebrow">OUT-OF-MODEL OUTPUT</div><h2>Recent prediction records <span className="count-chip">{predictions.length}</span></h2></div><span className="research-tag">RESEARCH ONLY</span></div>
+          <div className="section-heading"><div><div className="eyebrow">MODEL OUTPUT</div><h2>Recent prediction records <span className="count-chip">{predictions.length}</span></h2></div><span className="research-tag">RESEARCH ONLY</span></div>
           {latestSignals.length === 0 ? <div className="empty-state"><div className="empty-icon"><Icon name="activity" /></div><b>No prediction records available</b><p>When the API has stored predictions, they will appear here. No demo signals are injected.</p></div> : <div className="signal-list">{latestSignals.map(item => <button className="signal-row" key={item.prediction_id} onClick={() => setSelected(item)}><div className={`signal-symbol ${signalTone(item.decision)}`}>{item.symbol.slice(0, 3)}</div><div className="signal-main"><b>{item.symbol} <small>{item.timeframe}</small></b><span>{item.market_regime.replaceAll("_", " ")}</span></div><div className={`decision ${signalTone(item.decision)}`}>{item.decision.replace("_", " ")}</div><div className="signal-time">{stamp(item.generated_at)}</div><span className="row-arrow">↗</span></button>)}</div>}
           <div className="signals-foot"><span>Direction is not a calibrated probability or trading recommendation.</span><span>API: /predictions</span></div>
         </div>
