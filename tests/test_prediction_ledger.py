@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta, timezone
+import sqlite3
 
 import pytest
 
 from app.prediction_ledger import PredictionLedger, PredictionRecord
+from app.evaluation import ForexBar
+from app.run_manifest import ExperimentRegistry, build_run_manifest
 
 
 START = datetime(2025, 1, 1, tzinfo=timezone.utc)
@@ -144,3 +147,56 @@ def test_finish_run_rejects_non_hex_report_digest(tmp_path):
     ledger.start_run("bad-digest", {"dataset": "fixture"})
     with pytest.raises(ValueError, match="hex digest"):
         ledger.finish_run("bad-digest", "z" * 64)
+
+
+def _shared_db_manifest():
+    bar = ForexBar(
+        symbol="EUR/USD", timeframe="M5", timestamp=START,
+        open=1.1, high=1.101, low=1.099, close=1.1005,
+        bid=1.1004, ask=1.1006,
+    )
+    return build_run_manifest(
+        [bar], code_commit="fixture-commit", model_id="fixture-model",
+        model_revision="v1", dataset_id="fixture-dataset",
+        evaluation_config={"target": "fixture-only"},
+    )
+
+
+@pytest.mark.parametrize("registry_first", [True, False])
+def test_manifest_registry_and_prediction_ledger_can_share_sqlite_file(tmp_path, registry_first):
+    path = tmp_path / "shared.sqlite"
+    if registry_first:
+        registry = ExperimentRegistry(path)
+        ledger = PredictionLedger(path)
+    else:
+        ledger = PredictionLedger(path)
+        registry = ExperimentRegistry(path)
+
+    manifest = _shared_db_manifest()
+    assert registry.register(manifest) is True
+    ledger.start_run("ledger-run", {"dataset": "fixture", "run": 1})
+    assert registry.get(manifest.run_id)["status"] == "REGISTERED"
+    assert ledger.get_run_status("ledger-run")["status"] == "running"
+    ledger.finish_run("ledger-run", "a" * 64)
+    registry.record_result(manifest.run_id, status="COMPLETED", outcome_summary={"ok": True})
+    assert ledger.get_run_status("ledger-run")["status"] == "completed"
+    assert registry.get(manifest.run_id)["outcome_summary"] == {"ok": True}
+
+
+def test_legacy_prediction_ledger_lifecycle_rows_are_migrated(tmp_path):
+    path = tmp_path / "legacy.sqlite"
+    with sqlite3.connect(path) as connection:
+        connection.execute("""CREATE TABLE experiment_runs (
+            run_id TEXT PRIMARY KEY, manifest_sha256 TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+            report_sha256 TEXT, error TEXT, updated_at TEXT NOT NULL
+        )""")
+        connection.execute(
+            "INSERT INTO experiment_runs VALUES (?, ?, ?, ?, ?, ?)",
+            ("legacy-run", "b" * 64, "completed", "c" * 64, None, "2026-01-01T00:00:00Z"),
+        )
+    ledger = PredictionLedger(path)
+    status = ledger.get_run_status("legacy-run")
+    assert status["status"] == "completed"
+    assert status["manifest_sha256"] == "b" * 64
+    assert status["report_sha256"] == "c" * 64
