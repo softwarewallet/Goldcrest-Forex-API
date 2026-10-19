@@ -156,6 +156,10 @@ class PredictionLedger:
         """Mark a run complete only after its report has been built and optionally written."""
         if not isinstance(report_sha256, str) or len(report_sha256) != 64:
             raise ValueError("report_sha256 must be a SHA-256 hex digest")
+        try:
+            bytes.fromhex(report_sha256)
+        except ValueError as exc:
+            raise ValueError("report_sha256 must be a SHA-256 hex digest") from exc
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         with self._connect() as connection:
             cursor = connection.execute(
@@ -185,6 +189,33 @@ class PredictionLedger:
                 (run_id,),
             ).fetchone()
         return dict(row) if row is not None else None
+
+    def verify_completed_report(self, run_id: str, report: dict) -> bool:
+        """Verify a report's canonical payload hash against a completed ledger run.
+
+        This proves consistency between the supplied report and stored fingerprint only;
+        it does not validate the correctness of source data or experiment assumptions.
+        """
+        if not isinstance(report, dict):
+            raise ValueError("report must be a mapping")
+        supplied = report.get("report_sha256")
+        if not isinstance(supplied, str) or len(supplied) != 64:
+            return False
+        try:
+            bytes.fromhex(supplied)
+        except ValueError:
+            return False
+        payload = dict(report)
+        payload.pop("report_sha256", None)
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False)
+        actual = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        if actual != supplied:
+            return False
+        status = self.get_run_status(run_id)
+        return bool(status and status["status"] == "completed"
+                    and status["report_sha256"] == supplied
+                    and report.get("run_id") == run_id)
 
     def record(self, record: PredictionRecord) -> bool:
         """Insert a record; identical retries return False, conflicting retries fail."""
