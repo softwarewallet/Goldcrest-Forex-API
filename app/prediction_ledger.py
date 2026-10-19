@@ -133,6 +133,19 @@ class PredictionLedger:
                     UNIQUE(run_id, attempt_number)
                 )
             """)
+            # Backfill one historical attempt for existing lifecycle rows. This preserves
+            # compatibility with databases created before attempt history existed.
+            connection.execute("""
+                INSERT INTO prediction_ledger_attempts
+                    (run_id, attempt_number, status, started_at, finished_at, report_sha256, error)
+                SELECT r.run_id, 1, r.status, r.updated_at,
+                       CASE WHEN r.status='running' THEN NULL ELSE r.updated_at END,
+                       r.report_sha256, r.error
+                FROM prediction_ledger_runs AS r
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM prediction_ledger_attempts AS a WHERE a.run_id=r.run_id
+                )
+            """)
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS oos_predictions (
                     run_id TEXT NOT NULL,
@@ -263,6 +276,42 @@ class PredictionLedger:
                    WHERE run_id=? AND status='running'""",
                 (now, message, run_id),
             )
+
+    def mark_interrupted_runs(self, *, older_than: datetime) -> list[str]:
+        """Mark attempts left running before a cutoff as interrupted after a process crash.
+
+        This is an explicit recovery operation: callers choose a conservative age
+        threshold. It never changes completed/failed runs and returns affected IDs.
+        """
+        cutoff = _utc_iso(older_than, "older_than")
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        interrupted: list[str] = []
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT run_id FROM prediction_ledger_runs
+                   WHERE status='running' AND updated_at < ? ORDER BY run_id""",
+                (cutoff,),
+            ).fetchall()
+            for row in rows:
+                run_id = row["run_id"]
+                cursor = connection.execute(
+                    """UPDATE prediction_ledger_runs
+                       SET status='failed', error=?, updated_at=?
+                       WHERE run_id=? AND status='running' AND updated_at < ?""",
+                    ("Interrupted attempt detected during recovery; safe retry requires the identical run contract.",
+                     now, run_id, cutoff),
+                )
+                if cursor.rowcount != 1:
+                    continue
+                connection.execute(
+                    """UPDATE prediction_ledger_attempts
+                       SET status='failed', finished_at=?,
+                           error=?
+                       WHERE run_id=? AND status='running'""",
+                    (now, "Interrupted attempt detected during recovery.", run_id),
+                )
+                interrupted.append(run_id)
+        return interrupted
 
     def get_run_status(self, run_id: str) -> dict | None:
         """Return the durable lifecycle state for an experiment run, if registered."""
