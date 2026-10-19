@@ -85,7 +85,7 @@ class PredictionLedger:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute("""
-                CREATE TABLE IF NOT EXISTS experiment_runs (
+                CREATE TABLE IF NOT EXISTS prediction_ledger_runs (
                     run_id TEXT PRIMARY KEY,
                     manifest_sha256 TEXT NOT NULL,
                     status TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
@@ -94,6 +94,22 @@ class PredictionLedger:
                     updated_at TEXT NOT NULL
                 )
             """)
+            # Older versions stored ledger lifecycle rows in experiment_runs, which
+            # is also the manifest registry's table name but has an incompatible schema.
+            # Migrate only when the legacy table is positively identified by its columns.
+            legacy = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='experiment_runs'"
+            ).fetchone()
+            if legacy is not None:
+                legacy_columns = {row["name"] for row in connection.execute("PRAGMA table_info(experiment_runs)")}
+                required = {"run_id", "manifest_sha256", "status", "report_sha256", "error", "updated_at"}
+                if required.issubset(legacy_columns):
+                    connection.execute("""
+                        INSERT OR IGNORE INTO prediction_ledger_runs
+                            (run_id, manifest_sha256, status, report_sha256, error, updated_at)
+                        SELECT run_id, manifest_sha256, status, report_sha256, error, updated_at
+                        FROM experiment_runs
+                    """)
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS oos_predictions (
                     run_id TEXT NOT NULL,
@@ -141,12 +157,12 @@ class PredictionLedger:
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         with self._connect() as connection:
             existing = connection.execute(
-                "SELECT manifest_sha256 FROM experiment_runs WHERE run_id=?", (run_id,)
+                "SELECT manifest_sha256 FROM prediction_ledger_runs WHERE run_id=?", (run_id,)
             ).fetchone()
             if existing is not None and existing["manifest_sha256"] != manifest_sha:
                 raise ValueError("run_id already registered with a different manifest")
             connection.execute(
-                """INSERT INTO experiment_runs (run_id, manifest_sha256, status, report_sha256, error, updated_at)
+                """INSERT INTO prediction_ledger_runs (run_id, manifest_sha256, status, report_sha256, error, updated_at)
                    VALUES (?, ?, 'running', NULL, NULL, ?)
                    ON CONFLICT(run_id) DO UPDATE SET status='running', report_sha256=NULL, error=NULL, updated_at=excluded.updated_at""",
                 (run_id, manifest_sha, now),
@@ -163,7 +179,7 @@ class PredictionLedger:
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         with self._connect() as connection:
             cursor = connection.execute(
-                """UPDATE experiment_runs SET status='completed', report_sha256=?, error=NULL, updated_at=?
+                """UPDATE prediction_ledger_runs SET status='completed', report_sha256=?, error=NULL, updated_at=?
                    WHERE run_id=? AND status='running'""",
                 (report_sha256, now, run_id),
             )
@@ -176,7 +192,7 @@ class PredictionLedger:
         message = str(error).replace("\\x00", "")[:2000]
         with self._connect() as connection:
             connection.execute(
-                """UPDATE experiment_runs SET status='failed', error=?, updated_at=?
+                """UPDATE prediction_ledger_runs SET status='failed', error=?, updated_at=?
                    WHERE run_id=? AND status='running'""",
                 (message, now, run_id),
             )
@@ -185,7 +201,7 @@ class PredictionLedger:
         """Return the durable lifecycle state for an experiment run, if registered."""
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT run_id, manifest_sha256, status, report_sha256, error, updated_at FROM experiment_runs WHERE run_id=?",
+                "SELECT run_id, manifest_sha256, status, report_sha256, error, updated_at FROM prediction_ledger_runs WHERE run_id=?",
                 (run_id,),
             ).fetchone()
         return dict(row) if row is not None else None
