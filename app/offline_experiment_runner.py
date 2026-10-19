@@ -155,7 +155,7 @@ def run_offline_experiment(
         "symbol": plan.symbol,
         "timeframe": plan.timeframe,
         "model_factories": {
-            name: f"{factory.__module__}.{getattr(factory, '__qualname__', factory.__name__)}"
+            name: f"{factory.__module__}.{getattr(factory, '__qualname__', type(factory).__qualname__)}"
             for name, factory in sorted(model_factories.items())
         },
     }
