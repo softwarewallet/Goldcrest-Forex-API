@@ -96,3 +96,16 @@ whose partitions overlap, or whose referenced timestamps are missing from the su
 examples. The standalone evaluator also rejects duplicate/invalid fold indices and labels
 that are numerically equal to 0/1 but are not actual integers. These checks prevent a
 malformed caller-supplied plan from silently creating a leakage-prone evaluation.
+
+
+## Retry and recovery semantics
+
+A failed attempt may be retried under the same run ID only when the complete run contract
+matches. Every attempt is retained in `prediction_ledger_attempts`; previous failure
+diagnostics are not overwritten. An already-running attempt blocks a second concurrent
+start, and a completed run ID is immutable, including its report digest. Use a new run ID
+for a deliberate rerun after completion. Partial prediction rows from a failed attempt
+remain in the ledger for audit and must reconcile with the run status/report before any
+result is interpreted. The runner does not silently resume at an arbitrary fold boundary;
+retry replays deterministically and relies on idempotent prediction identities, rejecting
+any conflicting outputs.
