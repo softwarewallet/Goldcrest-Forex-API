@@ -200,3 +200,7 @@ def test_legacy_prediction_ledger_lifecycle_rows_are_migrated(tmp_path):
     assert status["status"] == "completed"
     assert status["manifest_sha256"] == "b" * 64
     assert status["report_sha256"] == "c" * 64
+    # The old table is renamed so the independent manifest registry can now initialize.
+    registry = ExperimentRegistry(path)
+    assert registry.register(_shared_db_manifest()) is True
+    assert ledger.get_run_status("legacy-run")["status"] == "completed"
