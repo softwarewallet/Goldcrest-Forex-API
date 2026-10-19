@@ -25,6 +25,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Goldcrest Forex API", version="0.1.0",
               description="AI market-analysis API; no broker execution routes.", lifespan=lifespan)
 
+# Keep browser access explicit; configure trusted dashboard origins through GOLDCREST_CORS_ORIGINS.\napp.add_middleware(\n    CORSMiddleware,\n    allow_origins=get_settings().cors_origin_list,\n    allow_credentials=False,\n    allow_methods=["GET", "POST", "OPTIONS"],\n    allow_headers=["Content-Type", "X-API-Key"],\n)\n
 
 def _as_utc(value: datetime) -> datetime:
     """SQLite may return naive datetimes even for timezone-aware columns."""
