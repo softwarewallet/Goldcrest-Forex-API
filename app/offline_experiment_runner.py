@@ -127,7 +127,21 @@ def run_offline_experiment(
                 actionable=False,
             ))
 
-    ledger.start_run(run_id, dict(manifest))
+    run_contract = {
+        "manifest": dict(manifest),
+        "evaluation_contract": dict(evaluation_contract),
+        "exclusions": dict(exclusions),
+        "feature_names": list(feature_names),
+        "model_names": sorted(model_factories),
+        "symbol": plan.symbol,
+        "timeframe": plan.timeframe,
+        "fold_indices": fold_indices,
+        "block_length": block_length,
+        "bootstrap_resamples": bootstrap_resamples,
+        "confidence_level": confidence_level,
+        "random_seed": random_seed,
+    }
+    ledger.start_run(run_id, run_contract)
     try:
         inserted = ledger.record_many(prediction_records)
         comparisons = []
