@@ -233,3 +233,34 @@ def test_legacy_prediction_ledger_lifecycle_rows_are_migrated(tmp_path):
     registry = ExperimentRegistry(path)
     assert registry.register(_shared_db_manifest()) is True
     assert ledger.get_run_status("legacy-run")["status"] == "completed"
+
+
+
+def test_recovery_marks_only_stale_running_attempts_interrupted(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ledger.start_run("stale-run", {"dataset": "fixture"})
+    ledger.start_run("fresh-run", {"dataset": "fixture"})
+    ledger.start_run("completed-run", {"dataset": "fixture"})
+    ledger.finish_run("completed-run", "c" * 64)
+    cutoff = datetime.now(timezone.utc) + timedelta(seconds=1)
+    # Backdate only one active run to simulate a process crash.
+    with ledger._connect() as connection:
+        connection.execute(
+            "UPDATE prediction_ledger_runs SET updated_at=? WHERE run_id=?",
+            ("2000-01-01T00:00:00Z", "stale-run"),
+        )
+    recovered = ledger.mark_interrupted_runs(older_than=cutoff)
+    assert recovered == ["stale-run"]
+    assert ledger.get_run_status("stale-run")["status"] == "failed"
+    assert ledger.get_run_attempts("stale-run")[0]["status"] == "failed"
+    assert ledger.get_run_status("fresh-run")["status"] == "running"
+    assert ledger.get_run_status("completed-run")["status"] == "completed"
+    # A failed stale attempt can be safely retried with the identical contract.
+    ledger.start_run("stale-run", {"dataset": "fixture"})
+    assert [x["status"] for x in ledger.get_run_attempts("stale-run")] == ["failed", "running"]
+
+
+def test_recovery_requires_aware_cutoff(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ledger.mark_interrupted_runs(older_than=datetime(2026, 1, 1))
