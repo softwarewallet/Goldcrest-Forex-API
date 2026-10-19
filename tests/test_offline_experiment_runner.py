@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+
+import pytest
 from datetime import datetime, timedelta, timezone
 
 from app.offline_experiment_runner import run_offline_experiment
@@ -99,3 +101,53 @@ def test_runner_trains_records_compares_and_writes_non_actionable_report(tmp_pat
         block_length=1, bootstrap_resamples=100, random_seed=7,
     )
     assert second.prediction_rows_inserted == 0
+
+
+
+def test_runner_rejects_fold_timestamps_missing_from_examples(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(12)]
+    examples = [
+        TimedBinaryExample(t, {"x": float(i)}, i % 2, t)
+        for i, t in enumerate(times)
+        if i != 3
+    ]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (Fold(0, tuple(Bar(t) for t in times[:6]),
+              tuple(Bar(t) for t in times[6:9]),
+              tuple(Bar(t) for t in times[9:12])),),
+    )
+    with pytest.raises(ValueError, match="timestamps missing from examples"):
+        run_offline_experiment(
+            plan, examples, feature_names=("x",),
+            manifest={"run_id": "missing-row-run"},
+            model_factories={"candidate": ConstantModel},
+            ledger=PredictionLedger(tmp_path / "ledger.sqlite"),
+            evaluation_contract={"label_definition": "synthetic test only"},
+            exclusions={"missing": 1}, block_length=1, bootstrap_resamples=100,
+        )
+
+
+def test_runner_rejects_overlapping_fold_partitions(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(12)]
+    examples = [
+        TimedBinaryExample(t, {"x": float(i)}, i % 2, t)
+        for i, t in enumerate(times)
+    ]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (Fold(0, tuple(Bar(t) for t in times[:6]),
+              tuple(Bar(t) for t in times[5:9]),
+              tuple(Bar(t) for t in times[9:12])),),
+    )
+    with pytest.raises(ValueError, match="must not share observation timestamps"):
+        run_offline_experiment(
+            plan, examples, feature_names=("x",),
+            manifest={"run_id": "overlap-run"},
+            model_factories={"candidate": ConstantModel},
+            ledger=PredictionLedger(tmp_path / "ledger.sqlite"),
+            evaluation_contract={"label_definition": "synthetic test only"},
+            exclusions={"overlap": 1}, block_length=1, bootstrap_resamples=100,
+        )

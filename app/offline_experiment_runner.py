@@ -53,6 +53,13 @@ def run_offline_experiment(
     if block_length < 1 or bootstrap_resamples < 1 or not 0 < confidence_level < 1:
         raise ValueError("invalid block-bootstrap configuration")
     _validate_examples(examples, feature_names)
+    if not plan.folds:
+        raise ValueError("walk-forward plan must contain at least one fold")
+    fold_indices = [fold.fold_index for fold in plan.folds]
+    if any(isinstance(index, bool) or not isinstance(index, int) or index < 0 for index in fold_indices):
+        raise ValueError("fold indices must be non-negative integers")
+    if len(set(fold_indices)) != len(fold_indices):
+        raise ValueError("walk-forward plan contains duplicate fold indices")
     by_time = {_utc(row.timestamp, "feature"): row for row in examples}
     factories = dict(model_factories)
     factories["training_prevalence"] = TrainingPrevalenceBaseline
@@ -61,13 +68,21 @@ def run_offline_experiment(
 
     for fold in plan.folds:
         train_times = {_utc(bar.timestamp, "fold") for bar in fold.train}
-        validation_times = sorted(_utc(bar.timestamp, "fold") for bar in fold.validation)
-        test_times = sorted(_utc(bar.timestamp, "fold") for bar in fold.test)
+        validation_times = {_utc(bar.timestamp, "fold") for bar in fold.validation}
+        test_times = {_utc(bar.timestamp, "fold") for bar in fold.test}
+        if not train_times or not validation_times or not test_times:
+            raise ValueError("every fold must have non-empty train, validation, and test partitions")
+        if (train_times & validation_times) or (train_times & test_times) or (validation_times & test_times):
+            raise ValueError("fold partitions must not share observation timestamps")
+        required_times = train_times | validation_times | test_times
+        missing_times = required_times - by_time.keys()
+        if missing_times:
+            raise ValueError(f"fold references {len(missing_times)} timestamps missing from examples")
         train_end = max(train_times)
-        train_all = [by_time[t] for t in sorted(train_times) if t in by_time]
+        train_all = [by_time[t] for t in sorted(train_times)]
         train = [row for row in train_all if _utc(row.label_available_at, "label availability") <= train_end]
-        validation = [by_time[t] for t in validation_times if t in by_time]
-        test = [by_time[t] for t in test_times if t in by_time]
+        validation = [by_time[t] for t in sorted(validation_times)]
+        test = [by_time[t] for t in sorted(test_times)]
         if not train or not validation or not test:
             raise ValueError("every fold needs labeled examples in train, validation, and test")
         if len({row.label for row in train}) != 2:
