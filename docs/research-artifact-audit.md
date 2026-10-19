@@ -28,3 +28,17 @@ A passing audit establishes internal artifact consistency, not source-data authe
 model validity, calibration, profitability, or future performance. Synthetic fixtures test
 only software mechanics. All outputs remain research-only and non-actionable; no serving,
 broker, trading, or deployment integration is added.
+
+
+## Interrupted-run recovery and attempt reconciliation
+
+The ledger exposes an explicit `mark_interrupted_runs(older_than=...)` operation. Supply
+a timezone-aware cutoff chosen conservatively for the expected experiment duration; runs
+still marked running before that cutoff are recorded as failed/interrupted, and their
+attempt diagnostics remain available. The recovery operation never touches completed
+runs. A failed run may then be retried with the same contract, producing a new attempt.
+
+Artifact verification also reconciles the completed report digest against the completed
+attempt history and rejects inconsistent attempt states. Existing databases are backfilled
+with one historical attempt per pre-existing run so migration does not make valid legacy
+reports unauditable. Recovery is explicit and never automatically reruns model fitting.
