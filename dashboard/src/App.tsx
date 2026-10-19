@@ -11,6 +11,7 @@ type Prediction = {
 type AuditEvent = { id: string; event_type: string; request_id?: string | null; symbol?: string | null; outcome?: string | null; duration_ms?: number | null; details?: Record<string, unknown>; created_at: string };
 type LoadState = "loading" | "connected" | "degraded" | "offline";
 type ProbeState = "not-run" | "running" | "passed" | "failed";
+type ModelInventory = { inference_server?: string; configured_model_id?: string | null; models: Array<{ id: string; owned_by?: string | null }> };
 
 const initialBase = localStorage.getItem("goldcrest-api-base") || "http://192.168.29.80:8090";
 const initialKey = sessionStorage.getItem("goldcrest-api-key") || "";
@@ -53,6 +54,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(!initialKey);
   const [health, setHealth] = useState<Health | null>(null);
   const [performance, setPerformance] = useState<Performance | null>(null);
+  const [modelInventory, setModelInventory] = useState<ModelInventory | null>(null);
+  const [modelInventoryError, setModelInventoryError] = useState("");
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [state, setState] = useState<LoadState>("loading");
@@ -77,6 +80,13 @@ export default function App() {
         request<AuditEvent[]>(base, key, "/api/v1/audit?limit=12"),
       ]);
       setHealth(h); setPerformance(p); setPredictions(signals); setEvents(audit);
+      try {
+        const inventory = await request<ModelInventory>(base, key, "/api/v1/models");
+        setModelInventory(inventory);
+        setModelInventoryError("");
+      } catch (modelError) {
+        setModelInventoryError(modelError instanceof Error ? modelError.message : "Model inventory unavailable");
+      }
       setState(h.status === "ok" && h.inference_status === "ok" && h.database_status === "ok" ? "connected" : "degraded");
       setError("");
       setLastSync(new Date().toISOString());
@@ -159,6 +169,8 @@ export default function App() {
         <article className="metric-card"><div className="metric-head"><span>PREDICTIONS RECORDED</span><Icon name="activity" /></div><strong>{performance?.predictions_total ?? "—"}</strong><div className="metric-foot">Durable prediction records</div></article>
         <article className="metric-card"><div className="metric-head"><span>OUTCOMES OBSERVED</span><Icon name="shield" /></div><strong>{performance?.outcomes_recorded ?? "—"}</strong><div className="metric-foot">Outcome labels received</div></article>
       </section>
+
+      <section className="model-inventory-panel"><div className="section-heading"><div><div className="eyebrow">INFERENCE SERVER</div><h2>Available model inventory</h2></div><span className="research-tag">READ-ONLY</span></div>{modelInventoryError ? <div className="inventory-message">Model inventory unavailable: {modelInventoryError}. Other dashboard data can still refresh independently.</div> : !modelInventory ? <div className="inventory-message">Waiting for a successful authenticated model inventory request.</div> : <><div className="inventory-meta"><span>SERVER <b>{modelInventory.inference_server || "Not reported"}</b></span><span>CONFIGURED MODEL <b>{modelInventory.configured_model_id || "Not specified"}</b></span><span>MODELS REPORTED <b>{modelInventory.models.length}</b></span></div>{modelInventory.models.length === 0 ? <div className="inventory-message">The inference server returned no model entries.</div> : <div className="model-list">{modelInventory.models.map(model => <div className="model-row" key={model.id}><span className="model-indicator" /><div><b>{model.id}</b><small>{model.owned_by || "Owner not reported"}</small></div><span className={model.id === modelInventory.configured_model_id ? "configured-tag" : "available-tag"}>{model.id === modelInventory.configured_model_id ? "CONFIGURED" : "AVAILABLE"}</span></div>)}</div>}<p className="inventory-disclaimer">Model listing confirms server visibility only. It does not prove inference readiness or model quality; use Test Inference for a real completion probe.</p></>}</section>
 
       <section className="flow-panel">
         <div className="section-heading"><div><div className="eyebrow">LIVE SYSTEM MAP</div><h2>Intelligence pipeline</h2></div><div className="panel-status"><span className={busy || probeState === "running" ? "processing-dot" : "idle-dot"} /> {probeState === "running" ? "INFERENCE PROBE IN FLIGHT" : busy ? "API REQUEST IN FLIGHT" : state === "connected" ? "AWAITING NEXT POLL" : "STREAM NOT CONNECTED"}</div></div>
