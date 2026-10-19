@@ -89,3 +89,28 @@ def test_audit_rejects_misplaced_rows_even_when_total_count_matches(tmp_path):
         )
     with pytest.raises(ValueError, match="group mismatch"):
         verify_research_artifacts(report_path, ledger=ledger)
+
+
+
+def test_audit_rejects_attempt_history_report_digest_mismatch(tmp_path):
+    ledger, report_path = _fixture(tmp_path)
+    with ledger._connect() as connection:
+        connection.execute(
+            "UPDATE prediction_ledger_attempts SET report_sha256=? WHERE run_id=? AND status='completed'",
+            ("f" * 64, "audit-fixture"),
+        )
+    with pytest.raises(ValueError, match="attempt history does not reconcile"):
+        verify_research_artifacts(report_path, ledger=ledger)
+
+
+def test_audit_rejects_running_attempt_under_completed_run(tmp_path):
+    ledger, report_path = _fixture(tmp_path)
+    with ledger._connect() as connection:
+        connection.execute(
+            """INSERT INTO prediction_ledger_attempts
+               (run_id, attempt_number, status, started_at, finished_at, report_sha256, error)
+               VALUES (?, ?, 'running', ?, NULL, NULL, NULL)""",
+            ("audit-fixture", 2, "2026-01-01T00:00:00Z"),
+        )
+    with pytest.raises(ValueError, match="attempt history does not reconcile"):
+        verify_research_artifacts(report_path, ledger=ledger)
