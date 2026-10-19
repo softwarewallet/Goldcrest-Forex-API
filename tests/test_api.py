@@ -304,3 +304,18 @@ def test_prediction_history_returns_recent_records_with_limit(monkeypatch):
     assert len(rows) <= 1
     assert rows[0]["prediction_id"] == created.json()["prediction_id"]
     assert rows[0]["decision"] == "NO_TRADE"
+
+
+def test_dashboard_cors_allows_configured_origin_and_api_key_header():
+    with TestClient(app) as client:
+        response = client.options(
+            "/api/v1/predictions",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "x-api-key",
+            },
+        )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "X-API-Key" in response.headers["access-control-allow-headers"]
