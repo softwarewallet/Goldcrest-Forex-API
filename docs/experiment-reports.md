@@ -51,3 +51,13 @@ invent missing evaluation assumptions.
 - No report constitutes evidence of profitability or authorization for live trading.
 
 All report outputs are offline research artifacts and remain non-actionable.
+
+
+## Ledger cross-check
+
+After a report is recorded as completed, `PredictionLedger.verify_completed_report(run_id, report)`
+checks that the report's canonical payload matches its embedded SHA-256, the run is
+marked completed, the stored report fingerprint matches, and the report run ID matches
+the ledger run ID. A mismatch returns `False`; malformed report structures may raise a validation
+error. This is an integrity cross-check, not proof that source data, labels, or assumptions
+were valid.
