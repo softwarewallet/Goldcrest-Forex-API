@@ -158,3 +158,36 @@ def test_runner_rejects_overlapping_fold_partitions(tmp_path):
             evaluation_contract={"label_definition": "synthetic test only"},
             exclusions={"overlap": 1}, block_length=1, bootstrap_resamples=100,
         )
+
+
+def test_same_run_id_rejects_changed_feature_inputs_even_if_predictions_match(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(36)]
+    examples = [
+        TimedBinaryExample(t, {"x": float(i % 3)}, i % 2, t)
+        for i, t in enumerate(times)
+    ]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (Fold(0, tuple(Bar(t) for t in times[:20]),
+              tuple(Bar(t) for t in times[20:28]),
+              tuple(Bar(t) for t in times[28:36])),),
+    )
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    kwargs = dict(
+        plan=plan, feature_names=("x",),
+        manifest={"run_id": "provenance-run", "dataset_id": "fixture"},
+        model_factories={"candidate": ConstantModel}, ledger=ledger,
+        evaluation_contract={"label_definition": "synthetic fixture only"},
+        exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
+        random_seed=11,
+    )
+    run_offline_experiment(examples=examples, **kwargs)
+    changed = list(examples)
+    changed[0] = TimedBinaryExample(
+        changed[0].timestamp, {"x": changed[0].features["x"] + 0.125},
+        changed[0].label, changed[0].label_available_at,
+    )
+    with pytest.raises(ValueError, match="different manifest"):
+        run_offline_experiment(examples=changed, **kwargs)
+    assert ledger.get_run_status("provenance-run")["status"] == "completed"

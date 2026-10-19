@@ -52,3 +52,22 @@ ledger writes. Conflicting prediction content still fails closed. The caller mus
 the manifest itself accurately fingerprints source data, labels, feature-generation code,
 model code/parameters, and other run inputs; the runner cannot independently prove those
 claims.
+
+
+## Input-level provenance and retry protection
+
+In addition to the caller-provided manifest and evaluation contract, the runner computes a
+canonical SHA-256 fingerprint over the actual supplied feature/label examples (including
+UTC observation and label-maturity timestamps), exact train/validation/test timestamp
+membership for every fold, feature names, symbol/timeframe, and model-factory qualified
+identities. These values are included in the durable run contract. Reusing a completed run
+ID with altered inputs is rejected before ledger rows are changed, even if a simple test
+model happens to produce identical probabilities for the altered data.
+
+This is an integrity check on the inputs received by the runner, not a guarantee that the
+caller sourced those inputs correctly or that model code/hyperparameters are fully captured.
+Record source-data hashes, code commit, library versions, model revisions and parameters
+in the caller's manifest/evaluation contract. Factory identity is not a substitute for a
+code-content fingerprint. Training failures that occur before the durable run contract is
+registered are still surfaced as exceptions; the runner does not claim that every possible
+preflight/training failure is durably registered as a failed run.
