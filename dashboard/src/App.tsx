@@ -73,23 +73,42 @@ export default function App() {
     refreshInFlight.current = true;
     setBusy(true);
     try {
-      const [h, p, signals, audit] = await Promise.all([
+      const endpoints = await Promise.allSettled([
         request<Health>(base, key, "/api/v1/health"),
         request<Performance>(base, key, "/api/v1/performance"),
         request<Prediction[]>(base, key, "/api/v1/predictions?limit=30"),
         request<AuditEvent[]>(base, key, "/api/v1/audit?limit=12"),
+        request<ModelInventory>(base, key, "/api/v1/models"),
       ]);
-      setHealth(h); setPerformance(p); setPredictions(signals); setEvents(audit);
-      try {
-        const inventory = await request<ModelInventory>(base, key, "/api/v1/models");
-        setModelInventory(inventory);
-        setModelInventoryError("");
-      } catch (modelError) {
-        setModelInventoryError(modelError instanceof Error ? modelError.message : "Model inventory unavailable");
+      const [h, p, signals, audit, inventory] = endpoints;
+      const failures: string[] = [];
+      if (h.status === "fulfilled") {
+        setHealth(h.value);
+        setState(h.value.status === "ok" && h.value.inference_status === "ok" && h.value.database_status === "ok" ? "connected" : "degraded");
+      } else {
+        failures.push(`health: ${h.reason instanceof Error ? h.reason.message : "request failed"}`);
       }
-      setState(h.status === "ok" && h.inference_status === "ok" && h.database_status === "ok" ? "connected" : "degraded");
-      setError("");
-      setLastSync(new Date().toISOString());
+      if (p.status === "fulfilled") setPerformance(p.value);
+      else failures.push(`performance: ${p.reason instanceof Error ? p.reason.message : "request failed"}`);
+      if (signals.status === "fulfilled") setPredictions(signals.value);
+      else failures.push(`predictions: ${signals.reason instanceof Error ? signals.reason.message : "request failed"}`);
+      if (audit.status === "fulfilled") setEvents(audit.value);
+      else failures.push(`audit: ${audit.reason instanceof Error ? audit.reason.message : "request failed"}`);
+      if (inventory.status === "fulfilled") {
+        setModelInventory(inventory.value);
+        setModelInventoryError("");
+      } else {
+        setModelInventoryError(inventory.reason instanceof Error ? inventory.reason.message : "Model inventory unavailable");
+        failures.push(`model inventory: ${inventory.reason instanceof Error ? inventory.reason.message : "request failed"}`);
+      }
+      if (failures.length) {
+        setError(failures.join(" · "));
+        if (h.status === "rejected") setState("offline");
+        else if (state !== "offline") setState("degraded");
+      } else {
+        setError("");
+        setLastSync(new Date().toISOString());
+      }
     } catch (e) {
       setState("offline");
       setError(e instanceof Error ? e.message : "API request failed");
