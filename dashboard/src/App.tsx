@@ -12,7 +12,9 @@ type AuditEvent = { id: string; event_type: string; request_id?: string | null; 
 type LoadState = "loading" | "connected" | "degraded" | "offline";
 type ProbeState = "not-run" | "running" | "passed" | "failed";
 type EndpointStatus = "unknown" | "ok" | "failed";
-type EndpointStatuses = Record<"health" | "performance" | "predictions" | "audit" | "models", EndpointStatus>;
+type EndpointId = "health" | "performance" | "predictions" | "audit" | "models";
+type EndpointStatuses = Record<EndpointId, EndpointStatus>;
+type EndpointLastSuccess = Record<EndpointId, string | undefined>;
 type ModelInventory = { inference_server?: string; configured_model_id?: string | null; models: Array<{ id: string; owned_by?: string | null }> };
 
 const initialBase = localStorage.getItem("goldcrest-api-base") || "http://192.168.29.80:8090";
@@ -62,6 +64,7 @@ export default function App() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [endpointStatuses, setEndpointStatuses] = useState<EndpointStatuses>({ health: "unknown", performance: "unknown", predictions: "unknown", audit: "unknown", models: "unknown" });
+  const [endpointLastSuccess, setEndpointLastSuccess] = useState<EndpointLastSuccess>({ health: undefined, performance: undefined, predictions: undefined, audit: undefined, models: undefined });
   const [busy, setBusy] = useState(false);
   const refreshInFlight = useRef(false);
   const [probeState, setProbeState] = useState<ProbeState>("not-run");
@@ -84,7 +87,9 @@ export default function App() {
         request<ModelInventory>(base, key, "/api/v1/models"),
       ]);
       const [h, p, signals, audit, inventory] = endpoints;
+      const checkedAt = new Date().toISOString();
       setEndpointStatuses({ health: h.status === "fulfilled" ? "ok" : "failed", performance: p.status === "fulfilled" ? "ok" : "failed", predictions: signals.status === "fulfilled" ? "ok" : "failed", audit: audit.status === "fulfilled" ? "ok" : "failed", models: inventory.status === "fulfilled" ? "ok" : "failed" });
+      setEndpointLastSuccess(previous => ({ ...previous, ...(h.status === "fulfilled" ? { health: checkedAt } : {}), ...(p.status === "fulfilled" ? { performance: checkedAt } : {}), ...(signals.status === "fulfilled" ? { predictions: checkedAt } : {}), ...(audit.status === "fulfilled" ? { audit: checkedAt } : {}), ...(inventory.status === "fulfilled" ? { models: checkedAt } : {}) }));
       const failures: string[] = [];
       if (h.status === "fulfilled") {
         setHealth(h.value);
@@ -197,7 +202,7 @@ export default function App() {
             ["models", "Model inventory", "/api/v1/models"],
           ] as const).map(([id, label, path]) => {
             const status = endpointStatuses[id];
-            return <div className="endpoint-health-item" key={id}><div><b>{label}</b><small>{path}</small></div><StatusPill state={status === "ok" ? "good" : status === "failed" ? "bad" : "muted"}>{status === "ok" ? "RESPONDING" : status === "failed" ? "FAILED" : "WAITING"}</StatusPill></div>;
+            return <div className="endpoint-health-item" key={id}><div><b>{label}</b><small>{path}</small><small className="endpoint-last-success">{endpointLastSuccess[id] ? "LAST OK " + new Date(endpointLastSuccess[id]!).toLocaleTimeString() : "NO SUCCESS YET"}</small></div><StatusPill state={status === "ok" ? "good" : status === "failed" ? "bad" : "muted"}>{status === "ok" ? "RESPONDING" : status === "failed" ? "FAILED" : "WAITING"}</StatusPill></div>;
           })}
         </div>
       </section>
