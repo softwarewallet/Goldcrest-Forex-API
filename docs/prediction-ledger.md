@@ -62,3 +62,13 @@ with a reviewed label-finalization operation. Do not mutate historical labels si
 All outputs remain research-only with `actionable=False`. No market data is fetched,
 no models are promoted, no broker credentials are used, and no orders are placed.
 Synthetic tests validate software behavior only, not market performance.
+
+
+## Shared SQLite database and compatibility
+
+The prediction ledger stores its lifecycle records in `prediction_ledger_runs`, separate
+from `ExperimentRegistry`'s `experiment_runs` table. Both components may therefore use the same
+SQLite file without conflicting table schemas, regardless of initialization order. On
+startup, the ledger detects the legacy ledger-specific `experiment_runs` schema by its
+columns and copies its lifecycle records into `prediction_ledger_runs`; it does not reinterpret
+or overwrite the manifest registry's differently shaped table.
