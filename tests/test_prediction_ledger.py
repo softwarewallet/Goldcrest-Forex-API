@@ -120,3 +120,27 @@ def test_run_lifecycle_records_failure_and_allows_same_manifest_retry(tmp_path):
     assert status["error"] == "OSError: report write failed"
     ledger.start_run("run-failed", manifest)
     assert ledger.get_run_status("run-failed")["status"] == "running"
+
+
+def test_completed_report_verification_checks_payload_and_ledger_fingerprint(tmp_path):
+    import hashlib
+    import json
+
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    report = {"run_id": "report-run", "actionable": False, "metrics": {"brier": 0.2}}
+    canonical = json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    report["report_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    ledger.start_run("report-run", {"dataset": "fixture"})
+    ledger.finish_run("report-run", report["report_sha256"])
+
+    assert ledger.verify_completed_report("report-run", report) is True
+    tampered = {**report, "metrics": {"brier": 0.9}}
+    assert ledger.verify_completed_report("report-run", tampered) is False
+    assert ledger.verify_completed_report("different-run", report) is False
+
+
+def test_finish_run_rejects_non_hex_report_digest(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ledger.start_run("bad-digest", {"dataset": "fixture"})
+    with pytest.raises(ValueError, match="hex digest"):
+        ledger.finish_run("bad-digest", "z" * 64)
