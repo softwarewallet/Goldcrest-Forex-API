@@ -14,7 +14,7 @@ The Vite development server listens on all interfaces. Restrict access with your
 
 ## Connect
 
-Use the settings control to enter the API base URL and `X-API-Key`. The URL is saved in local storage; the API key is held in session storage only and is not sent to any third party by this app. The dashboard polls health, performance, prediction history, and audit endpoints every 15 seconds.
+Use the settings control to enter the API base URL and `X-API-Key`. The URL is saved in local storage; the API key is held in session storage only and is not sent to any third party by this app. The dashboard polls health, performance, prediction history, and audit endpoints every 15 seconds. The **Test Inference** control separately calls the protected readiness endpoint to run an actual model completion and validate its JSON output; it is not called on every poll.
 
 ## Signal-flow integrity
 
