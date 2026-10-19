@@ -191,3 +191,64 @@ def test_same_run_id_rejects_changed_feature_inputs_even_if_predictions_match(tm
     with pytest.raises(ValueError, match="different manifest"):
         run_offline_experiment(examples=changed, **kwargs)
     assert ledger.get_run_status("provenance-run")["status"] == "completed"
+
+
+class BrokenFitModel(ConstantModel):
+    def fit(self, feature_rows, labels, **kwargs):
+        raise RuntimeError("synthetic training failure")
+
+
+def test_training_failure_is_durably_recorded(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(36)]
+    examples = [TimedBinaryExample(t, {"x": float(i % 3)}, i % 2, t) for i, t in enumerate(times)]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (Fold(0, tuple(Bar(t) for t in times[:20]),
+              tuple(Bar(t) for t in times[20:28]),
+              tuple(Bar(t) for t in times[28:36])),),
+    )
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    with pytest.raises(RuntimeError, match="synthetic training failure"):
+        run_offline_experiment(
+            plan, examples, feature_names=("x",),
+            manifest={"run_id": "training-failed-run", "dataset_id": "fixture"},
+            model_factories={"candidate": BrokenFitModel}, ledger=ledger,
+            evaluation_contract={"label_definition": "synthetic fixture only"},
+            exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
+        )
+    status = ledger.get_run_status("training-failed-run")
+    assert status["status"] == "failed"
+    assert "synthetic training failure" in status["error"]
+
+
+class ChangingVersionModel(ConstantModel):
+    instance_count = 0
+
+    def __init__(self):
+        type(self).instance_count += 1
+        self.model_version = f"fixture-v{type(self).instance_count}"
+
+
+def test_model_version_change_across_folds_fails_closed_and_records_failure(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(60)]
+    examples = [TimedBinaryExample(t, {"x": float(i % 3)}, i % 2, t) for i, t in enumerate(times)]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (
+            Fold(0, tuple(Bar(t) for t in times[:20]), tuple(Bar(t) for t in times[20:25]), tuple(Bar(t) for t in times[25:30])),
+            Fold(1, tuple(Bar(t) for t in times[:30]), tuple(Bar(t) for t in times[30:35]), tuple(Bar(t) for t in times[35:40])),
+        ),
+    )
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ChangingVersionModel.instance_count = 0
+    with pytest.raises(ValueError, match="model version changed across folds"):
+        run_offline_experiment(
+            plan, examples, feature_names=("x",),
+            manifest={"run_id": "changing-version-run", "dataset_id": "fixture"},
+            model_factories={"candidate": ChangingVersionModel}, ledger=ledger,
+            evaluation_contract={"label_definition": "synthetic fixture only"},
+            exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
+        )
+    assert ledger.get_run_status("changing-version-run")["status"] == "failed"
