@@ -11,6 +11,8 @@ type Prediction = {
 type AuditEvent = { id: string; event_type: string; request_id?: string | null; symbol?: string | null; outcome?: string | null; duration_ms?: number | null; details?: Record<string, unknown>; created_at: string };
 type LoadState = "loading" | "connected" | "degraded" | "offline";
 type ProbeState = "not-run" | "running" | "passed" | "failed";
+type EndpointStatus = "unknown" | "ok" | "failed";
+type EndpointStatuses = Record<"health" | "performance" | "predictions" | "audit" | "models", EndpointStatus>;
 type ModelInventory = { inference_server?: string; configured_model_id?: string | null; models: Array<{ id: string; owned_by?: string | null }> };
 
 const initialBase = localStorage.getItem("goldcrest-api-base") || "http://192.168.29.80:8090";
@@ -59,6 +61,7 @@ export default function App() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [state, setState] = useState<LoadState>("loading");
+  const [endpointStatuses, setEndpointStatuses] = useState<EndpointStatuses>({ health: "unknown", performance: "unknown", predictions: "unknown", audit: "unknown", models: "unknown" });
   const [busy, setBusy] = useState(false);
   const refreshInFlight = useRef(false);
   const [probeState, setProbeState] = useState<ProbeState>("not-run");
@@ -81,6 +84,7 @@ export default function App() {
         request<ModelInventory>(base, key, "/api/v1/models"),
       ]);
       const [h, p, signals, audit, inventory] = endpoints;
+      setEndpointStatuses({ health: h.status === "fulfilled" ? "ok" : "failed", performance: p.status === "fulfilled" ? "ok" : "failed", predictions: signals.status === "fulfilled" ? "ok" : "failed", audit: audit.status === "fulfilled" ? "ok" : "failed", models: inventory.status === "fulfilled" ? "ok" : "failed" });
       const failures: string[] = [];
       if (h.status === "fulfilled") {
         setHealth(h.value);
@@ -104,7 +108,7 @@ export default function App() {
       if (failures.length) {
         setError(failures.join(" · "));
         if (h.status === "rejected") setState("offline");
-        else if (state !== "offline") setState("degraded");
+        else setState("degraded");
       } else {
         setError("");
         setLastSync(new Date().toISOString());
@@ -181,6 +185,22 @@ export default function App() {
 
       {probeState !== "not-run" && <div className={`probe-banner ${probeState}`}><span>{probeState === "passed" ? "✓" : probeState === "failed" ? "!" : "…"}</span><div><b>{probeState === "passed" ? "Actual model inference probe passed" : probeState === "failed" ? "Actual model inference probe failed" : "Running a real model completion…"}</b><p>{probeState === "passed" ? `Validated JSON completion from ${probeModel}. This confirms connectivity and response format only—not prediction quality.` : probeState === "failed" ? probeError : "Waiting for the inference endpoint to complete."}</p></div><button onClick={() => { setProbeState("not-run"); setProbeError(""); }}>DISMISS</button></div>}
       {error && <div className="error-banner"><span>!</span><div><b>Research API unavailable</b><p>{error}</p><small>Check the API address, network access, and key. Existing signal data is not presented as live.</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}{state === "offline" && lastSync && <div className="stale-banner" role="status"><Icon name="clock" /><div><b>Showing last successful snapshot</b><p>Live refresh failed. The records and counters below may be stale; last successful sync was {stamp(lastSync)}. Refresh or restore the API connection to update them.</p></div></div>}
+
+      <section className="endpoint-health-panel" aria-label="API endpoint status">
+        <div className="endpoint-health-heading"><div><span className="eyebrow">CONNECTIVITY MATRIX</span><h2>Endpoint diagnostics</h2></div><span className="endpoint-health-note">Independent read checks · 15s polling</span></div>
+        <div className="endpoint-health-grid">
+          {([
+            ["health", "Health", "/api/v1/health"],
+            ["performance", "Performance", "/api/v1/performance"],
+            ["predictions", "Prediction ledger", "/api/v1/predictions"],
+            ["audit", "Audit trail", "/api/v1/audit"],
+            ["models", "Model inventory", "/api/v1/models"],
+          ] as const).map(([id, label, path]) => {
+            const status = endpointStatuses[id];
+            return <div className="endpoint-health-item" key={id}><div><b>{label}</b><small>{path}</small></div><StatusPill state={status === "ok" ? "good" : status === "failed" ? "bad" : "muted"}>{status === "ok" ? "RESPONDING" : status === "failed" ? "FAILED" : "WAITING"}</StatusPill></div>;
+          })}
+        </div>
+      </section>
 
       <section className="metrics-grid">
         <article className="metric-card"><div className="metric-head"><span>MODEL SERVER</span><Icon name="pulse" /></div><strong className={health?.inference_status === "ok" ? "metric-good" : ""}>{health?.inference_status?.toUpperCase() ?? "—"}</strong><div className="metric-foot"><i className={health?.inference_status === "ok" ? "live-dot" : "idle-dot"} /> Model listing / server connectivity</div></article>
