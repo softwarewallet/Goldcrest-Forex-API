@@ -64,7 +64,7 @@ def test_audit_rejects_ledger_row_count_mismatch(tmp_path):
             "DELETE FROM oos_predictions WHERE run_id=? AND model_name=? AND partition=?",
             ("audit-fixture", "candidate", "test"),
         )
-    with pytest.raises(ValueError, match="row count mismatch"):
+    with pytest.raises(ValueError, match="group mismatch"):
         verify_research_artifacts(report_path, ledger=ledger)
 
 
@@ -76,4 +76,16 @@ def test_audit_rejects_incomplete_run(tmp_path):
             ("audit-fixture",),
         )
     with pytest.raises(ValueError, match="hash or completed-run"):
+        verify_research_artifacts(report_path, ledger=ledger)
+
+
+def test_audit_rejects_misplaced_rows_even_when_total_count_matches(tmp_path):
+    ledger, report_path = _fixture(tmp_path)
+    # Keep the total row count unchanged but move a prediction to an unexpected model group.
+    with ledger._connect() as connection:
+        connection.execute(
+            "UPDATE oos_predictions SET model_name=? WHERE run_id=? AND model_name=? AND partition=?",
+            ("unexpected-model", "audit-fixture", "candidate", "test"),
+        )
+    with pytest.raises(ValueError, match="group mismatch"):
         verify_research_artifacts(report_path, ledger=ledger)
