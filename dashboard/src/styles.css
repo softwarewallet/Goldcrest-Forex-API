@@ -28,3 +28,5 @@
 @media(max-width:1250px){.endpoint-health-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:760px){.endpoint-health-heading{align-items:flex-start;flex-direction:column}.endpoint-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.endpoint-health-item{align-items:flex-start;flex-direction:column}.endpoint-health-item .status-pill{align-self:flex-start}}
 @media(max-width:420px){.endpoint-health-grid{grid-template-columns:1fr}}
+
+.endpoint-health-item .endpoint-last-success{color:#4d9b8e;font-size:7px;letter-spacing:.2px}
