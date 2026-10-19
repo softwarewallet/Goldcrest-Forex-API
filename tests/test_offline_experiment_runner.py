@@ -76,7 +76,7 @@ def test_runner_trains_records_compares_and_writes_non_actionable_report(tmp_pat
             "cost_assumptions": "not applicable to binary probability metrics",
         },
         exclusions={"unlabeled": 0, "invalid": 0},
-        block_length=1, bootstrap_resamples=30, random_seed=7,
+        block_length=1, bootstrap_resamples=100, random_seed=7,
         report_path=report_path,
     )
 
