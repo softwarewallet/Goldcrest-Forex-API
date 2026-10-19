@@ -126,7 +126,10 @@ def run_offline_experiment(
         "confidence_level": confidence_level,
         "random_seed": random_seed,
     }
-    ledger.start_run(run_id, run_contract)
+    expected_prediction_rows = sum(
+        len(fold.validation) + len(fold.test) for fold in plan.folds
+    ) * len(factories)
+    ledger.start_run(run_id, run_contract, expected_prediction_rows=expected_prediction_rows)
 
     try:
         for fold in plan.folds:

@@ -113,7 +113,7 @@ def test_run_lifecycle_rejects_manifest_reuse_and_records_completion(tmp_path):
     assert status["error"] is None
 
 
-def test_run_lifecycle_records_failure_and_allows_same_manifest_retry(tmp_path):
+def test_run_lifecycle_records_each_failed_and_retried_attempt(tmp_path):
     ledger = PredictionLedger(tmp_path / "ledger.sqlite")
     manifest = {"dataset": "fixture"}
     ledger.start_run("run-failed", manifest)
@@ -123,6 +123,35 @@ def test_run_lifecycle_records_failure_and_allows_same_manifest_retry(tmp_path):
     assert status["error"] == "OSError: report write failed"
     ledger.start_run("run-failed", manifest)
     assert ledger.get_run_status("run-failed")["status"] == "running"
+    ledger.fail_run("run-failed", "RuntimeError: retry interrupted")
+    attempts = ledger.get_run_attempts("run-failed")
+    assert [attempt["status"] for attempt in attempts] == ["failed", "failed"]
+    assert [attempt["attempt_number"] for attempt in attempts] == [1, 2]
+    assert "report write failed" in attempts[0]["error"]
+    assert "retry interrupted" in attempts[1]["error"]
+
+
+def test_completed_run_cannot_be_reopened_or_have_report_fingerprint_erased(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    manifest = {"dataset": "fixture"}
+    ledger.start_run("immutable-run", manifest)
+    ledger.finish_run("immutable-run", "a" * 64)
+    before = ledger.get_run_status("immutable-run")
+    with pytest.raises(ValueError, match="already completed"):
+        ledger.start_run("immutable-run", manifest)
+    assert ledger.get_run_status("immutable-run") == before
+    attempts = ledger.get_run_attempts("immutable-run")
+    assert len(attempts) == 1
+    assert attempts[0]["status"] == "completed"
+    assert attempts[0]["report_sha256"] == "a" * 64
+
+
+def test_concurrent_running_attempt_is_rejected(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ledger.start_run("active-run", {"dataset": "fixture"})
+    with pytest.raises(ValueError, match="running attempt"):
+        ledger.start_run("active-run", {"dataset": "fixture"})
+    assert len(ledger.get_run_attempts("active-run")) == 1
 
 
 def test_completed_report_verification_checks_payload_and_ledger_fingerprint(tmp_path):
@@ -204,3 +233,64 @@ def test_legacy_prediction_ledger_lifecycle_rows_are_migrated(tmp_path):
     registry = ExperimentRegistry(path)
     assert registry.register(_shared_db_manifest()) is True
     assert ledger.get_run_status("legacy-run")["status"] == "completed"
+
+
+
+def test_recovery_marks_only_stale_running_attempts_interrupted(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ledger.start_run("stale-run", {"dataset": "fixture"})
+    ledger.start_run("fresh-run", {"dataset": "fixture"})
+    ledger.start_run("completed-run", {"dataset": "fixture"})
+    ledger.finish_run("completed-run", "c" * 64)
+    cutoff = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    # Backdate only one active run to simulate a process crash.
+    with ledger._connect() as connection:
+        connection.execute(
+            "UPDATE prediction_ledger_runs SET updated_at=? WHERE run_id=?",
+            ("2000-01-01T00:00:00Z", "stale-run"),
+        )
+    recovered = ledger.mark_interrupted_runs(older_than=cutoff)
+    assert recovered == ["stale-run"]
+    assert ledger.get_run_status("stale-run")["status"] == "failed"
+    assert ledger.get_run_attempts("stale-run")[0]["status"] == "failed"
+    assert ledger.get_run_status("fresh-run")["status"] == "running"
+    assert ledger.get_run_status("completed-run")["status"] == "completed"
+    # A failed stale attempt can be safely retried with the identical contract.
+    ledger.start_run("stale-run", {"dataset": "fixture"})
+    assert [x["status"] for x in ledger.get_run_attempts("stale-run")] == ["failed", "running"]
+
+
+def test_recovery_requires_aware_cutoff(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ledger.mark_interrupted_runs(older_than=datetime(2026, 1, 1))
+
+
+def test_finish_run_rejects_missing_expected_prediction_rows(tmp_path):
+    ledger = PredictionLedger(tmp_path / "expected-count.sqlite")
+    ledger.start_run("expected-count", {"dataset": "fixture"}, expected_prediction_rows=1)
+    with pytest.raises(ValueError, match="prediction row count mismatch: expected 1, found 0"):
+        ledger.finish_run("expected-count", "a" * 64)
+    assert ledger.get_run_status("expected-count")["status"] == "running"
+
+
+def test_finish_run_completes_when_expected_prediction_count_matches(tmp_path):
+    ledger = PredictionLedger(tmp_path / "expected-count-ok.sqlite")
+    ledger.start_run("expected-count-ok", {"dataset": "fixture"}, expected_prediction_rows=1)
+    ledger.record(PredictionRecord(
+        run_id="expected-count-ok", symbol="EUR/USD", timeframe="M5",
+        observation_timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        fold_index=0, partition="test", model_name="candidate", model_version="v1",
+        probability=0.6,
+    ))
+    ledger.finish_run("expected-count-ok", "a" * 64)
+    assert ledger.get_run_status("expected-count-ok")["status"] == "completed"
+
+
+def test_run_contract_rejects_changed_expected_prediction_count(tmp_path):
+    ledger = PredictionLedger(tmp_path / "expected-count-retry.sqlite")
+    manifest = {"dataset": "fixture"}
+    ledger.start_run("expected-count-retry", manifest, expected_prediction_rows=2)
+    ledger.fail_run("expected-count-retry", "simulated failure")
+    with pytest.raises(ValueError, match="different manifest|different expected prediction count"):
+        ledger.start_run("expected-count-retry", manifest, expected_prediction_rows=3)

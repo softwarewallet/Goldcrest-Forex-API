@@ -90,24 +90,27 @@ def test_runner_trains_records_compares_and_writes_non_actionable_report(tmp_pat
     assert result.report["interpretation"]["actionable"] is False
     assert len(result.report["paired_comparisons"]) == 2
     assert set(result.report["fold_results"]) == {"candidate", "training_prevalence"}
-    # An identical retry is idempotent: it inserts no additional ledger rows.
-    second = run_offline_experiment(
-        plan, examples, feature_names=("x",),
-        manifest={"run_id": "fixture-run", "dataset_id": "synthetic"},
-        model_factories={"candidate": ConstantModel},
-        ledger=ledger,
-        evaluation_contract={
-            "dataset_id": "synthetic-fixture",
-            "label_definition": "alternating labels, test mechanics only",
-            "timeframe": "M5",
-            "horizon_bars": 1,
-            "cost_assumptions": "not applicable to binary probability metrics",
-        },
-        exclusions={"unlabeled": 0, "invalid": 0},
-        block_length=1, bootstrap_resamples=100, random_seed=7,
-    )
-    assert second.prediction_rows_inserted == 0
-    assert ledger.get_run_status("fixture-run")["status"] == "completed"
+    # Completed run IDs are immutable. A rerun must use a new ID rather than
+    # clearing the report digest or rewriting the completed attempt.
+    completed_status = ledger.get_run_status("fixture-run")
+    with pytest.raises(ValueError, match="already completed"):
+        run_offline_experiment(
+            plan, examples, feature_names=("x",),
+            manifest={"run_id": "fixture-run", "dataset_id": "synthetic"},
+            model_factories={"candidate": ConstantModel},
+            ledger=ledger,
+            evaluation_contract={
+                "dataset_id": "synthetic-fixture",
+                "label_definition": "alternating labels, test mechanics only",
+                "timeframe": "M5",
+                "horizon_bars": 1,
+                "cost_assumptions": "not applicable to binary probability metrics",
+            },
+            exclusions={"unlabeled": 0, "invalid": 0},
+            block_length=1, bootstrap_resamples=100, random_seed=7,
+        )
+    assert ledger.get_run_status("fixture-run") == completed_status
+    assert ledger.get_run_attempts("fixture-run")[0]["status"] == "completed"
 
 
 

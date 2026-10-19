@@ -117,6 +117,12 @@ def verify_research_artifacts(
     status = ledger.get_run_status(run_id)
     if not status or status["status"] != "completed":
         raise ValueError("experiment run is not completed")
+    attempts = ledger.get_run_attempts(run_id)
+    completed_attempts = [attempt for attempt in attempts if attempt["status"] == "completed"]
+    if (not attempts or len(completed_attempts) != 1
+            or any(attempt["status"] == "running" for attempt in attempts)
+            or completed_attempts[0]["report_sha256"] != report["report_sha256"]):
+        raise ValueError("attempt history does not reconcile with completed report")
     return ResearchArtifactAudit(
         run_id=run_id,
         report_sha256=report["report_sha256"],
