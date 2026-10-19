@@ -242,7 +242,7 @@ def test_recovery_marks_only_stale_running_attempts_interrupted(tmp_path):
     ledger.start_run("fresh-run", {"dataset": "fixture"})
     ledger.start_run("completed-run", {"dataset": "fixture"})
     ledger.finish_run("completed-run", "c" * 64)
-    cutoff = datetime.now(timezone.utc) + timedelta(seconds=1)
+    cutoff = datetime(2020, 1, 1, tzinfo=timezone.utc)
     # Backdate only one active run to simulate a process crash.
     with ledger._connect() as connection:
         connection.execute(
