@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
@@ -127,8 +129,50 @@ def run_offline_experiment(
                 actionable=False,
             ))
 
+    # Fingerprint the actual examples and exact fold membership, not only caller-supplied
+    # manifest metadata. This makes same-run-ID retries fail closed when the supplied
+    # rows/labels/features/fold boundaries have changed.
+    canonical_examples = []
+    for row in sorted(examples, key=lambda item: _utc(item.timestamp, "feature")):
+        canonical_examples.append({
+            "timestamp": _utc(row.timestamp, "feature").isoformat(),
+            "features": {name: float(row.features[name]) for name in feature_names},
+            "label": row.label,
+            "label_available_at": _utc(row.label_available_at, "label availability").isoformat(),
+        })
+    canonical_folds = []
+    for fold in plan.folds:
+        canonical_folds.append({
+            "fold_index": fold.fold_index,
+            "train": sorted(_utc(bar.timestamp, "fold").isoformat() for bar in fold.train),
+            "validation": sorted(_utc(bar.timestamp, "fold").isoformat() for bar in fold.validation),
+            "test": sorted(_utc(bar.timestamp, "fold").isoformat() for bar in fold.test),
+        })
+    provenance_payload = {
+        "examples": canonical_examples,
+        "folds": canonical_folds,
+        "feature_names": list(feature_names),
+        "symbol": plan.symbol,
+        "timeframe": plan.timeframe,
+        "model_factories": {
+            name: f"{factory.__module__}.{getattr(factory, '__qualname__', factory.__name__)}"
+            for name, factory in sorted(model_factories.items())
+        },
+    }
+    input_fingerprint = hashlib.sha256(json.dumps(
+        provenance_payload, sort_keys=True, separators=(",", ":"),
+        ensure_ascii=False, allow_nan=False,
+    ).encode("utf-8")).hexdigest()
+
     run_contract = {
         "manifest": dict(manifest),
+        "input_fingerprint": input_fingerprint,
+        "input_example_count": len(canonical_examples),
+        "fold_partition_fingerprint": hashlib.sha256(json.dumps(
+            canonical_folds, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, allow_nan=False,
+        ).encode("utf-8")).hexdigest(),
+        "model_factory_ids": provenance_payload["model_factories"],
         "evaluation_contract": dict(evaluation_contract),
         "exclusions": dict(exclusions),
         "feature_names": list(feature_names),
