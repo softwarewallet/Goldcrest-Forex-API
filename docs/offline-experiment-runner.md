@@ -34,3 +34,21 @@ identical retries do not duplicate rows, while conflicting content fails closed.
 - Synthetic fixture tests verify software behavior only, not market predictiveness.
 - Keep final-test metrics untouched during model/feature selection. No automatic model
   promotion, production deployment, or trading authorization occurs.
+
+
+## Durable run lifecycle and retry integrity
+
+The prediction ledger also stores an experiment-run record with a manifest/configuration
+fingerprint, status (`running`, `completed`, or `failed`), report SHA-256, bounded error
+diagnostic, and update timestamp. The runner fingerprints the manifest together with the
+evaluation contract, exclusions, feature/model names, symbol/timeframe, fold identities,
+and bootstrap settings. Reusing a run ID with a different configuration is rejected.
+
+A run is marked completed only after comparisons and report generation/writing succeed.
+Failures in the persistence/comparison/report phase are recorded as failed; any already
+persisted prediction rows remain auditable, not silently rolled back as if the run never
+occurred. A retry with the same run ID and same configuration may safely replay identical
+ledger writes. Conflicting prediction content still fails closed. The caller must ensure
+the manifest itself accurately fingerprints source data, labels, feature-generation code,
+model code/parameters, and other run inputs; the runner cannot independently prove those
+claims.

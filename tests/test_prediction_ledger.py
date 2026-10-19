@@ -94,3 +94,29 @@ def test_research_rows_cannot_be_actionable(tmp_path):
             fold_index=0, partition="test", model_name="m", model_version="v1",
             probability=0.5, actionable=True,
         ))
+
+
+
+def test_run_lifecycle_rejects_manifest_reuse_and_records_completion(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ledger.start_run("run-lifecycle", {"dataset": "fixture", "version": 1})
+    assert ledger.get_run_status("run-lifecycle")["status"] == "running"
+    with pytest.raises(ValueError, match="different manifest"):
+        ledger.start_run("run-lifecycle", {"dataset": "different"})
+    ledger.finish_run("run-lifecycle", "a" * 64)
+    status = ledger.get_run_status("run-lifecycle")
+    assert status["status"] == "completed"
+    assert status["report_sha256"] == "a" * 64
+    assert status["error"] is None
+
+
+def test_run_lifecycle_records_failure_and_allows_same_manifest_retry(tmp_path):
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    manifest = {"dataset": "fixture"}
+    ledger.start_run("run-failed", manifest)
+    ledger.fail_run("run-failed", "OSError: report write failed")
+    status = ledger.get_run_status("run-failed")
+    assert status["status"] == "failed"
+    assert status["error"] == "OSError: report write failed"
+    ledger.start_run("run-failed", manifest)
+    assert ledger.get_run_status("run-failed")["status"] == "running"

@@ -127,39 +127,59 @@ def run_offline_experiment(
                 actionable=False,
             ))
 
-    inserted = ledger.record_many(prediction_records)
-    comparisons = []
-    versions = {name: str(getattr(factory(), "model_version", "candidate-v1"))
-                for name, factory in factories.items()}
-    for candidate_name in factories:
-        if candidate_name == "training_prevalence":
-            continue
-        for fold in plan.folds:
-            for partition in ("validation", "test"):
-                comparisons.append(ledger.compare(
-                    run_id=run_id, symbol=plan.symbol, timeframe=plan.timeframe,
-                    fold_index=fold.fold_index, partition=partition,
-                    candidate_name=candidate_name, candidate_version=versions[candidate_name],
-                    baseline_name="training_prevalence", baseline_version=versions["training_prevalence"],
-                    block_length=block_length, bootstrap_resamples=bootstrap_resamples,
-                    confidence_level=confidence_level, random_seed=random_seed,
-                ))
+    run_contract = {
+        "manifest": dict(manifest),
+        "evaluation_contract": dict(evaluation_contract),
+        "exclusions": dict(exclusions),
+        "feature_names": list(feature_names),
+        "model_names": sorted(model_factories),
+        "symbol": plan.symbol,
+        "timeframe": plan.timeframe,
+        "fold_indices": fold_indices,
+        "block_length": block_length,
+        "bootstrap_resamples": bootstrap_resamples,
+        "confidence_level": confidence_level,
+        "random_seed": random_seed,
+    }
+    ledger.start_run(run_id, run_contract)
+    try:
+        inserted = ledger.record_many(prediction_records)
+        comparisons = []
+        versions = {name: str(getattr(factory(), "model_version", "candidate-v1"))
+                    for name, factory in factories.items()}
+        for candidate_name in factories:
+            if candidate_name == "training_prevalence":
+                continue
+            for fold in plan.folds:
+                for partition in ("validation", "test"):
+                    comparisons.append(ledger.compare(
+                        run_id=run_id, symbol=plan.symbol, timeframe=plan.timeframe,
+                        fold_index=fold.fold_index, partition=partition,
+                        candidate_name=candidate_name, candidate_version=versions[candidate_name],
+                        baseline_name="training_prevalence", baseline_version=versions["training_prevalence"],
+                        block_length=block_length, bootstrap_resamples=bootstrap_resamples,
+                        confidence_level=confidence_level, random_seed=random_seed,
+                    ))
 
-    report = build_experiment_report(
-        manifest=dict(manifest),
-        fold_results={name: tuple(results) for name, results in fold_results.items()},
-        paired_comparisons=comparisons,
-        exclusions=exclusions,
-        evaluation_contract=dict(evaluation_contract),
-        warnings=[
-            "Offline research only; all outputs remain actionable=false.",
-            "Final-test results must remain untouched during model/feature selection.",
-            "Block-bootstrap interpretation depends on the explicitly chosen block length.",
-            "Fold windows may overlap; do not pool fold metrics or treat repeated rows as independent.",
-        ],
-    )
-    saved_path = str(write_experiment_report(report, report_path)) if report_path is not None else None
-    return OfflineExperimentResult(
-        run_id=run_id, report=report, prediction_rows_inserted=inserted,
-        ledger_path=ledger.database_path, report_path=saved_path, actionable=False,
-    )
+        report = build_experiment_report(
+            manifest=dict(manifest),
+            fold_results={name: tuple(results) for name, results in fold_results.items()},
+            paired_comparisons=comparisons,
+            exclusions=exclusions,
+            evaluation_contract=dict(evaluation_contract),
+            warnings=[
+                "Offline research only; all outputs remain actionable=false.",
+                "Final-test results must remain untouched during model/feature selection.",
+                "Block-bootstrap interpretation depends on the explicitly chosen block length.",
+                "Fold windows may overlap; do not pool fold metrics or treat repeated rows as independent.",
+            ],
+        )
+        saved_path = str(write_experiment_report(report, report_path)) if report_path is not None else None
+        ledger.finish_run(run_id, report["report_sha256"])
+        return OfflineExperimentResult(
+            run_id=run_id, report=report, prediction_rows_inserted=inserted,
+            ledger_path=ledger.database_path, report_path=saved_path, actionable=False,
+        )
+    except Exception as exc:
+        ledger.fail_run(run_id, f"{type(exc).__name__}: {exc}")
+        raise

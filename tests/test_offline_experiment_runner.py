@@ -96,11 +96,18 @@ def test_runner_trains_records_compares_and_writes_non_actionable_report(tmp_pat
         manifest={"run_id": "fixture-run", "dataset_id": "synthetic"},
         model_factories={"candidate": ConstantModel},
         ledger=ledger,
-        evaluation_contract={"label_definition": "same fixture", "timeframe": "M5"},
+        evaluation_contract={
+            "dataset_id": "synthetic-fixture",
+            "label_definition": "alternating labels, test mechanics only",
+            "timeframe": "M5",
+            "horizon_bars": 1,
+            "cost_assumptions": "not applicable to binary probability metrics",
+        },
         exclusions={"unlabeled": 0, "invalid": 0},
         block_length=1, bootstrap_resamples=100, random_seed=7,
     )
     assert second.prediction_rows_inserted == 0
+    assert ledger.get_run_status("fixture-run")["status"] == "completed"
 
 
 
