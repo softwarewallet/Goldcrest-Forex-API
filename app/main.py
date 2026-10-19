@@ -112,6 +112,17 @@ async def predict(payload: PredictionRequest, settings: Settings = Depends(get_s
         raise HTTPException(status_code=503, detail="Prediction persistence failed; retry with the same request_id") from exc
 
 
+@app.get("/api/v1/predictions", response_model=list[PredictionResponse],
+         dependencies=[Depends(require_api_key)])
+async def list_predictions(limit: int = Query(default=30, ge=1, le=100),
+                           db: Session = Depends(get_db)):
+    """Return recent stored prediction records for the research dashboard."""
+    rows = db.scalars(
+        select(PredictionRecord).order_by(PredictionRecord.generated_at.desc(), PredictionRecord.id.desc()).limit(limit)
+    ).all()
+    return [_prediction_response(item) for item in rows]
+
+
 @app.get("/api/v1/predictions/{prediction_id}", response_model=PredictionResponse,
          dependencies=[Depends(require_api_key)])
 async def get_prediction(prediction_id: str, db: Session = Depends(get_db)):
