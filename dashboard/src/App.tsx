@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 type Health = { status: string; application: string; inference_status: string; database_status: string };
@@ -57,6 +57,7 @@ export default function App() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [state, setState] = useState<LoadState>("loading");
   const [busy, setBusy] = useState(false);
+  const refreshInFlight = useRef(false);
   const [probeState, setProbeState] = useState<ProbeState>("not-run");
   const [probeModel, setProbeModel] = useState("");
   const [probeError, setProbeError] = useState("");
@@ -65,6 +66,8 @@ export default function App() {
   const [selected, setSelected] = useState<Prediction | null>(null);
 
   const refresh = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     setBusy(true);
     try {
       const [h, p, signals, audit] = await Promise.all([
@@ -81,14 +84,20 @@ export default function App() {
       setState("offline");
       setError(e instanceof Error ? e.message : "API request failed");
     } finally {
+      refreshInFlight.current = false;
       setBusy(false);
     }
   }, [base, key]);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 15000);
-    return () => window.clearInterval(timer);
+    let active = true;
+    let timer = 0;
+    const poll = async () => {
+      await refresh();
+      if (active) timer = window.setTimeout(() => void poll(), 15000);
+    };
+    void poll();
+    return () => { active = false; window.clearTimeout(timer); };
   }, [refresh]);
 
   const latestSignals = useMemo(() => predictions.slice(0, 6), [predictions]);
@@ -105,6 +114,16 @@ export default function App() {
   const saveSettings = () => {
     const normalized = baseInput.trim().replace(/\/$/, "");
     const nextBase = normalized || "http://192.168.29.80:8090";
+    try {
+      const parsed = new URL(nextBase);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("Only HTTP or HTTPS API URLs are supported.");
+      if (parsed.username || parsed.password) throw new Error("Do not embed credentials in the API URL.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Enter a valid API URL.");
+      setShowSettings(true);
+      return;
+    }
+    setError("");
     setBase(nextBase);
     setKey(keyInput);
     localStorage.setItem("goldcrest-api-base", nextBase);
@@ -129,7 +148,7 @@ export default function App() {
 
       <section className="page-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> AI RESEARCH ENVIRONMENT / 01</div><h1>Neural <span>Signal Console</span></h1><p>Observe market inputs move through inference and emerge as research signals.</p></div><div className="heading-actions"><button className="probe-button" onClick={() => void probeInference()} disabled={probeState === "running"}><Icon name="pulse" /> {probeState === "running" ? "PROBING MODEL" : "TEST INFERENCE"}</button><button className="refresh-button" onClick={() => void refresh()} disabled={busy}><span className={busy ? "refresh-spin" : ""}>↻</span> {busy ? "SYNCING" : "REFRESH DATA"}</button></div></section>
 
-      {showSettings && <section className="settings-panel"><div><b>Connect to GoldcrestAI API</b><p>Requests use your API key in this browser session. The key is not written to local storage.</p></div><label>API BASE URL<input value={baseInput} onChange={e => setBaseInput(e.target.value)} placeholder="http://192.168.29.80:8090" /></label><label>API KEY<input value={keyInput} onChange={e => setKeyInput(e.target.value)} type="password" placeholder="Enter X-API-Key" autoComplete="off" /></label><button onClick={saveSettings}>SAVE & CONNECT</button></section>}
+      {showSettings && <section className="settings-panel"><div><b>Connect to GoldcrestAI API</b><p>Only connect to an API URL you trust. The key is sent to that configured endpoint, held in session storage, and not written to local storage.</p></div><label>API BASE URL<input value={baseInput} onChange={e => setBaseInput(e.target.value)} placeholder="http://192.168.29.80:8090" /></label><label>API KEY<input value={keyInput} onChange={e => setKeyInput(e.target.value)} type="password" placeholder="Enter X-API-Key" autoComplete="off" /></label><button onClick={saveSettings}>SAVE & CONNECT</button></section>}
 
       {probeState !== "not-run" && <div className={`probe-banner ${probeState}`}><span>{probeState === "passed" ? "✓" : probeState === "failed" ? "!" : "…"}</span><div><b>{probeState === "passed" ? "Actual model inference probe passed" : probeState === "failed" ? "Actual model inference probe failed" : "Running a real model completion…"}</b><p>{probeState === "passed" ? `Validated JSON completion from ${probeModel}. This confirms connectivity and response format only—not prediction quality.` : probeState === "failed" ? probeError : "Waiting for the inference endpoint to complete."}</p></div><button onClick={() => { setProbeState("not-run"); setProbeError(""); }}>DISMISS</button></div>}
       {error && <div className="error-banner"><span>!</span><div><b>Research API unavailable</b><p>{error}</p><small>Check the API address, network access, and key. Existing signal data is not presented as live.</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}
