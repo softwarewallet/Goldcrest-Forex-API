@@ -86,3 +86,13 @@ out-of-sample probabilities. It no longer constructs an extra, unfitted model ju
 read its version. If a factory reports a different model version across folds under the
 same run contract, the run fails closed rather than comparing against a version that does
 not match the stored prediction rows.
+
+
+## Temporal partition integrity
+
+Both the end-to-end runner and the standalone binary walk-forward evaluator now reject
+folds whose training, validation, and test windows are not strictly forward in time,
+whose partitions overlap, or whose referenced timestamps are missing from the supplied
+examples. The standalone evaluator also rejects duplicate/invalid fold indices and labels
+that are numerically equal to 0/1 but are not actual integers. These checks prevent a
+malformed caller-supplied plan from silently creating a leakage-prone evaluation.
