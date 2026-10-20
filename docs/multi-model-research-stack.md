@@ -169,8 +169,8 @@ python -m app.historical_research_pipeline \
   --features-csv data/historical/EURUSD_M15_features.csv \
   --labeled-csv data/historical/EURUSD_M15_labeled.csv \
   --feature-report reports/EURUSD_M15_features.json \
-  --label-report reports/EURUSD_M15_labels.json \\
-  --data-quality-report reports/EURUSD_M15_quality.json \\
+  --label-report reports/EURUSD_M15_labels.json \
+  --data-quality-report reports/EURUSD_M15_quality.json \
   --report reports/EURUSD_M15_pipeline.json \
   --run-id eurusd-m15-pipeline-2026-10-20-01 \
   --data-source "documented provider/export" \
