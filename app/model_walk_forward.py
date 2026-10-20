@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Mapping, Protocol, Sequence
 
+from app.calibration_uncertainty import CalibrationUncertainty, moving_block_ece_uncertainty
 from app.probability_diagnostics import ReliabilityBin, probability_diagnostics
 from app.walk_forward import WalkForwardPlan
 
@@ -47,6 +48,7 @@ class BinaryMetrics:
     expected_calibration_error: float = 0.0
     reliability_bins: tuple[ReliabilityBin, ...] = ()
     observation_identity_sha256: str | None = None
+    calibration_uncertainty: CalibrationUncertainty | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,10 @@ def _validate_examples(examples: Sequence[TimedBinaryExample], feature_names: Se
 def _metrics(
     labels: Sequence[int], probabilities: Sequence[float], *,
     observation_timestamps: Sequence[datetime] | None = None,
+    calibration_block_length: int = 1,
+    calibration_bootstrap_resamples: int = 2000,
+    calibration_confidence_level: float = 0.95,
+    calibration_random_seed: int = 20261020,
 ) -> BinaryMetrics:
     if not labels or len(labels) != len(probabilities):
         raise ValueError("metrics require non-empty aligned labels and probabilities")
@@ -117,6 +123,13 @@ def _metrics(
     logloss = -sum(y * math.log(max(eps, p)) + (1-y) * math.log(max(eps, 1-p))
                    for y, p in zip(labels, probabilities)) / len(labels)
     calibration = probability_diagnostics(labels, probabilities, bins=10)
+    uncertainty = moving_block_ece_uncertainty(
+        labels, probabilities, block_length=min(calibration_block_length, len(labels)),
+        bootstrap_resamples=calibration_bootstrap_resamples,
+        confidence_level=calibration_confidence_level,
+        seed=calibration_random_seed,
+        bins=10,
+    )
     return BinaryMetrics(
         sample_count=len(labels),
         positive_count=sum(labels),
@@ -129,6 +142,7 @@ def _metrics(
         expected_calibration_error=calibration.expected_calibration_error,
         reliability_bins=calibration.reliability_bins,
         observation_identity_sha256=identity_sha256,
+        calibration_uncertainty=uncertainty,
     )
 
 
@@ -138,6 +152,10 @@ def evaluate_binary_walk_forward(
     *,
     feature_names: Sequence[str],
     model_factory: Callable[[], BinaryResearchModel],
+    calibration_block_length: int = 1,
+    calibration_bootstrap_resamples: int = 2000,
+    calibration_confidence_level: float = 0.95,
+    calibration_random_seed: int = 20261020,
 ) -> tuple[ModelFoldResult, ...]:
     """Fit a fresh model per fold and score validation/test without threshold tuning.
 
@@ -147,6 +165,10 @@ def evaluate_binary_walk_forward(
     selection. Every fold must have adequate examples of both classes in training.
     """
     _validate_examples(examples, feature_names)
+    if calibration_block_length < 1 or calibration_bootstrap_resamples < 100:
+        raise ValueError("invalid calibration bootstrap configuration")
+    if not 0 < calibration_confidence_level < 1:
+        raise ValueError("calibration_confidence_level must be between 0 and 1")
     by_time = {_utc(row.timestamp, "feature"): row for row in examples}
     results: list[ModelFoldResult] = []
     if not plan.folds:
@@ -182,7 +204,8 @@ def evaluate_binary_walk_forward(
             raise ValueError("matured training labels must contain both classes")
         model = model_factory()
         model.fit([row.features for row in train], [row.label for row in train])
-        def predict(rows: Sequence[TimedBinaryExample]) -> BinaryMetrics:
+
+        def predict(rows: Sequence[TimedBinaryExample], partition: str) -> BinaryMetrics:
             probabilities = []
             for row in rows:
                 output = model.predict(row.features)
@@ -190,16 +213,26 @@ def evaluate_binary_walk_forward(
                 if probability is None:
                     raise ValueError("model output lacks probability_class_1")
                 probabilities.append(float(probability))
-            return _metrics([row.label for row in rows], probabilities,
-                             observation_timestamps=[row.timestamp for row in rows])
+            # Derive a stable but fold/partition-specific seed without depending on Python hash().
+            seed_payload = f"{calibration_random_seed}:{fold.fold_index}:{partition}"
+            seed = int(hashlib.sha256(seed_payload.encode("utf-8")).hexdigest()[:8], 16)
+            return _metrics(
+                [row.label for row in rows], probabilities,
+                observation_timestamps=[row.timestamp for row in rows],
+                calibration_block_length=calibration_block_length,
+                calibration_bootstrap_resamples=calibration_bootstrap_resamples,
+                calibration_confidence_level=calibration_confidence_level,
+                calibration_random_seed=seed,
+            )
+
         results.append(ModelFoldResult(
             fold_index=fold.fold_index,
             model_type=str(getattr(model, "model_type", type(model).__name__)),
             model_version=str(getattr(model, "model_version", "unknown")),
             train_rows_available=len(train),
             train_rows_excluded_unmatured=unmatured,
-            validation=predict(validation),
-            test=predict(test),
+            validation=predict(validation, "validation"),
+            test=predict(test, "test"),
             probability_semantics="uncalibrated research probability; metrics are not trading performance",
             actionable=False,
         ))
