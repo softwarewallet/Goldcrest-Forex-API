@@ -164,6 +164,7 @@ export default function ResearchReportPanel() {
   const foldStability = buildFoldStability(foldResults, pairedComparisons);
   const selectionAudit = record(valueAt(evaluation, "model_selection_audit"));
   const oosRobustness = record(valueAt(evaluation, "oos_period_robustness_audit"));
+  const regimeUncertainty = record(valueAt(evaluation, "regime_uncertainty_audit"));
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
     folds: Array.isArray(rows) ? rows : [],
@@ -293,6 +294,37 @@ export default function ResearchReportPanel() {
           })
           : <div className="research-report-empty">Period diagnostic withheld: at least three complete common test folds are required.</div>}
         <p className="research-report-note">{textValue(valueAt(oosRobustness, "interpretation"))}</p>
+      </div>}
+      {regimeUncertainty && <div className="research-model-table-wrap">
+        <h3>Fold uncertainty &amp; declared regime stratification</h3>
+        <p className="research-report-note">Quartiles and ranges describe fold-to-fold dispersion; they are not confidence intervals. Regime results require explicit manifest labels, source and method. This viewer does not infer market regimes.</p>
+        <div className="research-report-metrics">
+          <Metric label="COMMON TEST FOLDS" value={textValue(Array.isArray(valueAt(regimeUncertainty, "common_complete_test_fold_indices")) ? (valueAt(regimeUncertainty, "common_complete_test_fold_indices") as unknown[]).length : 0)} note="Complete Brier/log-loss folds" />
+          <Metric label="CONFIDENCE INTERVALS" value={valueAt(regimeUncertainty, "confidence_intervals_produced") === false ? "NOT PRODUCED" : "REVIEW REQUIRED"} note="IQR/range only" />
+          <Metric label="REGIME LABELS" value={textValue(valueAt(record(valueAt(regimeUncertainty, "regime_annotations")), "status"))} note={textValue(valueAt(record(valueAt(regimeUncertainty, "regime_annotations")), "method"))} />
+        </div>
+        {Array.isArray(valueAt(regimeUncertainty, "uncertainty_envelopes")) && (valueAt(regimeUncertainty, "uncertainty_envelopes") as unknown[]).map((item, index) => {
+          const row = record(item);
+          const metrics = record(valueAt(row, "metrics"));
+          return <div key={"uncertainty-" + index}>
+            <h4>{textValue(valueAt(row, "candidate_name"))} · fold-level test metric dispersion</h4>
+            <table className="research-model-table"><thead><tr><th>METRIC</th><th>FOLDS</th><th>MIN</th><th>Q1</th><th>MEDIAN</th><th>Q3</th><th>MAX</th><th>RANGE</th></tr></thead><tbody>{["brier_score", "log_loss", "accuracy_at_fixed_half", "expected_calibration_error"].map(metricName => {
+              const metric = record(valueAt(metrics, metricName));
+              return metric ? <tr key={metricName}><td>{metricName}</td><td>{textValue(valueAt(metric, "fold_count"))}</td><td>{formatNumber(valueAt(metric, "minimum"))}</td><td>{formatNumber(valueAt(metric, "q1"))}</td><td>{formatNumber(valueAt(metric, "median"))}</td><td>{formatNumber(valueAt(metric, "q3"))}</td><td>{formatNumber(valueAt(metric, "maximum"))}</td><td>{formatNumber(valueAt(metric, "range"))}</td></tr> : null;
+            })}</tbody></table>
+          </div>;
+        })}
+        {Array.isArray(valueAt(record(valueAt(regimeUncertainty, "regime_annotations")), "stratified_results")) && (valueAt(record(valueAt(regimeUncertainty, "regime_annotations")), "stratified_results") as unknown[]).length > 0
+          ? <table className="research-model-table"><thead><tr><th>CANDIDATE</th><th>DECLARED REGIME</th><th>FOLDS</th><th>METRIC</th><th>MEDIAN</th><th>MIN</th><th>MAX</th></tr></thead><tbody>{(valueAt(record(valueAt(regimeUncertainty, "regime_annotations")), "stratified_results") as unknown[]).flatMap((item, index) => {
+            const row = record(item);
+            const metrics = record(valueAt(row, "metrics"));
+            return ["brier_score", "log_loss"].map(metricName => {
+              const metric = record(valueAt(metrics, metricName));
+              return <tr key={"regime-" + index + "-" + metricName}><td>{textValue(valueAt(row, "candidate_name"))}</td><td>{textValue(valueAt(row, "regime"))}</td><td>{textValue(valueAt(row, "fold_count"))}</td><td>{metricName}</td><td>{formatNumber(valueAt(metric, "median"))}</td><td>{formatNumber(valueAt(metric, "minimum"))}</td><td>{formatNumber(valueAt(metric, "maximum"))}</td></tr>;
+            });
+          })}</tbody></table>
+          : <div className="research-report-empty">No declared regime stratification available. Provide predeclared fold labels and source/method metadata in manifest.fold_regime_annotations; groups with fewer than two common folds are withheld.</div>}
+        <p className="research-report-note">{textValue(valueAt(regimeUncertainty, "interpretation"))}</p>
       </div>}
       {foldStability.length > 0 && <div className="research-model-table-wrap">
         <h3>Fold stability · direction consistency</h3>
