@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence
 
 from app.model_selection_audit import build_model_selection_audit
 from app.oos_period_robustness_audit import build_oos_period_robustness_audit
+from app.regime_uncertainty_audit import build_regime_uncertainty_audit
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -115,6 +116,7 @@ def build_experiment_report(
 
     selection_audit = build_model_selection_audit(serialized_folds, comparisons)
     oos_robustness_audit = build_oos_period_robustness_audit(serialized_folds, comparisons)
+    regime_uncertainty_audit = build_regime_uncertainty_audit(serialized_folds, comparisons, manifest_data.get("fold_regime_annotations"))
 
     contract = _jsonable(dict(evaluation_contract or {}))
     warning_list = [str(item) for item in warnings]
@@ -126,6 +128,7 @@ def build_experiment_report(
         "paired_comparisons": comparisons,
         "model_selection_audit": selection_audit,
         "oos_period_robustness_audit": oos_robustness_audit,
+        "regime_uncertainty_audit": regime_uncertainty_audit,
         "exclusions": dict(sorted(normalized_exclusions.items())),
         "evaluation_contract": contract,
         "warnings": warning_list,

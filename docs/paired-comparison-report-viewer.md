@@ -93,3 +93,12 @@ underlying observations may repeat across folds. This audit cannot establish rob
 to actual economic regimes, profitability, or generalization. Genuine historical OHLC
 data and a predeclared evaluation protocol remain necessary; synthetic fixtures validate
 software mechanics only. All outputs remain research-only and non-actionable.
+
+
+## Fold uncertainty envelopes and declared regime stratification
+
+New reports include regime_uncertainty_audit. It reports per-fold test metric minimum, first quartile, median, third quartile, maximum and range for Brier score, log-loss, fixed-threshold accuracy and ECE. These are descriptive fold-level dispersion summaries, not confidence intervals or estimates of sampling uncertainty.
+
+Optional regime-stratified summaries require an explicit manifest.fold_regime_annotations object with source, method, and a folds mapping whose keys are non-negative fold-index strings and values are declared labels. The system does not infer or fabricate market regimes. Only labels on common complete test folds are used; each candidate/regime group needs at least two folds or is withheld. The report inspector recomputes the audit from the manifest and fold metrics and rejects inconsistencies.
+
+Caller-declared labels are not independently authenticated by the report hash. Regime labels should be predeclared using information available at the relevant time, and the source/method must be independently reviewed for leakage. Two folds is a minimum for descriptive output, not evidence of statistical power. Overlapping test windows may reuse observations; no pooling, significance testing, confidence interval, model selection, profitability inference or execution authorization is produced.

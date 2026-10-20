@@ -163,7 +163,6 @@ export default function ResearchReportPanel() {
   const pairedComparisons = Array.isArray(valueAt(evaluation, "paired_comparisons")) ? valueAt(evaluation, "paired_comparisons") as unknown[] : [];
   const foldStability = buildFoldStability(foldResults, pairedComparisons);
   const selectionAudit = record(valueAt(evaluation, "model_selection_audit"));
-  const oosRobustness = record(valueAt(evaluation, "oos_period_robustness_audit"));
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
     folds: Array.isArray(rows) ? rows : [],
@@ -270,29 +269,6 @@ export default function ResearchReportPanel() {
           })}</tbody></table>
           : <div className="research-report-empty">Selection withheld: insufficient complete common validation folds. At least two are required.</div>}
         <p className="research-report-note">{textValue(valueAt(selectionAudit, "interpretation"))}</p>
-      </div>}
-      {oosRobustness && <div className="research-model-table-wrap">
-        <h3>Out-of-sample period robustness · post-selection diagnostic</h3>
-        <p className="research-report-note">This read-only diagnostic divides common chronological test-fold indices into EARLY / MIDDLE / LATE groups and shows per-period medians plus worst-fold losses. It does not select or rank models. Fold groups are not proof of market regimes or independent samples; overlapping test windows may reuse observations. Do not tune against final-test results.</p>
-        <div className="research-report-metrics">
-          <Metric label="STATUS" value={textValue(valueAt(oosRobustness, "status"))} note="Three or more common test folds required" />
-          <Metric label="COMMON TEST FOLDS" value={textValue(Array.isArray(valueAt(oosRobustness, "common_test_fold_indices")) ? (valueAt(oosRobustness, "common_test_fold_indices") as unknown[]).length : 0)} note="Fold indices, not raw independent samples" />
-          <Metric label="MODEL SELECTION" value={valueAt(oosRobustness, "model_selection_performed") === false ? "NO" : "REVIEW REQUIRED"} note="Diagnostic only" />
-        </div>
-        {Array.isArray(valueAt(oosRobustness, "candidates")) && (valueAt(oosRobustness, "candidates") as unknown[]).length > 0
-          ? (valueAt(oosRobustness, "candidates") as unknown[]).map((item, index) => {
-            const candidate = record(item);
-            const periods = Array.isArray(valueAt(candidate, "periods")) ? valueAt(candidate, "periods") as unknown[] : [];
-            return <div key={"oos-period-" + index}>
-              <h4>{textValue(valueAt(candidate, "candidate_name"))} · Brier range {formatNumber(valueAt(candidate, "test_brier_range"))} · log-loss range {formatNumber(valueAt(candidate, "test_log_loss_range"))}</h4>
-              <table className="research-model-table"><thead><tr><th>PERIOD</th><th>FOLDS</th><th>MEDIAN TEST BRIER</th><th>WORST-FOLD BRIER</th><th>MEDIAN TEST LOG-LOSS</th><th>WORST-FOLD LOG-LOSS</th></tr></thead><tbody>{periods.map((periodItem, periodIndex) => {
-                const period = record(periodItem);
-                return <tr key={"oos-period-" + index + "-" + periodIndex}><td>{textValue(valueAt(period, "period"))}</td><td>{textValue(valueAt(period, "fold_count"))}</td><td>{formatNumber(valueAt(period, "median_test_brier_score"))}</td><td>{formatNumber(valueAt(period, "worst_fold_brier_score"))}</td><td>{formatNumber(valueAt(period, "median_test_log_loss"))}</td><td>{formatNumber(valueAt(period, "worst_fold_log_loss"))}</td></tr>;
-              })}</tbody></table>
-            </div>;
-          })
-          : <div className="research-report-empty">Period diagnostic withheld: at least three complete common test folds are required.</div>}
-        <p className="research-report-note">{textValue(valueAt(oosRobustness, "interpretation"))}</p>
       </div>}
       {foldStability.length > 0 && <div className="research-model-table-wrap">
         <h3>Fold stability · direction consistency</h3>
