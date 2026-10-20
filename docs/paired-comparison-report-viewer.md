@@ -65,3 +65,12 @@ The report inspector now derives a descriptive stability summary for each candid
 Negative Brier/log-loss differences favor the candidate. The median is a robust descriptive center, not a pooled metric or a significance estimate. Only common folds with equal sample counts are compared; inconsistent counts fail closed. Missing metric values are omitted for that metric rather than imputed.
 
 Fold counts are not independent sample counts. Repeated/overlapping test windows, small numbers of folds, regime changes, repeated model experimentation, and source-data limitations still constrain interpretation. These summaries intentionally calculate no p-values, do not correct multiple testing, do not select a model, and do not establish trading performance or profitability. The research API remains non-actionable.
+
+
+## Validation-only model-selection audit
+
+New experiment reports include a deterministic `model_selection_audit`. Candidate roles are derived from paired-comparison baseline metadata. Ranking uses the median of fold-level validation log-loss, then median validation Brier score, then candidate name as a deterministic tie-break. Only fold indices with finite validation log-loss and Brier metrics for every candidate are included. At least two complete common validation folds are required; otherwise selection is withheld.
+
+The audit explicitly records that test metrics were not used for selection. The report inspector recomputes the audit from the report's validation metrics and rejects a mismatch, even when the outer report fingerprint has been recomputed. Legacy reports without this optional field remain readable. The dashboard displays the protocol, common-fold count, ranking, and selection-withheld status.
+
+This is a transparent research protocol, not a guarantee against every form of adaptive overfitting. Repeated experiments, human decisions, feature leakage, overlapping windows, regime changes, and small validation samples remain risks. Final test partitions must not be used to tune or choose models; report inspection does not prove that a human followed that rule outside the recorded artifact. The selected name is not a model promotion or execution authorization, and all outputs remain non-actionable.

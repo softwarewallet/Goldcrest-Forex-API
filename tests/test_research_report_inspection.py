@@ -230,3 +230,14 @@ def test_inspection_rejects_comparison_fingerprint_not_matching_fold_metrics(tmp
 
     with pytest.raises(ValueError, match="paired comparison observation identity fingerprint does not match"):
         inspect_experiment_report(path)
+
+
+def test_inspection_rejects_selection_audit_that_uses_different_validation_metrics(tmp_path):
+    report = _report()
+    report["model_selection_audit"]["selected_candidate"] = "prevalence"
+    _rewrite_fingerprint(report)
+    path = tmp_path / "tampered-selection-audit.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="model_selection_audit does not match validation-only fold metrics"):
+        inspect_experiment_report(path)

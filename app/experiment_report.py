@@ -13,6 +13,8 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.model_selection_audit import build_model_selection_audit
+
 
 REPORT_SCHEMA_VERSION = 1
 
@@ -110,6 +112,8 @@ def build_experiment_report(
             raise ValueError("exclusion counts must be non-negative integers")
         normalized_exclusions[name] = count
 
+    selection_audit = build_model_selection_audit(serialized_folds, comparisons)
+
     contract = _jsonable(dict(evaluation_contract or {}))
     warning_list = [str(item) for item in warnings]
     payload = {
@@ -118,6 +122,7 @@ def build_experiment_report(
         "manifest": manifest_data,
         "fold_results": serialized_folds,
         "paired_comparisons": comparisons,
+        "model_selection_audit": selection_audit,
         "exclusions": dict(sorted(normalized_exclusions.items())),
         "evaluation_contract": contract,
         "warnings": warning_list,
