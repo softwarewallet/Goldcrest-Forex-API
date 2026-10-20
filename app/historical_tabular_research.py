@@ -23,6 +23,7 @@ from app.offline_experiment_runner import run_offline_experiment
 from app.prediction_ledger import PredictionLedger
 from app.research_model_stack import build_tabular_model_factories
 from app.walk_forward import generate_walk_forward_folds
+from app.walk_forward_audit import audit_walk_forward_plan
 
 
 REQUIRED_COLUMNS = {
@@ -191,6 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         step_bars=args.step_bars,
         horizon_bars=args.horizon_bars,
     )
+    temporal_integrity_audit = audit_walk_forward_plan(plan, examples)
     factories = build_tabular_model_factories(feature_names, model_version="candidate-v1")
     manifest = {
         "run_id": args.run_id,
@@ -203,6 +205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "timeframe": timeframe,
         "feature_names": list(feature_names),
         "feature_schema_sha256": feature_schema_fingerprint(feature_names),
+        "temporal_integrity_audit": temporal_integrity_audit,
         "label_definition": args.label_definition,
         "class_1_means": args.class_1_means,
         "horizon_bars": args.horizon_bars,
