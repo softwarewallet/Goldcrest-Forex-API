@@ -115,9 +115,10 @@ python -m app.historical_feature_preparation \
 ```
 
 Input columns are `symbol,timeframe,timestamp,open,high,low,close`. The input must be
-timezone-aware, chronological, valid OHLC for one symbol/timeframe, with at least 16
-rows. The utility excludes the first 34 warm-up rows and emits `return_1`, `return_3`,
-`return_5`, `range_pct`, `body_pct`, `close_location`, and `volatility_14`.
+timezone-aware, chronological, valid OHLC for one symbol/timeframe, with at least 35
+rows. The utility excludes the first 34 warm-up rows and emits 12 causal features:
+`return_1`, `return_3`, `return_5`, `return_10`, `range_pct`, `body_pct`, `close_location`,
+`volatility_14`, `ema_gap_12_26`, `rsi_14`, `atr_14_pct`, and `macd_hist_pct`.
 These use only current and historical OHLC; no future candle is used for feature values.
 The JSON report records the input SHA-256 and row counts.
 
