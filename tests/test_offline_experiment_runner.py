@@ -89,6 +89,11 @@ def test_runner_trains_records_compares_and_writes_non_actionable_report(tmp_pat
     assert report_path.is_file()
     assert result.report["interpretation"]["actionable"] is False
     assert len(result.report["paired_comparisons"]) == 2
+    assert {(row["fold_index"], row["partition"]) for row in result.report["paired_comparisons"]} == {
+        (0, "validation"), (0, "test"),
+    }
+    assert all(row["baseline_name"] == "training_prevalence" for row in result.report["paired_comparisons"])
+
     assert set(result.report["fold_results"]) == {"candidate", "training_prevalence"}
     # Completed run IDs are immutable. A rerun must use a new ID rather than
     # clearing the report digest or rewriting the completed attempt.
