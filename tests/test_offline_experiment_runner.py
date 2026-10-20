@@ -282,3 +282,63 @@ def test_runner_rejects_temporally_reordered_validation_and_test(tmp_path):
             exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
         )
     assert ledger.get_run_status("reordered-fold-run")["status"] == "failed"
+
+
+class ChangingConfigModel(ConstantModel):
+    next_config = 0
+
+    def __init__(self):
+        type(self).next_config += 1
+        self.parameter = type(self).next_config
+        self.model_version = "stable-version"
+
+
+def test_runner_rejects_configuration_drift_across_folds_and_records_failure(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(60)]
+    examples = [TimedBinaryExample(t, {"x": float(i % 3)}, i % 2, t) for i, t in enumerate(times)]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (
+            Fold(0, tuple(Bar(t) for t in times[:20]), tuple(Bar(t) for t in times[20:25]), tuple(Bar(t) for t in times[25:30])),
+            Fold(1, tuple(Bar(t) for t in times[:30]), tuple(Bar(t) for t in times[30:35]), tuple(Bar(t) for t in times[35:40])),
+        ),
+    )
+    ledger = PredictionLedger(tmp_path / "ledger.sqlite")
+    ChangingConfigModel.next_config = 0
+    with pytest.raises(ValueError, match="model configuration changed across folds"):
+        run_offline_experiment(
+            plan, examples, feature_names=("x",),
+            manifest={"run_id": "config-drift-run", "dataset_id": "fixture"},
+            model_factories={"candidate": ChangingConfigModel}, ledger=ledger,
+            evaluation_contract={"label_definition": "synthetic fixture only"},
+            exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
+        )
+    assert ledger.get_run_status("config-drift-run")["status"] == "failed"
+
+
+def test_runner_report_contains_environment_and_model_fingerprints(tmp_path):
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    times = [start + timedelta(minutes=5 * i) for i in range(36)]
+    examples = [TimedBinaryExample(t, {"x": float(i % 3)}, i % 2, t) for i, t in enumerate(times)]
+    plan = Plan(
+        "EUR/USD", "M5",
+        (Fold(0, tuple(Bar(t) for t in times[:20]),
+              tuple(Bar(t) for t in times[20:28]),
+              tuple(Bar(t) for t in times[28:36])),),
+    )
+    result = run_offline_experiment(
+        plan, examples, feature_names=("x",),
+        manifest={"run_id": "reproducibility-run", "dataset_id": "fixture"},
+        model_factories={"candidate": ConstantModel},
+        ledger=PredictionLedger(tmp_path / "ledger.sqlite"),
+        evaluation_contract={"label_definition": "synthetic fixture only"},
+        exclusions={"invalid": 0}, block_length=1, bootstrap_resamples=100,
+    )
+    reproducibility = result.report["manifest"]["reproducibility"]
+    assert result.actionable is False
+    assert reproducibility["actionable"] is False
+    assert len(reproducibility["manifest_sha256"]) == 64
+    assert reproducibility["environment"]["python_version"]
+    assert "xgboost" in reproducibility["environment"]["packages"]
+    assert len(reproducibility["initial_model_configuration"]["candidate"]["configuration_sha256"]) == 64
