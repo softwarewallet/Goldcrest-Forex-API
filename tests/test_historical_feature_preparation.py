@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -40,6 +41,8 @@ def test_prepare_features_is_causal_and_records_provenance(tmp_path):
     assert report["output_rows"] == 6
     assert report["warmup_rows_excluded"] == 34
     assert len(report["input_sha256"]) == 64
+    assert len(report["output_sha256"]) == 64
+    assert report["output_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
     assert report["actionable"] is False
     assert set(FEATURE_COLUMNS).issubset(rows[0])
     assert "label" not in rows[0]
