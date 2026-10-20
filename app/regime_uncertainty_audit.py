@@ -194,4 +194,3 @@ def build_regime_uncertainty_audit(fold_results: Mapping[str, Sequence[Mapping[s
             "correctness. Legacy string labels remain visible but are withheld from stratification. Two folds is not "
             "evidence of statistical power. Overlapping test windows may reuse observations. No pooling, significance "
             "testing, model selection, P&L, profitability claim, or execution authorization is produced.")}
-}
