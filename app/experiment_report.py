@@ -18,6 +18,7 @@ from app.oos_period_robustness_audit import build_oos_period_robustness_audit
 from app.regime_uncertainty_audit import build_regime_uncertainty_audit
 from app.block_length_sensitivity_audit import build_block_length_sensitivity_audit
 from app.temporal_calibration_stability import build_temporal_calibration_stability_audit
+from app.calibration_sample_adequacy import build_calibration_sample_adequacy_audit
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -123,6 +124,7 @@ def build_experiment_report(
     temporal_calibration_stability_audit = build_temporal_calibration_stability_audit(
         serialized_folds, manifest_data.get("fold_temporal_boundaries")
     )
+    calibration_sample_adequacy_audit = build_calibration_sample_adequacy_audit(serialized_folds)
 
     contract = _jsonable(dict(evaluation_contract or {}))
     warning_list = [str(item) for item in warnings]
@@ -137,6 +139,7 @@ def build_experiment_report(
         "regime_uncertainty_audit": regime_uncertainty_audit,
         "block_length_sensitivity_audit": block_length_sensitivity_audit,
         "temporal_calibration_stability_audit": temporal_calibration_stability_audit,
+        "calibration_sample_adequacy_audit": calibration_sample_adequacy_audit,
         "exclusions": dict(sorted(normalized_exclusions.items())),
         "evaluation_contract": contract,
         "warnings": warning_list,

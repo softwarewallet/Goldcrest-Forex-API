@@ -19,6 +19,7 @@ from app.regime_uncertainty_audit import build_regime_uncertainty_audit
 from app.fold_stability import summarize_fold_stability
 from app.block_length_sensitivity_audit import build_block_length_sensitivity_audit
 from app.temporal_calibration_stability import build_temporal_calibration_stability_audit
+from app.calibration_sample_adequacy import build_calibration_sample_adequacy_audit
 
 
 def _canonical(value: Mapping[str, Any]) -> bytes:
@@ -280,6 +281,14 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         if _canonical(temporal_calibration) != _canonical(expected_temporal_calibration):
             raise ValueError("temporal_calibration_stability_audit does not match fold metrics and declared temporal boundaries")
 
+    sample_adequacy = report.get("calibration_sample_adequacy_audit")
+    if sample_adequacy is not None:
+        if not isinstance(sample_adequacy, dict):
+            raise ValueError("calibration_sample_adequacy_audit must be a JSON object")
+        expected_sample_adequacy = build_calibration_sample_adequacy_audit(fold_results)
+        if _canonical(sample_adequacy) != _canonical(expected_sample_adequacy):
+            raise ValueError("calibration_sample_adequacy_audit does not match fold metrics")
+
     warnings = report.get("warnings", [])
     if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
         raise ValueError("warnings must be a list of strings")
@@ -292,6 +301,7 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         "oos_period_robustness_audit": oos_robustness,
         "regime_uncertainty_audit": regime_uncertainty,
         "temporal_calibration_stability_audit": temporal_calibration,
+        "calibration_sample_adequacy_audit": sample_adequacy,
         "fold_stability": summarize_fold_stability(fold_results, comparisons),
         "exclusions": dict(sorted(normalized_exclusions.items())), "warnings": warnings,
         "evaluation_contract": report.get("evaluation_contract", {}),
