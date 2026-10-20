@@ -12,3 +12,12 @@ The local read-only dashboard displays candidate-minus-baseline Brier and log-lo
 - The moving-block bootstrap depends on the chosen block length and does not remove multiple-testing bias, nonstationarity, source-data defects, or external feature leakage.
 - These are predictive probability comparisons, not cost-adjusted P&L or proof of profitability.
 - The API remains research-only and non-actionable; no execution or GoldcrestForex Auto Live code is involved.
+
+
+## Reproducibility manifest
+
+Each experiment run now records a nested reproducibility manifest containing Python/platform metadata, versions of NumPy, scikit-learn, LightGBM and XGBoost when installed, model factory defaults/serializable closure configuration, model public configuration, and SHA-256 fingerprints of model implementation source when source is inspectable.
+
+The runner fingerprints these details into the ledger run contract and report. It uses a preflight model instance for the first fold, then requires a fresh instance with the same model version and configuration in later folds. Reused instances or configuration drift fail closed. Non-serializable factory closures must be replaced with explicit JSON-compatible configuration rather than being silently ignored.
+
+The report inspector verifies the aggregate reproducibility fingerprint and the nested factory/model configuration fingerprints. This detects accidental or inconsistent changes; an unsigned self-fingerprint is not proof against a deliberate editor who can recompute hashes. Environment snapshots also do not guarantee bitwise repeatability across hardware, native libraries, or parallel execution. The data-source provenance and causal-feature limitations remain unchanged.
