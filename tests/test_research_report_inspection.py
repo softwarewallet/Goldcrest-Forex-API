@@ -98,7 +98,7 @@ def test_inspection_rejects_nonfinite_json_constants(tmp_path):
 
 def test_inspection_rejects_duplicate_fold_indices_after_valid_fingerprint(tmp_path):
     report = _report()
-    report["fold_results"]["candidate"][0]["fold_index"] = 0
+    report["fold_results"]["candidate"][1]["fold_index"] = 0
     payload = dict(report)
     payload.pop("report_sha256")
     report["report_sha256"] = hashlib.sha256(
