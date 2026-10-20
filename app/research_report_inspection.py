@@ -12,6 +12,8 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.research_reproducibility import verify_reproducibility_manifest
+
 
 def _canonical(value: Mapping[str, Any]) -> bytes:
     try:
@@ -73,6 +75,15 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         raise ValueError("report must contain a non-empty run_id")
     if report.get("schema_version") != 1:
         raise ValueError("unsupported experiment report schema_version")
+
+    manifest = report.get("manifest", {})
+    if not isinstance(manifest, dict):
+        raise ValueError("report manifest must be a JSON object")
+    reproducibility = manifest.get("reproducibility")
+    if reproducibility is not None:
+        if not isinstance(reproducibility, dict):
+            raise ValueError("reproducibility manifest must be a JSON object")
+        verify_reproducibility_manifest(reproducibility)
     interpretation = report.get("interpretation")
     if not isinstance(interpretation, dict) or interpretation.get("actionable") is not False:
         raise ValueError("report must explicitly declare actionable=false")
