@@ -91,3 +91,26 @@ def test_pipeline_rejects_path_collisions_before_writing(tmp_path):
             spread_cost_notes="notes", slippage_and_commission_notes="notes",
             ledger=tmp_path / "ledger.sqlite",
         )
+
+
+
+def test_pipeline_rejects_non_utc_retrieval_metadata_before_writing(tmp_path):
+    raw = tmp_path / "raw.csv"
+    write_ohlc(raw)
+    features = tmp_path / "features.csv"
+    with pytest.raises(ValueError, match="UTC"):
+        pipeline.run_historical_research_pipeline(
+            raw, features_csv=features, labeled_csv=tmp_path / "labeled.csv",
+            feature_report=tmp_path / "features.json", label_report=tmp_path / "labels.json",
+            data_quality_report=tmp_path / "quality.json", report=tmp_path / "combined.json",
+            run_id="invalid-retrieval-time", data_source="fixture", dataset_version="fixture-v1",
+            retrieved_at_utc="2026-10-20T12:30:00+05:30", timestamp_timezone="UTC",
+            duplicate_policy="reject", adjustment_policy="none",
+            license_or_terms_reference="fixture test only",
+            horizon_bars=3, neutral_band_bps=0, neutral_policy="up",
+            initial_train_bars=30, validation_bars=10, test_bars=10, step_bars=10,
+            block_length=2, spread_cost_notes="fixture", slippage_and_commission_notes="fixture",
+            ledger=tmp_path / "ledger.sqlite",
+        )
+    assert not features.exists()
+    assert not (tmp_path / "quality.json").exists()
