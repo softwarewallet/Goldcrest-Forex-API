@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.model_selection_audit import build_model_selection_audit
+from app.oos_period_robustness_audit import build_oos_period_robustness_audit
 
 
 REPORT_SCHEMA_VERSION = 1
@@ -113,6 +114,7 @@ def build_experiment_report(
         normalized_exclusions[name] = count
 
     selection_audit = build_model_selection_audit(serialized_folds, comparisons)
+    oos_robustness_audit = build_oos_period_robustness_audit(serialized_folds, comparisons)
 
     contract = _jsonable(dict(evaluation_contract or {}))
     warning_list = [str(item) for item in warnings]
@@ -123,6 +125,7 @@ def build_experiment_report(
         "fold_results": serialized_folds,
         "paired_comparisons": comparisons,
         "model_selection_audit": selection_audit,
+        "oos_period_robustness_audit": oos_robustness_audit,
         "exclusions": dict(sorted(normalized_exclusions.items())),
         "evaluation_contract": contract,
         "warnings": warning_list,

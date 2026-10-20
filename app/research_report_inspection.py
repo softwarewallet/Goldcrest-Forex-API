@@ -14,6 +14,7 @@ from typing import Any, Mapping
 
 from app.research_reproducibility import verify_reproducibility_manifest
 from app.model_selection_audit import build_model_selection_audit
+from app.oos_period_robustness_audit import build_oos_period_robustness_audit
 from app.fold_stability import summarize_fold_stability
 
 
@@ -208,6 +209,14 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         if _canonical(selection_audit) != _canonical(expected_selection_audit):
             raise ValueError("model_selection_audit does not match validation-only fold metrics")
 
+    oos_robustness = report.get("oos_period_robustness_audit")
+    if oos_robustness is not None:
+        if not isinstance(oos_robustness, dict):
+            raise ValueError("oos_period_robustness_audit must be a JSON object")
+        expected_oos_robustness = build_oos_period_robustness_audit(fold_results, comparisons)
+        if _canonical(oos_robustness) != _canonical(expected_oos_robustness):
+            raise ValueError("oos_period_robustness_audit does not match out-of-sample fold metrics")
+
     warnings = report.get("warnings", [])
     if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
         raise ValueError("warnings must be a list of strings")
@@ -217,6 +226,7 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         "schema_version": report["schema_version"], "scope": "OFFLINE_RESEARCH_ONLY",
         "actionable": False, "models": models, "paired_comparisons": comparisons,
         "model_selection_audit": selection_audit,
+        "oos_period_robustness_audit": oos_robustness,
         "fold_stability": summarize_fold_stability(fold_results, comparisons),
         "exclusions": dict(sorted(normalized_exclusions.items())), "warnings": warnings,
         "evaluation_contract": report.get("evaluation_contract", {}),
