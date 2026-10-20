@@ -64,6 +64,7 @@ export default function ResearchReportPanel() {
     || record(valueAt(manifest, "dataset_provenance"));
   const quality = record(valueAt(report, "data_quality_audit"));
   const lineage = record(valueAt(report, "artifact_lineage"));
+  const temporalAudit = record(valueAt(manifest, "temporal_integrity_audit"));
   const features = record(valueAt(report, "feature_preparation"));
   const labels = record(valueAt(report, "label_preparation"));
   const foldResults = record(valueAt(evaluation, "fold_results"));
@@ -109,6 +110,26 @@ export default function ResearchReportPanel() {
           <small>EVALUATION</small><code>{textValue(valueAt(lineage, "evaluation_dataset_sha256"))}</code>
         </div>
         <p className="research-report-note">The pipeline checks byte-level hash continuity between generated artifacts and the evaluated CSV. This proves artifact linkage, not the authenticity of upstream data or the absence of leakage in externally supplied features.</p>
+      </div>}
+      {temporalAudit && <div className="research-lineage">
+        <div><b>TEMPORAL INTEGRITY AUDIT</b><span>{valueAt(temporalAudit, "test_windows_overlap") === true ? "OVERLAPPING TEST WINDOWS" : "NO REPEATED TEST TIMESTAMPS"}</span></div>
+        <p>Fold boundaries, label maturity at each training cutoff, and repeated out-of-sample timestamps.</p>
+        <div className="research-report-metrics">
+          <Metric label="FOLDS" value={textValue(valueAt(temporalAudit, "fold_count"))} note="Chronological partitions" />
+          <Metric label="TEST OBSERVATIONS" value={textValue(valueAt(temporalAudit, "test_observations_across_folds"))} note="Counted across folds" />
+          <Metric label="UNIQUE TEST TIMES" value={textValue(valueAt(temporalAudit, "unique_test_timestamps"))} note="Distinct timestamps" />
+          <Metric label="REPEATED OBSERVATIONS" value={textValue(valueAt(temporalAudit, "repeated_test_timestamp_observations"))} note="Do not treat as independent" />
+          <Metric label="UNMATURED TRAIN LABELS" value={textValue(valueAt(temporalAudit, "training_rows_excluded_unmatured_across_folds"))} note="Excluded at training cutoffs" />
+        </div>
+        <p className="research-report-note">{textValue(valueAt(temporalAudit, "interpretation"))}</p>
+        <p className="research-report-note">Feature causality verified: {valueAt(temporalAudit, "feature_causality_verified") === true ? "yes" : "no"} · Provider authenticity verified: {valueAt(temporalAudit, "provider_authenticity_verified") === true ? "yes" : "no"}. Hash lineage does not prove either.</p>
+        {Array.isArray(valueAt(temporalAudit, "folds")) && <details><summary>Inspect fold boundaries and purge counts</summary><div className="research-model-table-wrap"><table className="research-model-table"><thead><tr><th>FOLD</th><th>TRAIN START → END (UTC)</th><th>TRAIN ROWS</th><th>UNMATURED EXCLUDED</th><th>VALIDATION START → END</th><th>TEST START → END</th><th>PURGED</th></tr></thead><tbody>{(valueAt(temporalAudit, "folds") as unknown[]).map(item => {
+          const fold = record(item);
+          const train = record(valueAt(fold, "train"));
+          const validation = record(valueAt(fold, "validation"));
+          const test = record(valueAt(fold, "test"));
+          return <tr key={textValue(valueAt(fold, "fold_index"))}><td>{textValue(valueAt(fold, "fold_index"))}</td><td>{textValue(valueAt(train, "start_utc"))}<br />{textValue(valueAt(train, "end_utc"))}</td><td>{textValue(valueAt(train, "rows_label_matured_at_cutoff"))} / {textValue(valueAt(train, "rows_available"))}</td><td>{textValue(valueAt(train, "rows_excluded_unmatured"))}</td><td>{textValue(valueAt(validation, "start_utc"))}<br />{textValue(valueAt(validation, "end_utc"))}</td><td>{textValue(valueAt(test, "start_utc"))}<br />{textValue(valueAt(test, "end_utc"))}</td><td>{textValue(valueAt(fold, "purged_rows"))}</td></tr>;
+        })}</tbody></table></div></details>}
       </div>}
       <div className="research-report-metrics">
         <Metric label="SOURCE ROWS" value={textValue(valueAt(quality, "row_count") ?? valueAt(features, "input_rows"))} note="Raw OHLC rows" />
