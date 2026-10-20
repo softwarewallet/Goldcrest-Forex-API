@@ -14,6 +14,67 @@
   beside the LLM direction. It does not average probabilities, infer calibrated
   confidence, automatically select a winner, or authorize trading.
 
+## Historical CSV evaluation CLI
+
+A reproducible, offline evaluation entry point is available as
+`python -m app.historical_tabular_research`. It uses the existing expanding-window,
+purged walk-forward pipeline and compares XGBoost and LightGBM against a
+training-prevalence baseline. The CLI writes a JSON report and a SQLite prediction
+ledger; every output remains `actionable=false`.
+
+Example invocation (replace the paths, dataset details, feature names and split sizes
+with values appropriate to the supplied historical dataset):
+
+```bash
+python -m app.historical_tabular_research \
+  --csv data/historical/EURUSD_M15.csv \
+  --features ema_gap,rsi_14,atr_14,return_5 \
+  --run-id eurusd-m15-xgb-lgbm-2026-10-20-01 \
+  --data-source "documented provider/export" \
+  --dataset-version "export-revision-1" \
+  --label-definition "Externally prepared label definition; state exact horizon and tie/neutral rule" \
+  --class-1-means UP \
+  --initial-train-bars 2000 \
+  --validation-bars 400 \
+  --test-bars 400 \
+  --step-bars 400 \
+  --horizon-bars 3 \
+  --block-length 10 \
+  --report reports/eurusd-m15-research.json \
+  --spread-cost-notes "Document quote source and spread assumptions" \
+  --slippage-and-commission-notes "Document instrument-specific assumptions"
+```
+
+The CSV must include these columns:
+
+- `symbol,timeframe,timestamp,open,high,low,close`
+- `label,label_available_at`
+- Every numeric feature named in `--features`
+
+Requirements:
+
+1. Each row must represent one timestamp for a single symbol/timeframe; timestamps must
+   be timezone-aware ISO-8601 and already chronological. The loader does not sort,
+   silently drop rows, impute values, or create labels.
+2. `label` must be explicitly precomputed as integer `0` or `1`; `label_available_at`
+   records when its outcome became known. The CLI requires the exact label definition
+   and whether class 1 means UP or DOWN. The dataset producer must guarantee features
+   were available at the row timestamp; the CLI cannot prove feature provenance from
+   numeric values alone.
+3. Choose `--horizon-bars` to match the label's actual outcome horizon. The walk-forward
+   planner uses it to purge partition boundaries, and the evaluator excludes training
+   labels that had not matured by the training cutoff.
+4. Dataset SHA-256, feature schema fingerprint, split parameters, label contract, and
+   assumptions are recorded for reproducibility. Use a new `--run-id` for each run;
+   completed ledger run IDs are immutable.
+5. The current metrics are predictive probability metrics (Brier score, log loss, and
+   fixed-0.5 accuracy), not strategy P&L. Spread/slippage/commission notes are captured
+   as provenance only; this CLI does not simulate trades or apply costs to the metrics.
+   Do not infer profitability from these results.
+6. Treat validation as the model/feature development partition. Keep final-test results
+   untouched until decisions are frozen. There is no automatic model selection or
+   promotion.
+
 ## Important configuration contract
 
 1. Pin the feature names and their order in the dataset/run manifest.
