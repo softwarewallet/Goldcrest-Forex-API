@@ -237,3 +237,26 @@ as descriptive fold averages only, not as a pooled out-of-sample score.
 The panel rejects execution-scoped/actionable reports and clearly states that predictive
 metrics do not establish profitability. It is a review surface, not a model promotion,
 prediction-serving, or order-execution control.
+
+
+## Strict source provenance contract
+
+The historical evaluation CLI and one-command pipeline require explicit values for
+`--retrieved-at-utc`, `--timestamp-timezone`, `--duplicate-policy`,
+`--adjustment-policy`, and `--license-or-terms-reference`, in addition to source name
+and dataset version. Retrieval time must be an ISO-8601 UTC timestamp (`Z` or
+`+00:00`); a local timestamp without an offset or a non-UTC offset is rejected.
+Do not enter example metadata as facts: replace every example with the actual provider
+export details and terms.
+
+The report binds the declarations to the exact evaluated CSV SHA-256 and derives row
+count, instrument and timeframe from parsed data. It records first/last UTC timestamps
+and an explicit duplicate policy. Verification proves internal consistency of the
+snapshot hash and parsed dataset facts; it does **not** authenticate the provider, verify
+that the license statement is legally correct, or prove that upstream features were
+point-in-time. Keep the original raw provider snapshot and its SHA-256 alongside the
+derived labeled artifact so lineage can be independently checked.
+
+No real-data evaluation is run by CI fixtures. A report from synthetic unit-test fixtures
+is not market evidence, and a complete provenance manifest is necessary but not sufficient
+to establish model quality.
