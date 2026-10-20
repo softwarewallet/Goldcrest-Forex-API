@@ -202,7 +202,8 @@ def run_offline_experiment(
                             probability=probability, label=row.label,
                             label_available_at=row.label_available_at, actionable=False,
                         ))
-                    return _metrics([row.label for row in rows], probabilities)
+                    return _metrics([row.label for row in rows], probabilities,
+                                    observation_timestamps=[row.timestamp for row in rows])
 
                 fold_results[name].append(ModelFoldResult(
                     fold_index=fold.fold_index,
