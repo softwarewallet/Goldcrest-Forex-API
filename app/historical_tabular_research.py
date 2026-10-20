@@ -58,8 +58,6 @@ def load_historical_dataset(
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         columns = set(reader.fieldnames or ())
-        missing = REQUIRED_COLUMNS | set(names) - columns
-        # Parentheses matter: required base columns and requested features are all required.
         missing = (REQUIRED_COLUMNS | set(names)) - columns
         if missing:
             raise ValueError(f"CSV is missing required columns: {sorted(missing)}")
