@@ -30,3 +30,102 @@
 @media(max-width:420px){.endpoint-health-grid{grid-template-columns:1fr}}
 
 .endpoint-health-item .endpoint-last-success{color:#4d9b8e;font-size:7px;letter-spacing:.2px}
+
+
+/* Local, read-only historical research report review */
+.research-report-panel {
+  margin-top: 22px;
+  padding: 24px;
+  border: 1px solid rgba(108, 129, 181, .25);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(19, 28, 52, .82), rgba(9, 15, 30, .94));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .16);
+}
+.research-report-intro, .research-report-note {
+  color: var(--muted, #9aa8c7);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.research-report-intro { max-width: 820px; margin: 8px 0 18px; }
+.research-report-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(91, 197, 229, .35);
+  border-radius: 9px;
+  color: #8be6f3;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  cursor: pointer;
+}
+.research-report-upload input { max-width: 260px; color: #b6c3df; font-size: 11px; letter-spacing: normal; }
+.research-report-empty, .research-report-error, .research-report-note {
+  margin-top: 14px;
+  padding: 13px 15px;
+  border-radius: 9px;
+  background: rgba(5, 10, 23, .48);
+  color: #a5b3d1;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.research-report-error { color: #ff9fae; border: 1px solid rgba(255, 105, 130, .3); }
+.research-report-file {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 70px minmax(0, 1fr) 55px minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: center;
+  margin-top: 20px;
+  padding: 13px 15px;
+  border-radius: 10px;
+  background: rgba(5, 10, 23, .55);
+}
+.research-report-file span { color: #7484a8; font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+.research-report-file b { overflow-wrap: anywhere; color: #d9e4ff; font-size: 11px; font-weight: 650; }
+.research-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.research-report-metric {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(110, 134, 190, .16);
+  border-radius: 10px;
+  background: rgba(20, 31, 58, .5);
+}
+.research-report-metric span { display: block; color: #8393b5; font-size: 9px; font-weight: 800; letter-spacing: .06em; }
+.research-report-metric strong { display: block; margin-top: 8px; color: #e6edff; font-size: 22px; font-weight: 700; }
+.research-report-metric small { display: block; margin-top: 5px; color: #7686a8; font-size: 10px; }
+.research-model-table-wrap { margin-top: 20px; overflow-x: auto; }
+.research-model-table-wrap h3 { margin: 0 0 12px; color: #dbe6ff; font-size: 13px; }
+.research-model-table { width: 100%; border-collapse: collapse; min-width: 620px; }
+.research-model-table th, .research-model-table td { padding: 12px 14px; border-bottom: 1px solid rgba(114, 135, 181, .16); text-align: left; }
+.research-model-table th { color: #7f91b8; font-size: 9px; letter-spacing: .07em; }
+.research-model-table td { color: #c7d4f1; font-size: 12px; }
+.research-model-table td:first-child { color: #8be6f3; font-weight: 700; }
+.research-report-safety {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(79, 209, 160, .2);
+  border-radius: 9px;
+  background: rgba(31, 104, 84, .09);
+}
+.research-report-safety b { color: #6be0b5; font-size: 9px; letter-spacing: .07em; }
+.research-report-safety span { color: #8ea8b2; font-size: 11px; }
+@media (max-width: 1100px) {
+  .research-report-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .research-report-file { grid-template-columns: 110px minmax(0, 1fr); }
+}
+@media (max-width: 620px) {
+  .research-report-panel { padding: 16px; }
+  .research-report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .research-report-upload { display: flex; align-items: flex-start; flex-direction: column; }
+  .research-report-upload input { max-width: 100%; }
+}
