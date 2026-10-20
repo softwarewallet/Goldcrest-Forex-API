@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
+from app.historical_data_quality import audit_historical_ohlc
 from app.historical_feature_preparation import FEATURE_COLUMNS, prepare_features
 from app.historical_label_preparation import label_historical_features
 from app.historical_tabular_research import main as run_research
@@ -22,6 +23,7 @@ def run_historical_research_pipeline(
     labeled_csv: str | Path,
     feature_report: str | Path,
     label_report: str | Path,
+    data_quality_report: str | Path,
     report: str | Path,
     run_id: str,
     data_source: str,
@@ -45,13 +47,14 @@ def run_historical_research_pipeline(
     labeled_path = Path(labeled_csv).resolve()
     feature_report_path = Path(feature_report).resolve()
     label_report_path = Path(label_report).resolve()
+    data_quality_report_path = Path(data_quality_report).resolve()
     report_path = Path(report).resolve()
     evaluation_report_path = report_path.with_name(report_path.stem + ".evaluation.json")
     ledger_path = Path(ledger).resolve()
 
     outputs = [
         features_path, labeled_path, feature_report_path, label_report_path,
-        report_path, evaluation_report_path, ledger_path,
+        data_quality_report_path, report_path, evaluation_report_path, ledger_path,
     ]
     if len(set(outputs)) != len(outputs):
         raise ValueError("all output/report/ledger paths must be distinct")
@@ -63,6 +66,19 @@ def run_historical_research_pipeline(
         raise ValueError("train, validation, test, and step sizes must all be positive")
     if block_length < 1 or bootstrap_resamples < 1:
         raise ValueError("block_length and bootstrap_resamples must be positive")
+
+    quality_audit = audit_historical_ohlc(raw)
+    data_quality_report_path.parent.mkdir(parents=True, exist_ok=True)
+    data_quality_report_path.write_text(
+        json.dumps(quality_audit, indent=2, sort_keys=True) + "\\n", encoding="utf-8"
+    )
+    if quality_audit["structurally_valid"] is not True:
+        raise ValueError(
+            "raw OHLC failed structural quality checks; inspect the data-quality report "
+            f"(invalid={quality_audit['invalid_row_count']}, "
+            f"duplicates={quality_audit['duplicate_timestamp_count']}, "
+            f"non_monotonic={quality_audit['non_monotonic_interval_count']})"
+        )
 
     feature_audit = prepare_features(raw, features_path)
     feature_report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +126,7 @@ def run_historical_research_pipeline(
         "pipeline": "raw_ohlc_to_walk_forward_research",
         "raw_input_path": str(raw),
         "raw_input_sha256": feature_audit["input_sha256"],
+        "data_quality_audit": quality_audit,
         "feature_preparation": feature_audit,
         "label_preparation": label_audit,
         "evaluation": evaluation,
@@ -117,6 +134,7 @@ def run_historical_research_pipeline(
             "features_csv": str(features_path),
             "labeled_csv": str(labeled_path),
             "feature_report": str(feature_report_path),
+            "data_quality_report": str(data_quality_report_path),
             "label_report": str(label_report_path),
             "evaluation_report": str(evaluation_report_path),
             "prediction_ledger": str(ledger_path),
@@ -146,6 +164,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--labeled-csv", required=True)
     parser.add_argument("--feature-report", required=True)
     parser.add_argument("--label-report", required=True)
+    parser.add_argument("--data-quality-report", required=True, help="JSON source OHLC quality/cadence audit")
     parser.add_argument("--report", required=True, help="Combined JSON pipeline report")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--data-source", required=True)
@@ -169,7 +188,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     summary = run_historical_research_pipeline(
         args.input_csv, features_csv=args.features_csv, labeled_csv=args.labeled_csv,
-        feature_report=args.feature_report, label_report=args.label_report, report=args.report,
+        feature_report=args.feature_report, label_report=args.label_report,
+        data_quality_report=args.data_quality_report, report=args.report,
         run_id=args.run_id, data_source=args.data_source, dataset_version=args.dataset_version,
         horizon_bars=args.horizon_bars, neutral_band_bps=args.neutral_band_bps,
         neutral_policy=args.neutral_policy, initial_train_bars=args.initial_train_bars,
