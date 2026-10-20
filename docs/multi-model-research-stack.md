@@ -32,6 +32,11 @@ python -m app.historical_tabular_research \
   --run-id eurusd-m15-xgb-lgbm-2026-10-20-01 \
   --data-source "documented provider/export" \
   --dataset-version "export-revision-1" \
+  --retrieved-at-utc "2026-10-20T07:00:00Z" \
+  --timestamp-timezone "UTC" \
+  --duplicate-policy "reject duplicate timestamps" \
+  --adjustment-policy "replace with the actual provider adjustment convention" \
+  --license-or-terms-reference "replace with the actual provider license or terms" \
   --label-definition "Externally prepared label definition; state exact horizon and tie/neutral rule" \
   --class-1-means UP \
   --initial-train-bars 2000 \
@@ -110,9 +115,10 @@ python -m app.historical_feature_preparation \
 ```
 
 Input columns are `symbol,timeframe,timestamp,open,high,low,close`. The input must be
-timezone-aware, chronological, valid OHLC for one symbol/timeframe, with at least 16
-rows. The utility excludes the first 34 warm-up rows and emits `return_1`, `return_3`,
-`return_5`, `range_pct`, `body_pct`, `close_location`, and `volatility_14`.
+timezone-aware, chronological, valid OHLC for one symbol/timeframe, with at least 35
+rows. The utility excludes the first 34 warm-up rows and emits 12 causal features:
+`return_1`, `return_3`, `return_5`, `return_10`, `range_pct`, `body_pct`, `close_location`,
+`volatility_14`, `ema_gap_12_26`, `rsi_14`, `atr_14_pct`, and `macd_hist_pct`.
 These use only current and historical OHLC; no future candle is used for feature values.
 The JSON report records the input SHA-256 and row counts.
 
@@ -175,6 +181,11 @@ python -m app.historical_research_pipeline \
   --run-id eurusd-m15-pipeline-2026-10-20-01 \
   --data-source "documented provider/export" \
   --dataset-version "export-revision-1" \
+  --retrieved-at-utc "2026-10-20T07:00:00Z" \
+  --timestamp-timezone "UTC" \
+  --duplicate-policy "reject duplicate timestamps" \
+  --adjustment-policy "replace with the actual provider adjustment convention" \
+  --license-or-terms-reference "replace with the actual provider license or terms" \
   --horizon-bars 3 \
   --neutral-band-bps 0.5 \
   --neutral-policy error \
@@ -237,3 +248,26 @@ as descriptive fold averages only, not as a pooled out-of-sample score.
 The panel rejects execution-scoped/actionable reports and clearly states that predictive
 metrics do not establish profitability. It is a review surface, not a model promotion,
 prediction-serving, or order-execution control.
+
+
+## Strict source provenance contract
+
+The historical evaluation CLI and one-command pipeline require explicit values for
+`--retrieved-at-utc`, `--timestamp-timezone`, `--duplicate-policy`,
+`--adjustment-policy`, and `--license-or-terms-reference`, in addition to source name
+and dataset version. Retrieval time must be an ISO-8601 UTC timestamp (`Z` or
+`+00:00`); a local timestamp without an offset or a non-UTC offset is rejected.
+Do not enter example metadata as facts: replace every example with the actual provider
+export details and terms.
+
+The report binds the declarations to the exact evaluated CSV SHA-256 and derives row
+count, instrument and timeframe from parsed data. It records first/last UTC timestamps
+and an explicit duplicate policy. Verification proves internal consistency of the
+snapshot hash and parsed dataset facts; it does **not** authenticate the provider, verify
+that the license statement is legally correct, or prove that upstream features were
+point-in-time. Keep the original raw provider snapshot and its SHA-256 alongside the
+derived labeled artifact so lineage can be independently checked.
+
+No real-data evaluation is run by CI fixtures. A report from synthetic unit-test fixtures
+is not market evidence, and a complete provenance manifest is necessary but not sufficient
+to establish model quality.

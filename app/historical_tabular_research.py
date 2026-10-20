@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
+from app.dataset_provenance import build_dataset_provenance, parse_retrieved_at_utc, verify_dataset_provenance
 from app.evaluation import ForexBar, validate_bars
 from app.model_walk_forward import TimedBinaryExample
 from app.models.tabular import feature_schema_fingerprint
@@ -134,6 +135,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", required=True, help="Unique immutable run ID; use a new ID for every run")
     parser.add_argument("--data-source", required=True, help="Origin of historical data")
     parser.add_argument("--dataset-version", required=True, help="Provider/export version or dataset revision")
+    parser.add_argument("--retrieved-at-utc", required=True, help="Declared snapshot retrieval time in UTC ISO-8601")
+    parser.add_argument("--timestamp-timezone", required=True, help="Timezone used by the source/export timestamps")
+    parser.add_argument("--duplicate-policy", required=True, help="Explicit duplicate timestamp policy")
+    parser.add_argument("--adjustment-policy", required=True, help="Corporate-action/price-adjustment policy or explicit none")
+    parser.add_argument("--license-or-terms-reference", required=True, help="Data license or terms reference; do not invent")
     parser.add_argument("--label-definition", required=True, help="Exact definition of the externally prepared binary label")
     parser.add_argument("--class-1-means", required=True, choices=("UP", "DOWN"), help="Explicit semantic meaning of label 1")
     parser.add_argument("--initial-train-bars", type=int, required=True)
@@ -157,6 +163,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     bars, examples, dataset_sha256 = load_historical_dataset(args.csv, feature_names)
 
     symbol, timeframe = bars[0].symbol, bars[0].timeframe
+    provenance_record = build_dataset_provenance(
+        source_name=args.data_source,
+        source_version=args.dataset_version,
+        snapshot_sha256=dataset_sha256,
+        retrieved_at=parse_retrieved_at_utc(args.retrieved_at_utc),
+        timestamp_timezone=args.timestamp_timezone,
+        duplicate_policy=args.duplicate_policy,
+        adjustment_policy=args.adjustment_policy,
+        license_or_terms_reference=args.license_or_terms_reference,
+        instruments=[symbol],
+        timeframe=timeframe,
+        row_count=len(bars),
+    )
+    provenance_verification = verify_dataset_provenance(
+        provenance_record,
+        actual_snapshot_sha256=dataset_sha256,
+        actual_row_count=len(bars),
+        actual_instruments=[symbol],
+        actual_timeframe=timeframe,
+    )
     plan = generate_walk_forward_folds(
         bars,
         initial_train_bars=args.initial_train_bars,
@@ -171,6 +197,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "dataset_id": args.dataset_version,
         "dataset_sha256": dataset_sha256,
         "data_source": args.data_source,
+        "dataset_provenance": provenance_record.to_dict(),
+        "dataset_provenance_verification": provenance_verification,
         "symbol": symbol,
         "timeframe": timeframe,
         "feature_names": list(feature_names),
@@ -185,6 +213,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "data_source": args.data_source,
         "dataset_version": args.dataset_version,
         "dataset_sha256": dataset_sha256,
+        "retrieved_at_utc": provenance_record.retrieved_at,
+        "timestamp_timezone": provenance_record.timestamp_timezone,
+        "duplicate_policy": provenance_record.duplicate_policy,
+        "adjustment_policy": provenance_record.adjustment_policy,
+        "license_or_terms_reference": provenance_record.license_or_terms_reference,
+        "dataset_provenance": provenance_record.to_dict(),
+        "dataset_provenance_verification": provenance_verification,
         "symbol": symbol,
         "timeframe": timeframe,
         "feature_names": list(feature_names),

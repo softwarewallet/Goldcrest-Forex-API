@@ -57,10 +57,14 @@ export default function ResearchReportPanel() {
     }
   };
 
+  const evaluation = record(valueAt(report, "evaluation")) || report;
+  const evaluationContract = record(valueAt(evaluation, "evaluation_contract"));
+  const manifest = record(valueAt(evaluation, "manifest"));
+  const provenance = record(valueAt(evaluationContract, "dataset_provenance"))
+    || record(valueAt(manifest, "dataset_provenance"));
   const quality = record(valueAt(report, "data_quality_audit"));
   const features = record(valueAt(report, "feature_preparation"));
   const labels = record(valueAt(report, "label_preparation"));
-  const evaluation = record(valueAt(report, "evaluation")) || report;
   const foldResults = record(valueAt(evaluation, "fold_results"));
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
@@ -80,6 +84,20 @@ export default function ResearchReportPanel() {
     {!report && !error && <div className="research-report-empty">No report loaded. Use a combined report produced by <code>app.historical_research_pipeline</code>.</div>}
     {report && <>
       <div className="research-report-file"><span>LOADED ARTIFACT</span><b>{fileName}</b><span>RUN ID</span><b>{textValue(valueAt(record(valueAt(report, "evaluation")), "run_id") ?? valueAt(report, "run_id"))}</b><span>STATUS</span><b>{actionable ? "NON-ACTIONABLE RESEARCH" : "REVIEW REQUIRED"}</b></div>
+      {provenance && <div className="research-provenance">
+        <div className="research-provenance-heading">DATASET PROVENANCE <span>{valueAt(provenance, "provenance_complete") === true || valueAt(evaluationContract, "dataset_provenance_verification") !== undefined ? "DECLARED / HASH-CHECKED" : "DECLARATIONS"}</span></div>
+        <div className="research-provenance-grid">
+          <div><small>SOURCE</small><b>{textValue(valueAt(provenance, "source_name"))}</b></div>
+          <div><small>VERSION</small><b>{textValue(valueAt(provenance, "source_version"))}</b></div>
+          <div><small>RETRIEVED (UTC)</small><b>{textValue(valueAt(provenance, "retrieved_at"))}</b></div>
+          <div><small>TIMEZONE</small><b>{textValue(valueAt(provenance, "timestamp_timezone"))}</b></div>
+          <div><small>ADJUSTMENTS</small><b>{textValue(valueAt(provenance, "adjustment_policy"))}</b></div>
+          <div><small>LICENSE / TERMS</small><b>{textValue(valueAt(provenance, "license_or_terms_reference"))}</b></div>
+          <div><small>SNAPSHOT SHA-256</small><b>{textValue(valueAt(provenance, "snapshot_sha256"))}</b></div>
+          <div><small>ROWS / SYMBOL / TF</small><b>{textValue(valueAt(provenance, "row_count"))} / {textValue(Array.isArray(valueAt(provenance, "instruments")) ? (valueAt(provenance, "instruments") as unknown[]).join(", ") : "—")} / {textValue(valueAt(provenance, "timeframe"))}</b></div>
+        </div>
+        <p className="research-report-note">Hash verification checks artifact consistency, not provider authenticity, legal license validity, or upstream feature causality. Confirm source declarations against the original provider export.</p>
+      </div>}
       <div className="research-report-metrics">
         <Metric label="SOURCE ROWS" value={textValue(valueAt(quality, "row_count") ?? valueAt(features, "input_rows"))} note="Raw OHLC rows" />
         <Metric label="INVALID ROWS" value={textValue(valueAt(quality, "invalid_row_count") ?? 0)} note="Structural validation" />

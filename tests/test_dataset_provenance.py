@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.dataset_provenance import build_dataset_provenance, verify_dataset_provenance
+from app.dataset_provenance import build_dataset_provenance, parse_retrieved_at_utc, verify_dataset_provenance
 
 
 def _provenance(**overrides):
@@ -91,3 +91,22 @@ def test_provenance_mapping_rejects_unknown_schema():
         verify_dataset_provenance(payload, actual_snapshot_sha256="a" * 64,
                                   actual_row_count=100, actual_instruments=["EUR/USD", "GBP/USD"],
                                   actual_timeframe="M5")
+
+
+
+@pytest.mark.parametrize("value", [
+    "2026-10-20T07:30:00Z",
+    "2026-10-20T07:30:00+00:00",
+])
+def test_retrieval_timestamp_requires_and_normalizes_explicit_utc(value):
+    assert parse_retrieved_at_utc(value).utcoffset().total_seconds() == 0
+
+
+@pytest.mark.parametrize("value", [
+    "2026-10-20T07:30:00",
+    "2026-10-20T13:00:00+05:30",
+    "not-a-time",
+])
+def test_retrieval_timestamp_rejects_naive_or_non_utc_values(value):
+    with pytest.raises(ValueError, match="UTC"):
+        parse_retrieved_at_utc(value)
