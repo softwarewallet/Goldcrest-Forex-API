@@ -37,6 +37,7 @@ def _report():
         },
         paired_comparisons=[
             {"sample_count": 12, "candidate_name": "candidate", "baseline_name": "prevalence",
+             "fold_index": 0, "partition": "test",
              "comparison": {"brier_difference": -0.04}, "actionable": False}
         ],
         exclusions={"unlabeled": 3, "ambiguous": 1},
@@ -151,4 +152,47 @@ def test_inspection_verifies_nested_reproducibility_manifest(tmp_path):
     ).hexdigest()
     path.write_text(json.dumps(tampered), encoding="utf-8")
     with pytest.raises(ValueError, match="reproducibility manifest fingerprint mismatch"):
+        inspect_experiment_report(path)
+
+
+
+def _rewrite_fingerprint(report):
+    payload = dict(report)
+    payload.pop("report_sha256", None)
+    report["report_sha256"] = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    return report
+
+
+def test_inspection_rejects_comparison_with_missing_model_fold(tmp_path):
+    report = _report()
+    report["paired_comparisons"][0]["baseline_name"] = "unknown-model"
+    _rewrite_fingerprint(report)
+    path = tmp_path / "dangling-comparison.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="baseline_name must reference a reported model"):
+        inspect_experiment_report(path)
+
+
+def test_inspection_rejects_paired_sample_count_mismatch(tmp_path):
+    report = _report()
+    report["paired_comparisons"][0]["sample_count"] = 11
+    _rewrite_fingerprint(report)
+    path = tmp_path / "mismatched-comparison.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="sample_count does not match"):
+        inspect_experiment_report(path)
+
+
+def test_inspection_rejects_duplicate_comparison_identity(tmp_path):
+    report = _report()
+    report["paired_comparisons"].append(dict(report["paired_comparisons"][0]))
+    _rewrite_fingerprint(report)
+    path = tmp_path / "duplicate-comparison.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate paired comparison identity"):
         inspect_experiment_report(path)
