@@ -95,3 +95,28 @@ Requirements:
 This is an offline/research utility. It does not change `/api/v1/predictions`, the
 current fail-closed `NO_TRADE` policy, broker integration, GoldcrestForex, Auto Live,
 position sizing, or execution/risk gates. No training occurs in API request handlers.
+
+
+## Preparing raw historical OHLC data
+
+Before labels are defined, a label-free preparation utility can validate a provider-exported
+OHLC CSV and compute a transparent causal feature set:
+
+```bash
+python -m app.historical_feature_preparation \
+  --input-csv data/historical/EURUSD_M15_raw.csv \
+  --output-csv data/historical/EURUSD_M15_features.csv \
+  --report reports/EURUSD_M15_feature_audit.json
+```
+
+Input columns are `symbol,timeframe,timestamp,open,high,low,close`. The input must be
+timezone-aware, chronological, valid OHLC for one symbol/timeframe, with at least 16
+rows. The utility excludes the first 15 warm-up rows and emits `return_1`, `return_3`,
+`return_5`, `range_pct`, `body_pct`, `close_location`, and `volatility_14`.
+These use only current and historical OHLC; no future candle is used for feature values.
+The JSON report records the input SHA-256 and row counts.
+
+This command intentionally does **not** create labels. It is not a replacement for the
+labeled CSV contract above. The prediction horizon, neutral/tie handling, and label
+availability timestamps must be defined explicitly before the evaluation CLI can run.
+The resulting features and report are offline research artifacts only.
