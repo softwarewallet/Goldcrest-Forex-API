@@ -157,3 +157,81 @@ def compare_research_outputs(
         fusion_applied=False,
         actionable=False,
     )
+
+
+
+async def compare_with_llm_gateway(
+    tabular_outputs: Mapping[str, BinaryModelOutput],
+    *,
+    snapshot: Mapping[str, object],
+    client: object,
+    positive_class_direction: PositiveClassDirection = "UP",
+    lower_threshold: float = 0.45,
+    upper_threshold: float = 0.55,
+) -> ResearchStackComparison:
+    """Call the existing single LLM gateway and compare it with tabular candidates.
+
+    Only a strict allowlist of point-in-time features is sent. The gateway client must
+    expose async analyze(payload) -> (model_id, raw_text). A gateway that orchestrates
+    Qwen internally can do so behind this same endpoint; this function never opens a
+    second Qwen connection.
+    """
+    import math
+
+    allowed_features = {
+        "last_close", "ema_9", "ema_21", "rsi_14", "atr_14",
+        "return_over_window", "quantitative_regime",
+    }
+    if not isinstance(snapshot, Mapping):
+        raise ValueError("snapshot must be a mapping")
+    symbol = snapshot.get("symbol")
+    timeframe = snapshot.get("timeframe")
+    snapshot_at = snapshot.get("snapshot_at")
+    raw_features = snapshot.get("features")
+    if not isinstance(symbol, str) or not symbol or len(symbol) > 16:
+        raise ValueError("snapshot symbol is invalid")
+    if not isinstance(timeframe, str) or timeframe not in {"M1", "M5", "M15", "M30", "H1", "H4", "D1"}:
+        raise ValueError("snapshot timeframe is invalid")
+    if not isinstance(snapshot_at, str) or not snapshot_at.strip():
+        raise ValueError("snapshot_at must be an explicit timestamp string")
+    if not isinstance(raw_features, Mapping):
+        raise ValueError("snapshot features must be a mapping")
+    safe_features: dict[str, float | str] = {}
+    for name, value in raw_features.items():
+        if name not in allowed_features:
+            continue
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            number = float(value)
+            if math.isfinite(number):
+                safe_features[name] = number
+        elif name == "quantitative_regime" and isinstance(value, str):
+            safe_features[name] = value[:40]
+    if not safe_features:
+        raise ValueError("snapshot has no allowlisted finite features")
+
+    analyze = getattr(client, "analyze", None)
+    if not callable(analyze):
+        raise ValueError("client must expose async analyze(payload)")
+    model_id, raw_output = await analyze({
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "snapshot_at": snapshot_at,
+        "features": safe_features,
+        "research_scope": "RESEARCH_ONLY",
+        "actionable": False,
+    })
+    if not isinstance(model_id, str) or not model_id.strip() or not isinstance(raw_output, str):
+        raise ValueError("LLM gateway returned invalid model provenance or output")
+    from app.prediction_service import _parse_model_output
+
+    decision, _regime, _reason_codes = _parse_model_output(raw_output)
+    return compare_research_outputs(
+        tabular_outputs,
+        llm_decision=decision.value,
+        llm_model_id=model_id,
+        positive_class_direction=positive_class_direction,
+        lower_threshold=lower_threshold,
+        upper_threshold=upper_threshold,
+    )
