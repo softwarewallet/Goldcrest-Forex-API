@@ -64,6 +64,10 @@ def test_walk_forward_fits_each_fold_and_reports_non_actionable_metrics():
     assert results[0].actionable is False
     assert results[0].validation.brier_score >= 0
     assert results[0].validation.log_loss > 0
+    assert 0 <= results[0].validation.expected_calibration_error <= 1
+    assert len(results[0].validation.reliability_bins) == 10
+    assert sum(item.count for item in results[0].validation.reliability_bins) == results[0].validation.sample_count
+    assert len(results[0].test.reliability_bins) == 10
 
 
 def test_rejects_unordered_or_mismatched_feature_rows():

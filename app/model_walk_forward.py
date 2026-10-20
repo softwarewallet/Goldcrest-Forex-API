@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Mapping, Protocol, Sequence
 
+from app.probability_diagnostics import ReliabilityBin, probability_diagnostics
 from app.walk_forward import WalkForwardPlan
 
 
@@ -41,6 +42,8 @@ class BinaryMetrics:
     log_loss: float
     accuracy_at_fixed_half: float
     mean_predicted_probability: float
+    expected_calibration_error: float = 0.0
+    reliability_bins: tuple[ReliabilityBin, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -96,6 +99,7 @@ def _metrics(labels: Sequence[int], probabilities: Sequence[float]) -> BinaryMet
     brier = sum((p - y) ** 2 for y, p in zip(labels, probabilities)) / len(labels)
     logloss = -sum(y * math.log(max(eps, p)) + (1-y) * math.log(max(eps, 1-p))
                    for y, p in zip(labels, probabilities)) / len(labels)
+    calibration = probability_diagnostics(labels, probabilities, bins=10)
     return BinaryMetrics(
         sample_count=len(labels),
         positive_count=sum(labels),
@@ -105,6 +109,8 @@ def _metrics(labels: Sequence[int], probabilities: Sequence[float]) -> BinaryMet
         log_loss=logloss,
         accuracy_at_fixed_half=sum((p >= 0.5) == bool(y) for y, p in zip(labels, probabilities)) / len(labels),
         mean_predicted_probability=sum(probabilities) / len(probabilities),
+        expected_calibration_error=calibration.expected_calibration_error,
+        reliability_bins=calibration.reliability_bins,
     )
 
 
