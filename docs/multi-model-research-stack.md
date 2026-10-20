@@ -151,3 +151,50 @@ or neutral band is predictive. Select parameters based on the intended research 
 document them, and freeze them before final-test evaluation. This target is close-to-close
 price direction, not a cost-adjusted trade return; costs and execution assumptions need
 separate analysis. The generated data remains `actionable=false`.
+
+
+## One-command historical research pipeline
+
+The individual tools can be orchestrated with
+`python -m app.historical_research_pipeline`. This performs the same explicit stages
+in order: validate raw OHLC and compute causal features, prepare matured forward-return
+labels under the specified horizon/neutral policy, then run chronological purged
+walk-forward evaluation of XGBoost and LightGBM against the training-prevalence baseline.
+
+Example (use real, documented provider data and sizes appropriate to its history):
+
+```bash
+python -m app.historical_research_pipeline \
+  --input-csv data/historical/EURUSD_M15_raw.csv \
+  --features-csv data/historical/EURUSD_M15_features.csv \
+  --labeled-csv data/historical/EURUSD_M15_labeled.csv \
+  --feature-report reports/EURUSD_M15_features.json \
+  --label-report reports/EURUSD_M15_labels.json \
+  --report reports/EURUSD_M15_pipeline.json \
+  --run-id eurusd-m15-pipeline-2026-10-20-01 \
+  --data-source "documented provider/export" \
+  --dataset-version "export-revision-1" \
+  --horizon-bars 3 \
+  --neutral-band-bps 0.5 \
+  --neutral-policy error \
+  --initial-train-bars 2000 \
+  --validation-bars 400 \
+  --test-bars 400 \
+  --step-bars 400 \
+  --block-length 10 \
+  --spread-cost-notes "Record spread source and assumptions" \
+  --slippage-and-commission-notes "Record instrument-specific assumptions"
+```
+
+The tool also writes a separate `*.evaluation.json` report and the SQLite ledger. All
+artifact paths, including the ledger, must be distinct. The pipeline uses exactly the
+features emitted by the current feature preparer:
+`return_1,return_3,return_5,range_pct,body_pct,close_location,volatility_14`.
+It does not silently fetch data, synthesize data, sort or impute rows, skip neutral
+labels, or promote a model. With `--neutral-policy error`, any neutral outcome stops
+the run; choose another explicit policy only if that target definition is justified.
+
+A successful run means the pipeline completed, not that a model is profitable or more
+accurate in live markets. Use genuine historical data, review the combined provenance
+report and separate validation/test metrics, and retain final-test results for evaluation
+rather than tuning. The entire workflow remains offline and `actionable=false`.
