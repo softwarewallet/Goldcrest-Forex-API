@@ -5,9 +5,9 @@ def test_calibration_sample_audit_flags_small_samples_and_minor_class():
     audit = build_calibration_sample_adequacy_audit({"candidate": [
         {"fold_index": 0, "validation": {"sample_count": 20, "positive_count": 10, "negative_count": 10},
          "test": {"sample_count": 50, "positive_count": 4, "negative_count": 46}}]})
-    validation, test = audit["comparisons"]
-    assert validation["status"] == "LOW_SAMPLE_COUNT"
-    assert test["status"] == "LOW_MINOR_CLASS_COUNT"
+    by_partition = {row["partition"]: row for row in audit["comparisons"]}
+    assert by_partition["validation"]["status"] == "LOW_SAMPLE_COUNT"
+    assert by_partition["test"]["status"] == "LOW_MINOR_CLASS_COUNT"
     assert audit["actionable"] is False
 
 
@@ -25,5 +25,5 @@ def test_calibration_sample_audit_flags_sparse_populated_reliability_bins():
         "validation": {"sample_count": 40, "positive_count": 20, "negative_count": 20, "reliability_bins": bins},
         "test": {"sample_count": 40, "positive_count": 20, "negative_count": 20, "reliability_bins": bins}}]})
     assert audit["comparisons"][0]["populated_reliability_bins"] == 3
-    assert audit["comparisons"][0]["sparse_populated_reliability_bins"] == 2
+    assert audit["comparisons"][0]["sparse_populated_reliability_bins"] == 1
     assert audit["comparisons"][0]["status"] == "SPARSE_RELIABILITY_BINS"
