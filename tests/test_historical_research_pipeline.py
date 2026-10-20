@@ -60,6 +60,11 @@ def test_pipeline_runs_preparation_and_passes_generated_features_to_evaluation(t
 
     args = captured["args"]
     assert args[args.index("--features") + 1] == "return_1,return_3,return_5,return_10,range_pct,body_pct,close_location,volatility_14,ema_gap_12_26,rsi_14,atr_14_pct,macd_hist_pct"
+    assert args[args.index("--retrieved-at-utc") + 1] == "2026-10-20T07:00:00Z"
+    assert args[args.index("--timestamp-timezone") + 1] == "UTC"
+    assert args[args.index("--duplicate-policy") + 1] == "reject"
+    assert args[args.index("--adjustment-policy") + 1] == "none"
+    assert args[args.index("--license-or-terms-reference") + 1] == "fixture test only"
     assert summary["actionable"] is False
     assert summary["evaluation"]["run_id"] == "pipeline-test"
     assert (tmp_path / "features.csv").exists()
