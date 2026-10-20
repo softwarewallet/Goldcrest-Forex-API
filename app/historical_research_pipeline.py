@@ -28,6 +28,11 @@ def run_historical_research_pipeline(
     run_id: str,
     data_source: str,
     dataset_version: str,
+    retrieved_at_utc: str,
+    timestamp_timezone: str,
+    duplicate_policy: str,
+    adjustment_policy: str,
+    license_or_terms_reference: str,
     horizon_bars: int,
     neutral_band_bps: float,
     neutral_policy: str,
@@ -60,8 +65,11 @@ def run_historical_research_pipeline(
         raise ValueError("all output/report/ledger paths must be distinct")
     if raw in outputs:
         raise ValueError("input CSV must not collide with any output/report/ledger path")
-    if not run_id.strip() or not data_source.strip() or not dataset_version.strip():
-        raise ValueError("run_id, data_source, and dataset_version must be non-empty")
+    if not all(value.strip() for value in (
+        run_id, data_source, dataset_version, retrieved_at_utc, timestamp_timezone,
+        duplicate_policy, adjustment_policy, license_or_terms_reference,
+    )):
+        raise ValueError("run identity and all dataset provenance declarations must be non-empty")
     if initial_train_bars < 1 or validation_bars < 1 or test_bars < 1 or step_bars < 1:
         raise ValueError("train, validation, test, and step sizes must all be positive")
     if block_length < 1 or bootstrap_resamples < 1:
@@ -102,6 +110,11 @@ def run_historical_research_pipeline(
         "--run-id", run_id,
         "--data-source", data_source,
         "--dataset-version", dataset_version,
+        "--retrieved-at-utc", retrieved_at_utc,
+        "--timestamp-timezone", timestamp_timezone,
+        "--duplicate-policy", duplicate_policy,
+        "--adjustment-policy", adjustment_policy,
+        "--license-or-terms-reference", license_or_terms_reference,
         "--label-definition",
         f"close[t+{horizon_bars}] vs close[t], neutral_band_bps={neutral_band_bps}, neutral_policy={neutral_policy}; class 1 means UP",
         "--class-1-means", "UP",
@@ -169,6 +182,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--data-source", required=True)
     parser.add_argument("--dataset-version", required=True)
+    parser.add_argument("--retrieved-at-utc", required=True, help="Provider snapshot retrieval time in UTC ISO-8601")
+    parser.add_argument("--timestamp-timezone", required=True, help="Timezone convention used in source export")
+    parser.add_argument("--duplicate-policy", required=True, help="Declared duplicate timestamp policy")
+    parser.add_argument("--adjustment-policy", required=True, help="Corporate-action/price adjustment policy or explicit none")
+    parser.add_argument("--license-or-terms-reference", required=True, help="Data license or terms reference")
     parser.add_argument("--horizon-bars", required=True, type=int)
     parser.add_argument("--neutral-band-bps", required=True, type=float)
     parser.add_argument("--neutral-policy", required=True, choices=("up", "down", "error"))
@@ -191,6 +209,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         feature_report=args.feature_report, label_report=args.label_report,
         data_quality_report=args.data_quality_report, report=args.report,
         run_id=args.run_id, data_source=args.data_source, dataset_version=args.dataset_version,
+        retrieved_at_utc=args.retrieved_at_utc, timestamp_timezone=args.timestamp_timezone,
+        duplicate_policy=args.duplicate_policy, adjustment_policy=args.adjustment_policy,
+        license_or_terms_reference=args.license_or_terms_reference,
         horizon_bars=args.horizon_bars, neutral_band_bps=args.neutral_band_bps,
         neutral_policy=args.neutral_policy, initial_train_bars=args.initial_train_bars,
         validation_bars=args.validation_bars, test_bars=args.test_bars, step_bars=args.step_bars,
