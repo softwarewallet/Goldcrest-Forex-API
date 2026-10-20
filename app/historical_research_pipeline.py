@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
+from app.dataset_provenance import parse_retrieved_at_utc
 from app.historical_data_quality import audit_historical_ohlc
 from app.historical_feature_preparation import FEATURE_COLUMNS, prepare_features
 from app.historical_label_preparation import label_historical_features
@@ -70,6 +71,7 @@ def run_historical_research_pipeline(
         duplicate_policy, adjustment_policy, license_or_terms_reference,
     )):
         raise ValueError("run identity and all dataset provenance declarations must be non-empty")
+    parse_retrieved_at_utc(retrieved_at_utc)
     if initial_train_bars < 1 or validation_bars < 1 or test_bars < 1 or step_bars < 1:
         raise ValueError("train, validation, test, and step sizes must all be positive")
     if block_length < 1 or bootstrap_resamples < 1:
