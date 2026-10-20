@@ -46,11 +46,12 @@ def run_historical_research_pipeline(
     feature_report_path = Path(feature_report).resolve()
     label_report_path = Path(label_report).resolve()
     report_path = Path(report).resolve()
+    evaluation_report_path = report_path.with_name(report_path.stem + ".evaluation.json")
     ledger_path = Path(ledger).resolve()
 
     outputs = [
         features_path, labeled_path, feature_report_path, label_report_path,
-        report_path, ledger_path,
+        report_path, evaluation_report_path, ledger_path,
     ]
     if len(set(outputs)) != len(outputs):
         raise ValueError("all output/report/ledger paths must be distinct")
@@ -78,9 +79,6 @@ def run_historical_research_pipeline(
         json.dumps(label_audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
-    evaluation_report_path = report_path.with_name(report_path.stem + ".evaluation.json")
-    if evaluation_report_path in outputs or evaluation_report_path == raw:
-        raise ValueError("evaluation report path collides with another pipeline artifact")
     feature_names = ",".join(FEATURE_COLUMNS)
     research_args = [
         "--csv", str(labeled_path),
