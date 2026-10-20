@@ -31,9 +31,10 @@ def test_audit_flags_interval_direction_changes():
 def test_audit_flags_stability_only_across_tested_lengths():
     item = comparison()
     for entry in item["comparison"]["block_length_sensitivity"]:
-        entry["brier_difference_ci_high"] = -0.001
+        if entry["block_length"] != 4:
+            entry["brier_difference_ci_high"] = -0.001
+            entry["log_loss_difference_ci_high"] = -0.001
         entry["brier_direction"] = "CANDIDATE_LOWER"
-        entry["log_loss_difference_ci_high"] = -0.001
         entry["log_loss_direction"] = "CANDIDATE_LOWER"
     item["comparison"]["brier_difference_ci_low"] = -0.03
     item["comparison"]["brier_difference_ci_high"] = -0.005
