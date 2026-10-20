@@ -76,8 +76,10 @@ def test_quality_audit_rejects_naive_timestamp_and_invalid_ohlc_schema(tmp_path)
         writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)
-    with pytest.raises(ValueError, match="timezone offset"):
-        audit_historical_ohlc(source)
+    report = audit_historical_ohlc(source)
+    assert report["invalid_row_count"] == 1
+    assert report["structurally_valid"] is False
+    assert "timezone offset" in report["invalid_rows_sample"][0]["reason"]
 
 
 def test_quality_audit_rejects_mixed_timeframes(tmp_path):
