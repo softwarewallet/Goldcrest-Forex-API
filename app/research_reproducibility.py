@@ -196,3 +196,31 @@ def reproducibility_manifest(
     }
     payload["manifest_sha256"] = _fingerprint(payload)
     return payload
+
+
+def verify_reproducibility_manifest(manifest: Mapping[str, Any]) -> bool:
+    """Verify aggregate and per-model/factory fingerprints in a saved manifest."""
+    supplied = manifest.get("manifest_sha256")
+    if not isinstance(supplied, str) or len(supplied) != 64:
+        raise ValueError("reproducibility manifest SHA-256 is missing or malformed")
+    payload = dict(manifest)
+    payload.pop("manifest_sha256", None)
+    if _fingerprint(payload) != supplied:
+        raise ValueError("reproducibility manifest fingerprint mismatch")
+    if manifest.get("actionable") is not False or manifest.get("schema_version") != 1:
+        raise ValueError("reproducibility manifest must be schema v1 and actionable=false")
+    for section_name in ("factory_configuration", "initial_model_configuration"):
+        section = manifest.get(section_name)
+        if not isinstance(section, Mapping):
+            raise ValueError(f"reproducibility manifest {section_name} must be an object")
+        for name, descriptor in section.items():
+            if not isinstance(name, str) or not isinstance(descriptor, Mapping):
+                raise ValueError(f"reproducibility manifest {section_name} contains a malformed entry")
+            nested_sha = descriptor.get("configuration_sha256")
+            if not isinstance(nested_sha, str) or len(nested_sha) != 64:
+                raise ValueError(f"{section_name}.{name} configuration fingerprint is missing")
+            nested_payload = dict(descriptor)
+            nested_payload.pop("configuration_sha256", None)
+            if _fingerprint(nested_payload) != nested_sha:
+                raise ValueError(f"{section_name}.{name} configuration fingerprint mismatch")
+    return True
