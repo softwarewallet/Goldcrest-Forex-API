@@ -162,6 +162,7 @@ export default function ResearchReportPanel() {
   const foldResults = record(valueAt(evaluation, "fold_results"));
   const pairedComparisons = Array.isArray(valueAt(evaluation, "paired_comparisons")) ? valueAt(evaluation, "paired_comparisons") as unknown[] : [];
   const foldStability = buildFoldStability(foldResults, pairedComparisons);
+  const selectionAudit = record(valueAt(evaluation, "model_selection_audit"));
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
     folds: Array.isArray(rows) ? rows : [],
@@ -252,6 +253,23 @@ export default function ResearchReportPanel() {
         <Metric label="LABELED ROWS" value={textValue(valueAt(labels, "output_rows") ?? valueAt(labels, "labeled_rows"))} note="Matured outcomes only" />
       </div>
       {quality && <div className="research-report-note"><b>Cadence interpretation:</b> {warnings.map(textValue).join(" ") || "Cadence gaps require provider/session-aware review."}</div>}
+      {selectionAudit && <div className="research-model-table-wrap">
+        <h3>Validation-only model-selection audit</h3>
+        <p className="research-report-note">Ranking uses median validation log-loss, then median validation Brier score, across complete common validation folds. Final-test metrics are excluded from ranking. This is a research audit, not a promotion rule or evidence of profitability.</p>
+        <div className="research-report-metrics">
+          <Metric label="PROTOCOL" value={textValue(valueAt(selectionAudit, "protocol"))} note="Validation partitions only" />
+          <Metric label="STATUS" value={textValue(valueAt(selectionAudit, "status"))} note={`${textValue(valueAt(selectionAudit, "common_validation_fold_indices") instanceof Array ? (valueAt(selectionAudit, "common_validation_fold_indices") as unknown[]).length : 0)} complete common folds`} />
+          <Metric label="SELECTED BY VALIDATION" value={textValue(valueAt(selectionAudit, "selected_candidate"))} note="Not an execution authorization" />
+          <Metric label="TEST METRICS USED" value={valueAt(selectionAudit, "test_metrics_used_for_selection") === false ? "NO" : "REVIEW REQUIRED"} note="Must remain untouched" />
+        </div>
+        {Array.isArray(valueAt(selectionAudit, "ranking")) && (valueAt(selectionAudit, "ranking") as unknown[]).length > 0
+          ? <table className="research-model-table"><thead><tr><th>RANK</th><th>CANDIDATE</th><th>VALIDATION FOLDS</th><th>MEDIAN LOG-LOSS</th><th>MEDIAN BRIER</th></tr></thead><tbody>{(valueAt(selectionAudit, "ranking") as unknown[]).map((item, index) => {
+            const row = record(item);
+            return <tr key={`selection-${index}`}><td>{textValue(valueAt(row, "rank"))}</td><td>{textValue(valueAt(row, "candidate_name"))}</td><td>{textValue(valueAt(row, "validation_fold_count"))}</td><td>{formatNumber(valueAt(row, "median_validation_log_loss"))}</td><td>{formatNumber(valueAt(row, "median_validation_brier_score"))}</td></tr>;
+          })}</tbody></table>
+          : <div className="research-report-empty">Selection withheld: insufficient complete common validation folds. At least two are required.</div>}
+        <p className="research-report-note">{textValue(valueAt(selectionAudit, "interpretation"))}</p>
+      </div>}
       {foldStability.length > 0 && <div className="research-model-table-wrap">
         <h3>Fold stability · direction consistency</h3>
         <p className="research-report-note">Counts and median candidate-minus-baseline differences are descriptive summaries across matching folds, not significance tests. Negative Brier/log-loss deltas favor the candidate. Overlapping test windows are not independent, and these summaries do not establish profitability.</p>
