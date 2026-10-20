@@ -166,6 +166,8 @@ export default function ResearchReportPanel() {
   const oosRobustness = record(valueAt(evaluation, "oos_period_robustness_audit"));
   const regimeUncertainty = record(valueAt(evaluation, "regime_uncertainty_audit"));
   const blockLengthAudit = record(valueAt(evaluation, "block_length_sensitivity_audit"));
+  const temporalCalibration = record(valueAt(evaluation, "temporal_calibration_stability_audit"));
+  const temporalCalibrationRows = Array.isArray(valueAt(temporalCalibration, "comparisons")) ? valueAt(temporalCalibration, "comparisons") as unknown[] : [];
   const blockLengthRows = Array.isArray(valueAt(blockLengthAudit, "comparisons")) ? valueAt(blockLengthAudit, "comparisons") as unknown[] : [];
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
@@ -367,6 +369,22 @@ export default function ResearchReportPanel() {
             <td>{textValue(valueAt(comparison, "interpretation"))}</td>
           </tr>;
         })}</tbody></table>
+      </div>}
+      {temporalCalibrationRows.length > 0 && <div className="research-model-table-wrap">
+        <h3>Temporal calibration stability · chronological ECE</h3>
+        <p className="research-report-note">Uses declared test-window boundaries to order each fold's validation/test ECE. Endpoint interval separation is descriptive only, not a significance test. Overlapping folds may not be independent; missing boundaries and small temporal coverage are not guessed.</p>
+        <table className="research-model-table"><thead><tr><th>MODEL</th><th>PARTITION</th><th>PERIODS</th><th>FIRST ECE</th><th>LAST ECE</th><th>FIRST → LAST Δ</th><th>ECE RANGE</th><th>ADJACENT INTERVAL OVERLAP</th><th>STATUS</th></tr></thead><tbody>{temporalCalibrationRows.map((item, index) => {
+          const row = record(item);
+          return <tr key={"temporal-calibration-" + index}>
+            <td>{textValue(valueAt(row, "model_name"))}</td><td>{textValue(valueAt(row, "partition"))}</td>
+            <td>{textValue(valueAt(row, "period_count"))}</td>
+            <td>{formatNumber(valueAt(row, "first_period_ece"))}</td><td>{formatNumber(valueAt(row, "last_period_ece"))}</td>
+            <td>{formatNumber(valueAt(row, "first_to_last_ece_delta"))}</td><td>{formatNumber(valueAt(row, "ece_range"))}</td>
+            <td>{textValue(valueAt(row, "adjacent_interval_overlap_count"))} / {textValue(valueAt(row, "adjacent_interval_comparison_count"))}</td>
+            <td>{textValue(valueAt(row, "status"))}</td>
+          </tr>;
+        })}</tbody></table>
+        <p className="research-report-note">{textValue(valueAt(temporalCalibration, "interpretation"))}</p>
       </div>}
       {blockLengthRows.length > 0 && <div className="research-model-table-wrap">
         <h3>Bootstrap uncertainty · block-length sensitivity</h3>

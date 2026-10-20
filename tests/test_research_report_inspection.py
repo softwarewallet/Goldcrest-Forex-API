@@ -263,3 +263,46 @@ def test_inspection_recomputes_block_length_sensitivity_audit(tmp_path):
     path.write_text(json.dumps(report), encoding="utf-8")
     with pytest.raises(ValueError, match="block_length_sensitivity_audit does not match"):
         inspect_experiment_report(path)
+
+
+
+def test_inspection_recomputes_temporal_calibration_stability_audit(tmp_path):
+    folds = []
+    boundaries = []
+    for index, (ece, low, high) in enumerate(((0.1, 0.08, 0.12), (0.16, 0.13, 0.18), (0.3, 0.25, 0.34))):
+        metric = {
+            "sample_count": 40,
+            "expected_calibration_error": ece,
+            "calibration_uncertainty": {
+                "interval_low": low, "interval_high": high,
+                "sample_count": 40, "block_length": 3, "bootstrap_resamples": 2000,
+                "confidence_level": 0.95,
+                "status": "DESCRIPTIVE_MOVING_BLOCK_PERCENTILE_INTERVAL",
+            },
+        }
+        folds.append({"fold_index": index, "validation": metric, "test": metric, "actionable": False})
+        boundaries.append({
+            "fold_index": index,
+            "test_start_utc": f"2026-0{index+1}-01T00:00:00Z",
+            "test_end_utc": f"2026-0{index+1}-20T00:00:00Z",
+        })
+    report = build_experiment_report(
+        manifest={"run_id": "temporal-calibration-inspection", "fold_temporal_boundaries": boundaries},
+        fold_results={"candidate": folds},
+    )
+    path = tmp_path / "temporal-calibration.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    summary = inspect_experiment_report(path)
+    row = next(
+        item for item in summary["temporal_calibration_stability_audit"]["comparisons"]
+        if item["partition"] == "test"
+    )
+    assert row["status"] == "ENDPOINT_ECE_INCREASE_INTERVALS_DISJOINT"
+    assert row["fold_indices"] == [0, 1, 2]
+
+    tampered = json.loads(path.read_text(encoding="utf-8"))
+    tampered["temporal_calibration_stability_audit"]["comparisons"][0]["status"] = "ROBUST"
+    _rewrite_fingerprint(tampered)
+    path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="temporal_calibration_stability_audit does not match"):
+        inspect_experiment_report(path)

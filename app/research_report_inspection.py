@@ -18,6 +18,7 @@ from app.oos_period_robustness_audit import build_oos_period_robustness_audit
 from app.regime_uncertainty_audit import build_regime_uncertainty_audit
 from app.fold_stability import summarize_fold_stability
 from app.block_length_sensitivity_audit import build_block_length_sensitivity_audit
+from app.temporal_calibration_stability import build_temporal_calibration_stability_audit
 
 
 def _canonical(value: Mapping[str, Any]) -> bytes:
@@ -269,6 +270,16 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         if _canonical(regime_uncertainty) != _canonical(expected_regime_uncertainty):
             raise ValueError("regime_uncertainty_audit does not match declared annotations and fold metrics")
 
+    temporal_calibration = report.get("temporal_calibration_stability_audit")
+    if temporal_calibration is not None:
+        if not isinstance(temporal_calibration, dict):
+            raise ValueError("temporal_calibration_stability_audit must be a JSON object")
+        expected_temporal_calibration = build_temporal_calibration_stability_audit(
+            fold_results, manifest.get("fold_temporal_boundaries")
+        )
+        if _canonical(temporal_calibration) != _canonical(expected_temporal_calibration):
+            raise ValueError("temporal_calibration_stability_audit does not match fold metrics and declared temporal boundaries")
+
     warnings = report.get("warnings", [])
     if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
         raise ValueError("warnings must be a list of strings")
@@ -280,6 +291,7 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         "model_selection_audit": selection_audit,
         "oos_period_robustness_audit": oos_robustness,
         "regime_uncertainty_audit": regime_uncertainty,
+        "temporal_calibration_stability_audit": temporal_calibration,
         "fold_stability": summarize_fold_stability(fold_results, comparisons),
         "exclusions": dict(sorted(normalized_exclusions.items())), "warnings": warnings,
         "evaluation_contract": report.get("evaluation_contract", {}),
