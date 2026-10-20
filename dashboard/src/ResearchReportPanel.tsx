@@ -57,14 +57,14 @@ export default function ResearchReportPanel() {
     }
   };
 
-  const quality = record(valueAt(report, "data_quality_audit"));
+  const evaluation = record(valueAt(report, "evaluation")) || report;
   const evaluationContract = record(valueAt(evaluation, "evaluation_contract"));
   const manifest = record(valueAt(evaluation, "manifest"));
   const provenance = record(valueAt(evaluationContract, "dataset_provenance"))
     || record(valueAt(manifest, "dataset_provenance"));
+  const quality = record(valueAt(report, "data_quality_audit"));
   const features = record(valueAt(report, "feature_preparation"));
   const labels = record(valueAt(report, "label_preparation"));
-  const evaluation = record(valueAt(report, "evaluation")) || report;
   const foldResults = record(valueAt(evaluation, "fold_results"));
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
