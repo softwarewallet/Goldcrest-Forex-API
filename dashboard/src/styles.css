@@ -184,3 +184,29 @@
 @media (max-width: 520px) {
   .research-provenance-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+
+.research-lineage {
+  margin-top: 16px;
+  padding: 15px;
+  border: 1px solid rgba(107, 224, 181, .22);
+  border-radius: 11px;
+  background: rgba(12, 37, 42, .22);
+}
+.research-lineage > div:first-child { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.research-lineage > div:first-child b { color: #9cb1d9; font-size: 10px; letter-spacing: .09em; }
+.research-lineage > div:first-child span { color: #6be0b5; font-size: 9px; font-weight: 800; letter-spacing: .06em; }
+.research-lineage > p { color: #91a8bc; font-size: 11px; line-height: 1.5; }
+.research-lineage-hashes {
+  display: grid;
+  grid-template-columns: 95px minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+  margin-top: 10px;
+}
+.research-lineage-hashes small { color: #7f91b8; font-size: 8px; font-weight: 800; letter-spacing: .06em; }
+.research-lineage-hashes code { color: #a9e7d7; font-size: 9px; overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .research-lineage-hashes { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .research-lineage-hashes code { margin-bottom: 8px; }
+}

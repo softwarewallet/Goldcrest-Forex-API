@@ -271,3 +271,22 @@ derived labeled artifact so lineage can be independently checked.
 No real-data evaluation is run by CI fixtures. A report from synthetic unit-test fixtures
 is not market evidence, and a complete provenance manifest is necessary but not sufficient
 to establish model quality.
+
+
+## Artifact lineage and byte-level verification
+
+Feature preparation and label preparation now record both input and generated-output
+SHA-256 digests. The one-command pipeline checks that the feature CSV digest equals the
+label stage's input digest, that the label output digest equals the bytes of the labeled
+CSV, and that the evaluation report's dataset digest equals that same labeled CSV digest.
+The combined report contains an `artifact_lineage` object with these digests and a
+verification status; the local dashboard displays the chain:
+
+`raw OHLC → causal features → explicit labels → evaluation dataset`.
+
+A successful hash chain establishes that the artifacts passed between stages are the
+same bytes that were fingerprinted. It does not authenticate the provider, verify the
+truth of operator-supplied license metadata, or prove the upstream feature process is
+causal. Keep the original provider snapshot and its provenance record available for an
+independent audit. A failed hash check stops the pipeline instead of reporting an
+apparently successful evaluation.

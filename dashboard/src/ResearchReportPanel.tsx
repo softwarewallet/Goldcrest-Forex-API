@@ -63,6 +63,7 @@ export default function ResearchReportPanel() {
   const provenance = record(valueAt(evaluationContract, "dataset_provenance"))
     || record(valueAt(manifest, "dataset_provenance"));
   const quality = record(valueAt(report, "data_quality_audit"));
+  const lineage = record(valueAt(report, "artifact_lineage"));
   const features = record(valueAt(report, "feature_preparation"));
   const labels = record(valueAt(report, "label_preparation"));
   const foldResults = record(valueAt(evaluation, "fold_results"));
@@ -97,6 +98,17 @@ export default function ResearchReportPanel() {
           <div><small>ROWS / SYMBOL / TF</small><b>{textValue(valueAt(provenance, "row_count"))} / {textValue(Array.isArray(valueAt(provenance, "instruments")) ? (valueAt(provenance, "instruments") as unknown[]).join(", ") : "—")} / {textValue(valueAt(provenance, "timeframe"))}</b></div>
         </div>
         <p className="research-report-note">Hash verification checks artifact consistency, not provider authenticity, legal license validity, or upstream feature causality. Confirm source declarations against the original provider export.</p>
+      </div>}
+      {lineage && <div className="research-lineage">
+        <div><b>ARTIFACT LINEAGE</b><span>{valueAt(lineage, "verified") === true ? "HASH CHAIN VERIFIED" : "VERIFICATION REQUIRED"}</span></div>
+        <p>Raw OHLC → causal features → explicit labels → evaluation dataset</p>
+        <div className="research-lineage-hashes">
+          <small>RAW</small><code>{textValue(valueAt(lineage, "raw_ohlc_sha256"))}</code>
+          <small>FEATURE CSV</small><code>{textValue(valueAt(lineage, "feature_csv_sha256"))}</code>
+          <small>LABELED CSV</small><code>{textValue(valueAt(lineage, "labeled_csv_sha256"))}</code>
+          <small>EVALUATION</small><code>{textValue(valueAt(lineage, "evaluation_dataset_sha256"))}</code>
+        </div>
+        <p className="research-report-note">The pipeline checks byte-level hash continuity between generated artifacts and the evaluated CSV. This proves artifact linkage, not the authenticity of upstream data or the absence of leakage in externally supplied features.</p>
       </div>}
       <div className="research-report-metrics">
         <Metric label="SOURCE ROWS" value={textValue(valueAt(quality, "row_count") ?? valueAt(features, "input_rows"))} note="Raw OHLC rows" />

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -34,8 +35,13 @@ def test_pipeline_runs_preparation_and_passes_generated_features_to_evaluation(t
     def fake_research(args):
         captured["args"] = args
         report_path = args[args.index("--report") + 1]
+        dataset_path = args[args.index("--csv") + 1]
+        dataset_sha256 = hashlib.sha256(open(dataset_path, "rb").read()).hexdigest()
         with open(report_path, "w", encoding="utf-8") as handle:
-            json.dump({"run_id": "pipeline-test", "actionable": False}, handle)
+            json.dump({
+                "run_id": "pipeline-test", "actionable": False,
+                "manifest": {"dataset_sha256": dataset_sha256},
+            }, handle)
         return 0
 
     monkeypatch.setattr(pipeline, "run_research", fake_research)
@@ -71,6 +77,11 @@ def test_pipeline_runs_preparation_and_passes_generated_features_to_evaluation(t
     assert (tmp_path / "labeled.csv").exists()
     assert (tmp_path / "quality.json").exists()
     assert summary["data_quality_audit"]["structurally_valid"] is True
+    assert summary["artifact_lineage"]["verified"] is True
+    assert summary["artifact_lineage"]["feature_to_label_hash_match"] is True
+    assert summary["artifact_lineage"]["label_to_evaluation_hash_match"] is True
+    assert summary["feature_preparation"]["output_sha256"] == summary["label_preparation"]["input_sha256"]
+    assert summary["label_preparation"]["output_sha256"] == summary["evaluation"]["manifest"]["dataset_sha256"]
     assert json.loads((tmp_path / "combined.json").read_text())["raw_input_sha256"] == summary["raw_input_sha256"]
 
 

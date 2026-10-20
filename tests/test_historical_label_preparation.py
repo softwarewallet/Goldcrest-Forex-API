@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -43,6 +44,8 @@ def test_labels_use_future_close_and_record_maturity(tmp_path):
     assert rows[0]["return_1"] == "0.0"
     assert report["tail_rows_without_matured_outcome"] == 2
     assert report["class_1_means"] == "UP"
+    assert len(report["input_sha256"]) == 64
+    assert report["output_sha256"] == hashlib.sha256(output.read_bytes()).hexdigest()
     assert report["actionable"] is False
 
 
