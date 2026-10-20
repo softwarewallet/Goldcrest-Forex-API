@@ -342,4 +342,3 @@ def test_runner_report_contains_environment_and_model_fingerprints(tmp_path):
     assert reproducibility["environment"]["python_version"]
     assert "xgboost" in reproducibility["environment"]["packages"]
     assert len(reproducibility["initial_model_configuration"]["candidate"]["configuration_sha256"]) == 64
-    assert result.report["manifest"]["reproducibility"]["manifest_sha256"] == result.report["manifest"]["reproducibility"]["manifest_sha256"]
