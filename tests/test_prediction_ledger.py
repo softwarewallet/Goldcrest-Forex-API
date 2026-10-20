@@ -47,6 +47,18 @@ def test_compare_pairs_by_observation_identity_and_matured_labels(tmp_path):
     assert result.sample_count == 30
     assert result.actionable is False
     assert result.comparison.candidate_brier_score < result.comparison.baseline_brier_score
+    assert isinstance(result.observation_identity_sha256, str)
+    assert len(result.observation_identity_sha256) == 64
+    expected_identities = [
+        (START + timedelta(minutes=5 * i)).isoformat().replace("+00:00", "Z")
+        for i in range(30)
+    ]
+    import hashlib
+    import json
+    expected_digest = hashlib.sha256(json.dumps(
+        expected_identities, separators=(",", ":"), ensure_ascii=False,
+    ).encode("utf-8")).hexdigest()
+    assert result.observation_identity_sha256 == expected_digest
 
 
 def test_unmatured_labels_are_not_silently_scored(tmp_path):

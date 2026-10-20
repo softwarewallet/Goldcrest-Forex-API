@@ -93,6 +93,22 @@ def test_runner_trains_records_compares_and_writes_non_actionable_report(tmp_pat
         (0, "validation"), (0, "test"),
     }
     assert all(row["baseline_name"] == "training_prevalence" for row in result.report["paired_comparisons"])
+    for comparison in result.report["paired_comparisons"]:
+        partition = comparison["partition"]
+        fold_index = comparison["fold_index"]
+        candidate_fold = next(
+            row for row in result.report["fold_results"]["candidate"]
+            if row["fold_index"] == fold_index
+        )
+        baseline_fold = next(
+            row for row in result.report["fold_results"]["training_prevalence"]
+            if row["fold_index"] == fold_index
+        )
+        candidate_digest = candidate_fold[partition]["observation_identity_sha256"]
+        baseline_digest = baseline_fold[partition]["observation_identity_sha256"]
+        assert candidate_digest == baseline_digest
+        assert comparison["observation_identity_sha256"] == candidate_digest
+        assert len(candidate_digest) == 64
 
     assert set(result.report["fold_results"]) == {"candidate", "training_prevalence"}
     # Completed run IDs are immutable. A rerun must use a new ID rather than

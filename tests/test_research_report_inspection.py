@@ -196,3 +196,34 @@ def test_inspection_rejects_duplicate_comparison_identity(tmp_path):
 
     with pytest.raises(ValueError, match="duplicate paired comparison identity"):
         inspect_experiment_report(path)
+
+
+
+def test_inspection_rejects_mismatched_paired_observation_fingerprints(tmp_path):
+    report = _report()
+    for fold in report["fold_results"]["candidate"]:
+        fold["test"]["observation_identity_sha256"] = "a" * 64
+    for fold in report["fold_results"]["prevalence"]:
+        fold["test"]["observation_identity_sha256"] = "b" * 64
+    report["paired_comparisons"][0]["observation_identity_sha256"] = "a" * 64
+    _rewrite_fingerprint(report)
+    path = tmp_path / "mismatched-identities.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="candidate and baseline observation identity fingerprints do not match"):
+        inspect_experiment_report(path)
+
+
+def test_inspection_rejects_comparison_fingerprint_not_matching_fold_metrics(tmp_path):
+    report = _report()
+    for fold in report["fold_results"]["candidate"]:
+        fold["test"]["observation_identity_sha256"] = "a" * 64
+    for fold in report["fold_results"]["prevalence"]:
+        fold["test"]["observation_identity_sha256"] = "a" * 64
+    report["paired_comparisons"][0]["observation_identity_sha256"] = "c" * 64
+    _rewrite_fingerprint(report)
+    path = tmp_path / "comparison-identity-mismatch.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="paired comparison observation identity fingerprint does not match"):
+        inspect_experiment_report(path)

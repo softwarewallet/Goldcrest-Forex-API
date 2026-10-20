@@ -76,6 +76,7 @@ class LedgerComparison:
     actionable: bool = False
     fold_index: int = -1
     partition: str = "unknown"
+    observation_identity_sha256: str | None = None
 
 
 class PredictionLedger:
@@ -468,10 +469,13 @@ class PredictionLedger:
         labels = [candidate[k][0] for k in sorted(candidate)]
         candidate_probabilities = [candidate[k][1] for k in sorted(candidate)]
         baseline_probabilities = [baseline[k][1] for k in sorted(candidate)]
+        identity_sha256 = hashlib.sha256(json.dumps(
+            sorted(candidate), separators=(",", ":"), ensure_ascii=False,
+        ).encode("utf-8")).hexdigest()
         result = compare_probability_models(
             labels, candidate_probabilities, baseline_probabilities,
             candidate_name=candidate_name, baseline_name=baseline_name,
             block_length=block_length, bootstrap_resamples=bootstrap_resamples,
             confidence_level=confidence_level, random_seed=random_seed,
         )
-        return LedgerComparison(len(labels), candidate_name, baseline_name, result, False, fold_index, partition)
+        return LedgerComparison(len(labels), candidate_name, baseline_name, result, False, fold_index, partition, identity_sha256)
