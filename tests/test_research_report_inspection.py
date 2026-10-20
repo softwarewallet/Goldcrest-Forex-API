@@ -62,6 +62,9 @@ def test_inspection_checks_hash_and_preserves_per_fold_partitions(tmp_path):
     assert candidate["folds"][0]["test"]["brier_score"] == 0.21
     assert summary["exclusions"] == {"ambiguous": 1, "unlabeled": 3}
     assert len(summary["paired_comparisons"]) == 1
+    assert len(summary["fold_stability"]) == 1
+    assert summary["fold_stability"][0]["fold_indices"] == [0]
+    assert summary["fold_stability"][0]["metrics"]["brier_score"]["candidate_wins"] == 1
 
 
 def test_inspection_rejects_modified_report_even_when_json_is_valid(tmp_path):
