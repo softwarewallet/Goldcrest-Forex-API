@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.evaluation import ForexBar
+from app.dataset_provenance import DatasetProvenance, verify_dataset_provenance
 
 MANIFEST_SCHEMA_VERSION = 1
 
@@ -61,6 +62,8 @@ class RunManifest:
     symbols: tuple[str, ...]
     timeframes: tuple[str, ...]
     created_at: str
+    dataset_provenance: dict[str, Any] | None = None
+    dataset_provenance_sha256: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -77,6 +80,8 @@ def build_run_manifest(
     model_revision: str,
     dataset_id: str,
     evaluation_config: Mapping[str, Any],
+    dataset_provenance: DatasetProvenance | Mapping[str, Any] | None = None,
+    actual_snapshot_sha256: str | None = None,
 ) -> RunManifest:
     """Build stable content fingerprints; created_at is metadata, not part of run_id."""
     if not bars:
@@ -89,6 +94,26 @@ def build_run_manifest(
             raise ValueError(f"{name} must be explicitly provided")
     bar_payload = [_bar_payload(bar) for bar in bars]
     data_fingerprint = _sha256(_canonical_json(bar_payload))
+    provenance_payload: dict[str, Any] | None = None
+    provenance_fingerprint: str | None = None
+    if dataset_provenance is not None:
+        if not actual_snapshot_sha256:
+            raise ValueError("actual_snapshot_sha256 is required when dataset provenance is supplied")
+        symbols = sorted({bar.symbol for bar in bars})
+        timeframes = sorted({bar.timeframe for bar in bars})
+        if len(timeframes) != 1:
+            raise ValueError("provenance-bound manifests require exactly one timeframe")
+        verified = verify_dataset_provenance(
+            dataset_provenance,
+            actual_snapshot_sha256=actual_snapshot_sha256,
+            actual_row_count=len(bars),
+            actual_instruments=symbols,
+            actual_timeframe=timeframes[0],
+        )
+        provenance_payload = (dataset_provenance.to_dict()
+                              if isinstance(dataset_provenance, DatasetProvenance)
+                              else dict(dataset_provenance))
+        provenance_fingerprint = str(verified["provenance_sha256"])
     config_fingerprint = _sha256(_canonical_json(dict(evaluation_config)))
     identity = {
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -99,6 +124,8 @@ def build_run_manifest(
         "dataset_fingerprint": data_fingerprint,
         "config_fingerprint": config_fingerprint,
     }
+    if provenance_fingerprint is not None:
+        identity["dataset_provenance_sha256"] = provenance_fingerprint
     run_id = _sha256(_canonical_json(identity))
     return RunManifest(
         schema_version=MANIFEST_SCHEMA_VERSION,
@@ -113,6 +140,8 @@ def build_run_manifest(
         symbols=tuple(sorted({bar.symbol for bar in bars})),
         timeframes=tuple(sorted({bar.timeframe for bar in bars})),
         created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        dataset_provenance=provenance_payload,
+        dataset_provenance_sha256=provenance_fingerprint,
     )
 
 
