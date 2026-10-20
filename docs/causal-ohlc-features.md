@@ -31,3 +31,17 @@ must not change already emitted feature rows.
 - Synthetic tests establish deterministic mechanics, not market performance.
 - No API, broker, order execution, or live prediction path is modified.
   Research output remains non-actionable and serving remains `NO_TRADE`.
+
+
+## Extended causal indicator set
+
+The current preparer excludes the first 34 rows for indicator initialization and emits
+12 features: returns over 1/3/5/10 bars, normalized range and candle body, close location,
+14-return volatility, normalized EMA(12)-EMA(26) gap, Wilder RSI(14), normalized
+Wilder ATR(14), and normalized MACD histogram (12/26 with a 9-period signal EMA).
+The JSON audit records each feature definition and warm-up policy. All indicators use
+only the current completed candle and earlier candles; the causality regression test
+perturbs the final source candle and verifies that earlier feature rows remain unchanged.
+
+These are candidate features for research, not a claim that any indicator improves
+out-of-sample prediction. Freeze feature selection before final-test evaluation.
