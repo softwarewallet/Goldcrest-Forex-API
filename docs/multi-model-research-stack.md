@@ -222,3 +222,17 @@ holidays, daylight-saving changes and provider conventions can explain gaps. The
 never sorts, fills, imputes, drops or synthesizes records, and it does not treat its
 estimated gap count as an instruction to repair data. All audit artifacts remain
 offline-only and `actionable=false`.
+
+
+## Dashboard report review
+
+The dashboard's **Historical research report review** panel accepts a combined pipeline
+JSON report or an evaluation JSON report. It reads the selected file locally in the
+browser; it does not upload the report to the API. When the combined report is loaded,
+the panel summarizes raw-row quality, timestamp duplicates, cadence gaps, feature and
+label row counts, and model fold metrics where present. Per-fold metrics are displayed
+as descriptive fold averages only, not as a pooled out-of-sample score.
+
+The panel rejects execution-scoped/actionable reports and clearly states that predictive
+metrics do not establish profitability. It is a review surface, not a model promotion,
+prediction-serving, or order-execution control.
