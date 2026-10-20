@@ -89,15 +89,15 @@ export default function ResearchReportPanel() {
         <Metric label="LABELED ROWS" value={textValue(valueAt(labels, "output_rows") ?? valueAt(labels, "labeled_rows"))} note="Matured outcomes only" />
       </div>
       {quality && <div className="research-report-note"><b>Cadence interpretation:</b> {warnings.map(textValue).join(" ") || "Cadence gaps require provider/session-aware review."}</div>}
-      {modelRows.length > 0 ? <div className="research-model-table-wrap"><h3>Walk-forward results · per-fold metrics</h3><table className="research-model-table"><thead><tr><th>MODEL</th><th>FOLDS</th><th>TEST SAMPLES</th><th>MEAN BRIER</th><th>MEAN LOG LOSS</th><th>MEAN ACCURACY</th></tr></thead><tbody>{modelRows.map(model => {
+      {modelRows.length > 0 ? <div className="research-model-table-wrap"><h3>Walk-forward results · per-fold metrics</h3><table className="research-model-table"><thead><tr><th>MODEL</th><th>FOLDS</th><th>TEST SAMPLES</th><th>MEAN BRIER</th><th>MEAN LOG LOSS</th><th>MEAN ACCURACY</th><th>MEAN ECE</th></tr></thead><tbody>{modelRows.map(model => {
         const tests = model.folds.map(fold => record(record(fold)?.test)).filter((item): item is JsonRecord => item !== null);
         const average = (key: string) => {
           const values = tests.map(item => numberValue(item[key])).filter((item): item is number => item !== null);
           return values.length ? values.reduce((sum, item) => sum + item, 0) / values.length : null;
         };
         const samples = tests.reduce((sum, item) => sum + (numberValue(item.sample_count) ?? 0), 0);
-        return <tr key={model.name}><td>{model.name}</td><td>{model.folds.length}</td><td>{samples || "—"}</td><td>{formatNumber(average("brier_score"))}</td><td>{formatNumber(average("log_loss"))}</td><td>{formatNumber(average("accuracy"))}</td></tr>;
-      })}</tbody></table><p className="research-report-note">Means are descriptive summaries of fold-level metrics, not a pooled out-of-sample score. Review fold definitions, baseline comparisons, label semantics and data provenance before interpreting any result.</p></div> : <div className="research-report-empty">No per-fold model results were found in this file. Load the combined pipeline JSON or the evaluation JSON produced by the historical research CLI.</div>}
+        return <tr key={model.name}><td>{model.name}</td><td>{model.folds.length}</td><td>{samples || "—"}</td><td>{formatNumber(average("brier_score"))}</td><td>{formatNumber(average("log_loss"))}</td><td>{formatNumber(average("accuracy_at_fixed_half"))}</td><td>{formatNumber(average("expected_calibration_error"))}</td></tr>;
+      })}</tbody></table><p className="research-report-note">Means are descriptive summaries of fold-level metrics, not pooled out-of-sample scores. ECE depends on bin count and sample size and is not a calibration guarantee. Review fold definitions, baseline comparisons, label semantics and data provenance before interpreting results.</p></div> : <div className="research-report-empty">No per-fold model results were found in this file. Load the combined pipeline JSON or the evaluation JSON produced by the historical research CLI.</div>}
       <div className="research-report-safety"><b>RESEARCH ONLY · NO EXECUTION AUTHORITY</b><span>Predictive metrics do not establish profitability. No model is promoted or connected to order execution by this viewer.</span></div>
     </>}
   </section>;
