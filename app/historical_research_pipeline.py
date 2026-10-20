@@ -6,6 +6,7 @@ walk-forward tools. It does not fetch market data, serve predictions, or trade.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from typing import Sequence
@@ -105,6 +106,13 @@ def run_historical_research_pipeline(
         json.dumps(label_audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
+    # Verify each transformation's byte-level handoff before model evaluation.
+    if feature_audit.get("output_sha256") != label_audit.get("input_sha256"):
+        raise ValueError("feature output hash does not match label-stage input hash")
+    labeled_sha256 = hashlib.sha256(labeled_path.read_bytes()).hexdigest()
+    if label_audit.get("output_sha256") != labeled_sha256:
+        raise ValueError("label output hash does not match the labeled CSV bytes")
+
     feature_names = ",".join(FEATURE_COLUMNS)
     research_args = [
         "--csv", str(labeled_path),
@@ -136,11 +144,30 @@ def run_historical_research_pipeline(
     if result_code != 0:
         raise RuntimeError(f"historical evaluation CLI failed with exit code {result_code}")
     evaluation = json.loads(evaluation_report_path.read_text(encoding="utf-8"))
+    evaluation_manifest = evaluation.get("manifest")
+    if not isinstance(evaluation_manifest, dict):
+        raise ValueError("evaluation report is missing its dataset manifest")
+    if evaluation_manifest.get("dataset_sha256") != labeled_sha256:
+        raise ValueError("evaluation dataset hash does not match the labeled CSV artifact")
+
+    lineage = {
+        "raw_ohlc_sha256": feature_audit["input_sha256"],
+        "feature_csv_sha256": feature_audit["output_sha256"],
+        "label_stage_input_sha256": label_audit["input_sha256"],
+        "labeled_csv_sha256": labeled_sha256,
+        "label_csv_sha256": label_audit["output_sha256"],
+        "evaluation_dataset_sha256": evaluation_manifest["dataset_sha256"],
+        "feature_to_label_hash_match": feature_audit["output_sha256"] == label_audit["input_sha256"],
+        "label_to_evaluation_hash_match": label_audit["output_sha256"] == evaluation_manifest["dataset_sha256"],
+        "verified": True,
+        "actionable": False,
+    }
 
     combined = {
         "pipeline": "raw_ohlc_to_walk_forward_research",
         "raw_input_path": str(raw),
         "raw_input_sha256": feature_audit["input_sha256"],
+        "artifact_lineage": lineage,
         "data_quality_audit": quality_audit,
         "feature_preparation": feature_audit,
         "label_preparation": label_audit,
