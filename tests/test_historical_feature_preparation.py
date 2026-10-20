@@ -36,7 +36,7 @@ def test_prepare_features_is_causal_and_records_provenance(tmp_path):
 
     with output.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
-    assert report["input_rows"] == 24
+    assert report["input_rows"] == 40
     assert report["output_rows"] == 6
     assert report["warmup_rows_excluded"] == 34
     assert len(report["input_sha256"]) == 64
@@ -63,7 +63,7 @@ def test_prepare_features_rejects_nonchronological_input(tmp_path):
 
 def test_prepare_features_rejects_naive_timestamps(tmp_path):
     source, output = tmp_path / "naive.csv", tmp_path / "features.csv"
-    write_ohlc(source, 20)
+    write_ohlc(source, 40)
     with source.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     rows[0]["timestamp"] = "2025-01-01T00:00:00"
@@ -78,7 +78,7 @@ def test_prepare_features_rejects_naive_timestamps(tmp_path):
 
 def test_prepare_features_rejects_same_input_and_output_path(tmp_path):
     source = tmp_path / "raw.csv"
-    write_ohlc(source, 20)
+    write_ohlc(source, 40)
     with pytest.raises(ValueError, match="paths must differ"):
         prepare_features(source, source)
 
