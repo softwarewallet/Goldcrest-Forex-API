@@ -5,6 +5,7 @@ import pytest
 
 from app.experiment_report import build_experiment_report, write_experiment_report
 from app.research_report_inspection import inspect_experiment_report
+from app.research_reproducibility import reproducibility_manifest
 
 
 def _report():
@@ -108,4 +109,46 @@ def test_inspection_rejects_duplicate_fold_indices_after_valid_fingerprint(tmp_p
     path.write_text(json.dumps(report), encoding="utf-8")
 
     with pytest.raises(ValueError, match="duplicate fold index"):
+        inspect_experiment_report(path)
+
+
+
+def test_inspection_verifies_nested_reproducibility_manifest(tmp_path):
+    class Model:
+        model_type = "fixture"
+        model_version = "v1"
+
+        def __init__(self):
+            self.depth = 4
+
+    def factory():
+        return Model()
+
+    report = build_experiment_report(
+        manifest={
+            "run_id": "nested-repro-run",
+            "reproducibility": reproducibility_manifest({"candidate": factory}, {"candidate": factory()}),
+        },
+        fold_results={
+            "candidate": [{
+                "fold_index": 0,
+                "validation": {"sample_count": 2, "brier_score": 0.2},
+                "test": {"sample_count": 2, "brier_score": 0.2},
+                "actionable": False,
+            }]
+        },
+    )
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    assert inspect_experiment_report(path)["verified"] is True
+
+    tampered = json.loads(path.read_text(encoding="utf-8"))
+    tampered["manifest"]["reproducibility"]["initial_model_configuration"]["candidate"]["public_configuration"]["depth"] = 999
+    payload = dict(tampered)
+    payload.pop("report_sha256")
+    tampered["report_sha256"] = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="reproducibility manifest fingerprint mismatch"):
         inspect_experiment_report(path)
