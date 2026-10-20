@@ -201,7 +201,7 @@ def test_inspection_rejects_duplicate_comparison_identity(tmp_path):
 
 def test_inspection_rejects_mismatched_paired_observation_fingerprints(tmp_path):
     report = _report()
-    report["fold_results"]["candidate"][1]["test"]["observation_identity_sha256"] = "a" * 64
+    report["fold_results"]["candidate"][0]["test"]["observation_identity_sha256"] = "a" * 64
     report["fold_results"]["prevalence"][0]["test"]["observation_identity_sha256"] = "b" * 64
     report["paired_comparisons"][0]["observation_identity_sha256"] = "a" * 64
     _rewrite_fingerprint(report)
