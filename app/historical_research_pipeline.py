@@ -70,7 +70,7 @@ def run_historical_research_pipeline(
     quality_audit = audit_historical_ohlc(raw)
     data_quality_report_path.parent.mkdir(parents=True, exist_ok=True)
     data_quality_report_path.write_text(
-        json.dumps(quality_audit, indent=2, sort_keys=True) + "\\n", encoding="utf-8"
+        json.dumps(quality_audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     if quality_audit["structurally_valid"] is not True:
         raise ValueError(
