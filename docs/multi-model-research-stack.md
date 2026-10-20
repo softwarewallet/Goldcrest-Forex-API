@@ -120,3 +120,34 @@ This command intentionally does **not** create labels. It is not a replacement f
 labeled CSV contract above. The prediction horizon, neutral/tie handling, and label
 availability timestamps must be defined explicitly before the evaluation CLI can run.
 The resulting features and report are offline research artifacts only.
+
+
+## Explicit target-label preparation
+
+After generating causal features, prepare labels with a separate command. This command
+requires the horizon, neutral return band, and treatment of neutral outcomes to be
+explicit. It does not drop neutral rows: choose `up` to assign neutral outcomes class 1,
+`down` to assign them class 0, or `error` to stop if any neutral outcome is found.
+
+```bash
+python -m app.historical_label_preparation \
+  --input-csv data/historical/EURUSD_M15_features.csv \
+  --output-csv data/historical/EURUSD_M15_labeled.csv \
+  --report reports/EURUSD_M15_label_audit.json \
+  --horizon-bars 3 \
+  --neutral-band-bps 0.5 \
+  --neutral-policy error
+```
+
+The target compares `close[t]` with `close[t+horizon_bars]`. Class 1 means UP and class
+0 means DOWN, outside the configured neutral band. `label_available_at` is the timestamp
+of the future close that resolves the outcome. The final `horizon_bars` rows are excluded
+because their outcome is not yet mature. Existing label columns are rejected rather than
+overwritten. The JSON report records the input hash, exact target rule, horizon, neutral
+policy, class counts, and excluded tail count.
+
+This is a configurable research target, not a recommendation that a particular horizon
+or neutral band is predictive. Select parameters based on the intended research question,
+document them, and freeze them before final-test evaluation. This target is close-to-close
+price direction, not a cost-adjusted trade return; costs and execution assumptions need
+separate analysis. The generated data remains `actionable=false`.
