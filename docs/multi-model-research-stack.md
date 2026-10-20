@@ -198,3 +198,27 @@ A successful run means the pipeline completed, not that a model is profitable or
 accurate in live markets. Use genuine historical data, review the combined provenance
 report and separate validation/test metrics, and retain final-test results for evaluation
 rather than tuning. The entire workflow remains offline and `actionable=false`.
+
+
+## Historical OHLC quality and cadence audit
+
+The one-command research pipeline now writes a source quality report before feature
+preparation. The standalone utility is also available:
+
+```bash
+python -m app.historical_data_quality \
+  --input-csv data/historical/EURUSD_M15_raw.csv \
+  --report reports/EURUSD_M15_quality.json
+```
+
+The audit fingerprints the exact source bytes and reports invalid rows, duplicate and
+non-monotonic timestamps, observed cadence versus the nominal timeframe, long intervals,
+and an estimate of bars between timestamps only when the interval is an exact multiple
+of the nominal timeframe. The pipeline stops before feature generation if structural
+checks fail and leaves the quality report for inspection.
+
+**Important:** a long interval is not proof of missing data. Weekends, market sessions,
+holidays, daylight-saving changes and provider conventions can explain gaps. The audit
+never sorts, fills, imputes, drops or synthesizes records, and it does not treat its
+estimated gap count as an instruction to repair data. All audit artifacts remain
+offline-only and `actionable=false`.
