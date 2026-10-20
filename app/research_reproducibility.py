@@ -20,6 +20,8 @@ from typing import Any, Callable, Mapping
 def _json_safe(value: Any, *, context: str) -> Any:
     if value is None or isinstance(value, (str, bool, int)):
         return value
+    if inspect.isclass(value):
+        return {"__class__": f"{value.__module__}.{value.__qualname__}"}
     if isinstance(value, float):
         import math
         if not math.isfinite(value):
