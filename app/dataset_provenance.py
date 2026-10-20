@@ -55,6 +55,22 @@ class DatasetProvenance:
         return result
 
 
+def parse_retrieved_at_utc(value: str) -> datetime:
+    """Parse a declared retrieval timestamp and require UTC rather than guessing a zone."""
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError("retrieved_at_utc must be ISO-8601 UTC, for example 2026-10-20T07:30:00Z") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("retrieved_at_utc must include UTC timezone information")
+    if parsed.utcoffset().total_seconds() != 0:
+        raise ValueError("retrieved_at_utc must be expressed in UTC (Z or +00:00)")
+    return parsed.astimezone(timezone.utc)
+
+
 def build_dataset_provenance(
     *,
     source_name: str,
