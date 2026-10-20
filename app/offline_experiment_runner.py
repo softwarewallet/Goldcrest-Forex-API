@@ -11,6 +11,7 @@ from app.experiment_report import build_experiment_report, write_experiment_repo
 from app.model_comparison import TrainingPrevalenceBaseline
 from app.model_walk_forward import BinaryResearchModel, ModelFoldResult, TimedBinaryExample, _metrics, _utc, _validate_examples
 from app.prediction_ledger import PredictionLedger, PredictionRecord
+from app.research_reproducibility import reproducibility_manifest, snapshot_model_configuration
 from app.walk_forward import WalkForwardPlan
 
 
@@ -65,6 +66,14 @@ def run_offline_experiment(
     by_time = {_utc(row.timestamp, "feature"): row for row in examples}
     factories = dict(model_factories)
     factories["training_prevalence"] = TrainingPrevalenceBaseline
+    # Preflight factories once so the run contract captures exact model configuration.
+    initial_models = {name: factory() for name, factory in factories.items()}
+    if len({id(model) for model in initial_models.values()}) != len(initial_models):
+        raise ValueError("each model factory must return a distinct fresh model instance")
+    reproducibility = reproducibility_manifest(factories, initial_models)
+    run_manifest = dict(manifest)
+    run_manifest["reproducibility"] = reproducibility
+    initial_model_configs = {name: snapshot_model_configuration(model) for name, model in initial_models.items()}
     fold_results: dict[str, list[ModelFoldResult]] = {name: [] for name in factories}
     prediction_records: list[PredictionRecord] = []
     model_versions: dict[str, str] = {}
@@ -95,10 +104,10 @@ def run_offline_experiment(
         "feature_names": list(feature_names),
         "symbol": plan.symbol,
         "timeframe": plan.timeframe,
-        "model_factories": {
-            name: f"{factory.__module__}.{getattr(factory, '__qualname__', type(factory).__qualname__)}"
-            for name, factory in sorted(model_factories.items())
-        },
+        "model_factories": reproducibility["factory_configuration"],
+        "model_configuration": initial_model_configs,
+        "runtime_environment": reproducibility["environment"],
+        "reproducibility_manifest_sha256": reproducibility["manifest_sha256"],
     }
     input_fingerprint = hashlib.sha256(json.dumps(
         provenance_payload, sort_keys=True, separators=(",", ":"),
@@ -106,8 +115,9 @@ def run_offline_experiment(
     ).encode("utf-8")).hexdigest()
 
     run_contract = {
-        "manifest": dict(manifest),
+        "manifest": run_manifest,
         "input_fingerprint": input_fingerprint,
+        "reproducibility_manifest_sha256": reproducibility["manifest_sha256"],
         "input_example_count": len(canonical_examples),
         "fold_partition_fingerprint": hashlib.sha256(json.dumps(
             canonical_folds, sort_keys=True, separators=(",", ":"),
@@ -132,7 +142,8 @@ def run_offline_experiment(
     ledger.start_run(run_id, run_contract, expected_prediction_rows=expected_prediction_rows)
 
     try:
-        for fold in plan.folds:
+        seen_model_instances: dict[str, list[BinaryResearchModel]] = {name: [] for name in factories}
+        for fold_position, fold in enumerate(plan.folds):
             train_times = {_utc(bar.timestamp, "fold") for bar in fold.train}
             validation_times = {_utc(bar.timestamp, "fold") for bar in fold.validation}
             test_times = {_utc(bar.timestamp, "fold") for bar in fold.test}
@@ -157,11 +168,17 @@ def run_offline_experiment(
                 raise ValueError("matured training labels must contain both classes")
 
             for name, factory in factories.items():
-                model = factory()
+                model = initial_models[name] if fold_position == 0 else factory()
+                if any(model is previous for previous in seen_model_instances[name]):
+                    raise ValueError(f"model factory reused an instance across folds for {name!r}")
+                seen_model_instances[name].append(model)
                 model_version = str(getattr(model, "model_version", "unknown"))
                 prior_version = model_versions.setdefault(name, model_version)
                 if prior_version != model_version:
                     raise ValueError(f"model version changed across folds for {name!r}")
+                model_config = snapshot_model_configuration(model)
+                if model_config["configuration_sha256"] != initial_model_configs[name]["configuration_sha256"]:
+                    raise ValueError(f"model configuration changed across folds for {name!r}")
                 model.fit([row.features for row in train], [row.label for row in train])
                 if getattr(model, "actionable", False) is not False:
                     raise ValueError("research model must remain actionable=False")
@@ -220,7 +237,7 @@ def run_offline_experiment(
                     ))
 
         report = build_experiment_report(
-            manifest=dict(manifest),
+            manifest=run_manifest,
             fold_results={name: tuple(results) for name, results in fold_results.items()},
             paired_comparisons=comparisons,
             exclusions=exclusions,
