@@ -120,6 +120,40 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
                 raise ValueError(f"fold {index} must contain separate validation and test metrics")
             validation = _metrics(fold["validation"], context=f"{model_name} fold {index} validation")
             test = _metrics(fold["test"], context=f"{model_name} fold {index} test")
+            for partition_name, metric in (("validation", validation), ("test", test)):
+                uncertainty = metric.get("calibration_uncertainty")
+                if uncertainty is not None:
+                    context = f"{model_name} fold {index} {partition_name} calibration_uncertainty"
+                    if not isinstance(uncertainty, dict):
+                        raise ValueError(f"{context} must be a JSON object")
+                    low, high = uncertainty.get("interval_low"), uncertainty.get("interval_high")
+                    if (low is None) != (high is None):
+                        raise ValueError(f"{context} interval bounds must both be present or both be null")
+                    if low is not None:
+                        if (isinstance(low, bool) or not isinstance(low, (int, float))
+                                or isinstance(high, bool) or not isinstance(high, (int, float))
+                                or not math.isfinite(float(low)) or not math.isfinite(float(high))
+                                or not 0 <= low <= high <= 1):
+                            raise ValueError(f"{context} interval bounds must be ordered finite values in [0, 1]")
+                    sample_count = metric.get("sample_count")
+                    if uncertainty.get("sample_count") != sample_count:
+                        raise ValueError(f"{context} sample_count must match the scored partition")
+                    block_length = uncertainty.get("block_length")
+                    resamples = uncertainty.get("bootstrap_resamples")
+                    confidence = uncertainty.get("confidence_level")
+                    if (isinstance(block_length, bool) or not isinstance(block_length, int)
+                            or block_length < 1 or block_length > sample_count):
+                        raise ValueError(f"{context} block_length must be between 1 and sample_count")
+                    if isinstance(resamples, bool) or not isinstance(resamples, int) or resamples < 100:
+                        raise ValueError(f"{context} bootstrap_resamples must be an integer >= 100")
+                    if (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
+                            or not math.isfinite(float(confidence)) or not 0 < confidence < 1):
+                        raise ValueError(f"{context} confidence_level must be between 0 and 1")
+                    status = uncertainty.get("status")
+                    if low is None and status != "WITHHELD_INSUFFICIENT_SAMPLE_COUNT":
+                        raise ValueError(f"{context} null interval requires an explicit withheld status")
+                    if low is not None and status != "DESCRIPTIVE_MOVING_BLOCK_PERCENTILE_INTERVAL":
+                        raise ValueError(f"{context} present interval has an unexpected status")
             metrics_by_model_fold[(model_name, index)] = {"validation": validation, "test": test}
             summarized_folds.append({
                 "fold_index": index, "validation": validation, "test": test, "actionable": False,

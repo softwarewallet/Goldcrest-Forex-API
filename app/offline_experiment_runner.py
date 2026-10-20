@@ -144,6 +144,14 @@ def run_offline_experiment(
         "bootstrap_resamples": bootstrap_resamples,
         "confidence_level": confidence_level,
         "random_seed": random_seed,
+        "calibration_uncertainty": {
+            "method": "moving_block_percentile_bootstrap_for_10_bin_ECE",
+            "block_length": block_length,
+            "bootstrap_resamples": max(100, bootstrap_resamples),
+            "confidence_level": confidence_level,
+            "minimum_sample_count": 30,
+            "seed_derivation": "SHA256(random_seed:fold_index:partition) first 8 hex digits",
+        },
     }
     expected_prediction_rows = sum(
         len(fold.validation) + len(fold.test) for fold in plan.folds
@@ -211,8 +219,17 @@ def run_offline_experiment(
                             probability=probability, label=row.label,
                             label_available_at=row.label_available_at, actionable=False,
                         ))
-                    return _metrics([row.label for row in rows], probabilities,
-                                    observation_timestamps=[row.timestamp for row in rows])
+                    calibration_seed = int(hashlib.sha256(
+                        f"{random_seed}:{fold.fold_index}:{partition}".encode("utf-8")
+                    ).hexdigest()[:8], 16)
+                    return _metrics(
+                        [row.label for row in rows], probabilities,
+                        observation_timestamps=[row.timestamp for row in rows],
+                        calibration_block_length=min(block_length, len(rows)),
+                        calibration_bootstrap_resamples=max(100, bootstrap_resamples),
+                        calibration_confidence_level=confidence_level,
+                        calibration_random_seed=calibration_seed,
+                    )
 
                 fold_results[name].append(ModelFoldResult(
                     fold_index=fold.fold_index,
