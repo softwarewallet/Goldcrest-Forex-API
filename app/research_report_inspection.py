@@ -17,6 +17,7 @@ from app.model_selection_audit import build_model_selection_audit
 from app.oos_period_robustness_audit import build_oos_period_robustness_audit
 from app.regime_uncertainty_audit import build_regime_uncertainty_audit
 from app.fold_stability import summarize_fold_stability
+from app.block_length_sensitivity_audit import build_block_length_sensitivity_audit
 
 
 def _canonical(value: Mapping[str, Any]) -> bytes:
@@ -201,6 +202,14 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
                 raise ValueError("paired comparison identity fingerprint lacks matching fold metric fingerprints")
             if comparison_identity != expected_identity:
                 raise ValueError("paired comparison observation identity fingerprint does not match fold metrics")
+
+    block_sensitivity_audit = report.get("block_length_sensitivity_audit")
+    if block_sensitivity_audit is not None:
+        if not isinstance(block_sensitivity_audit, dict):
+            raise ValueError("block_length_sensitivity_audit must be a JSON object")
+        expected_block_sensitivity = build_block_length_sensitivity_audit(comparisons)
+        if _canonical(block_sensitivity_audit) != _canonical(expected_block_sensitivity):
+            raise ValueError("block_length_sensitivity_audit does not match paired comparison sensitivity metadata")
 
     selection_audit = report.get("model_selection_audit")
     if selection_audit is not None:

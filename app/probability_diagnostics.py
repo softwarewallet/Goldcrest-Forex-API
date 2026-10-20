@@ -35,6 +35,17 @@ class ProbabilityDiagnostics:
 
 
 @dataclass(frozen=True)
+class BlockLengthSensitivity:
+    block_length: int
+    brier_difference_ci_low: float
+    brier_difference_ci_high: float
+    log_loss_difference_ci_low: float
+    log_loss_difference_ci_high: float
+    brier_direction: str
+    log_loss_direction: str
+
+
+@dataclass(frozen=True)
 class PairedProbabilityComparison:
     sample_count: int
     candidate_name: str
@@ -53,6 +64,7 @@ class PairedProbabilityComparison:
     bootstrap_resamples: int
     confidence_level: float
     interpretation: str
+    block_length_sensitivity: tuple[BlockLengthSensitivity, ...] = ()
 
 
 def _validate(labels: Sequence[int], probabilities: Sequence[float], name: str) -> None:
@@ -163,14 +175,14 @@ def compare_probability_models(
     brier_diff = [a-b for a, b in zip(candidate_brier, baseline_brier)]
     log_diff = [a-b for a, b in zip(candidate_log, baseline_log)]
 
-    def interval(values: list[float], seed_offset: int) -> tuple[float, float]:
+    def interval(values: list[float], length: int, seed_offset: int) -> tuple[float, float]:
         rng = random.Random(random_seed + seed_offset)
         means: list[float] = []
         for _ in range(bootstrap_resamples):
             sample: list[float] = []
             while len(sample) < n:
-                start = rng.randrange(n - block_length + 1)
-                sample.extend(values[start:start + block_length])
+                start = rng.randrange(n - length + 1)
+                sample.extend(values[start:start + length])
             sample = sample[:n]
             means.append(sum(sample) / n)
         means.sort()
@@ -179,8 +191,18 @@ def compare_probability_models(
         high = max(0, min(bootstrap_resamples - 1, int((1 - alpha / 2) * bootstrap_resamples) - 1))
         return means[low], means[high]
 
-    brier_low, brier_high = interval(brier_diff, 0)
-    log_low, log_high = interval(log_diff, 1)
+    # Predeclared shorter/configured/longer lengths; never select a preferred length.
+    lengths = sorted({max(1, block_length // 2), block_length, min(n, block_length * 2)})
+    sensitivity: list[BlockLengthSensitivity] = []
+    for length in lengths:
+        blo, bhi = interval(brier_diff, length, 0)
+        llo, lhi = interval(log_diff, length, 1)
+        bd = "CANDIDATE_LOWER" if bhi < 0 else "CANDIDATE_HIGHER" if blo > 0 else "INCLUDES_ZERO"
+        ld = "CANDIDATE_LOWER" if lhi < 0 else "CANDIDATE_HIGHER" if llo > 0 else "INCLUDES_ZERO"
+        sensitivity.append(BlockLengthSensitivity(length, blo, bhi, llo, lhi, bd, ld))
+    primary = next(item for item in sensitivity if item.block_length == block_length)
+    brier_low, brier_high = primary.brier_difference_ci_low, primary.brier_difference_ci_high
+    log_low, log_high = primary.log_loss_difference_ci_low, primary.log_loss_difference_ci_high
     if brier_high < 0 and log_high < 0:
         interpretation = "CANDIDATE_HAS_LOWER_BRIER_AND_LOG_LOSS_IN_THIS_EVALUATION_NOT_PROOF_OF_GENERALIZATION"
     elif brier_low > 0 and log_low > 0:
@@ -205,4 +227,5 @@ def compare_probability_models(
         bootstrap_resamples=bootstrap_resamples,
         confidence_level=confidence_level,
         interpretation=interpretation,
+        block_length_sensitivity=tuple(sensitivity),
     )

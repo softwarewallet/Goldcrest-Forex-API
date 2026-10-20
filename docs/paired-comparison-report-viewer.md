@@ -10,6 +10,7 @@ The local read-only dashboard displays candidate-minus-baseline Brier and log-lo
 - Validation comparisons are diagnostic and must not be used to repeatedly tune against final test windows.
 - Test comparisons are per-fold; if test windows overlap, repeated timestamps are not independent observations.
 - The moving-block bootstrap depends on the chosen block length and does not remove multiple-testing bias, nonstationarity, source-data defects, or external feature leakage.
+- New comparisons also report interval sensitivity at shorter, configured, and longer block lengths where distinct lengths are available. Direction stability means only that both Brier and log-loss interval sign classifications match across those tested lengths; it is not a significance test, automatic block-length selection, or proof of robustness to all dependence structures.
 - These are predictive probability comparisons, not cost-adjusted P&L or proof of profitability.
 - The API remains research-only and non-actionable; no execution or GoldcrestForex Auto Live code is involved.
 
@@ -104,3 +105,10 @@ Optional regime-stratified summaries require an explicit manifest.fold_regime_an
 Legacy string-only labels remain readable for audit continuity but are marked LEGACY_LABELS_WITHOUT_TEMPORAL_PROOF and never used to produce stratified metrics. Missing fold boundaries withhold stratification. These checks enforce internal temporal consistency and content-addressed source metadata; they do not authenticate that the external source is truthful or prove that the classification method itself is causal. The report inspector recomputes the audit from the manifest and fold metrics and rejects inconsistencies.
 
 Only labels on common complete test folds are used; each candidate/regime group needs at least two folds or is withheld. Two folds is a minimum for descriptive output, not evidence of statistical power. Overlapping test windows may reuse observations; no pooling, significance testing, confidence interval, model selection, profitability inference or execution authorization is produced.
+
+
+## Block-length uncertainty sensitivity
+
+Each newly generated paired probability comparison computes moving-block percentile intervals at the configured block length and nearby shorter/longer lengths, bounded by the sample size. The primary interval remains the configured-length interval; sensitivity runs are diagnostic and use the same deterministic seed and resample count for each metric. The report audit verifies that the primary interval matches its sensitivity entry and derives a per-comparison status: `DIRECTION_STABLE_ACROSS_TESTED_BLOCK_LENGTHS`, `SENSITIVE_TO_BLOCK_LENGTH_CHOICE`, or `INSUFFICIENT_BLOCK_LENGTH_VARIATION`.
+
+The dashboard exposes the exact intervals at each tested length. These statuses describe sensitivity only, not statistical significance, independent evidence, a preferred block length, or robustness to every serial-dependence structure. The diagnostic does not pool folds, select models, adjust multiple testing, or authorize trading. Legacy comparison artifacts without the new field remain readable.

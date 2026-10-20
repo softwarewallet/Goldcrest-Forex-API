@@ -17,6 +17,21 @@ def test_diagnostics_compute_scores_and_reliability_bins():
     assert 0 <= result.expected_calibration_error <= 1
 
 
+def test_block_length_sensitivity_is_deterministic_and_includes_primary_length():
+    labels = [0, 1] * 40
+    candidate = [0.15 if y == 0 else 0.85 for y in labels]
+    baseline = [0.4 if y == 0 else 0.6 for y in labels]
+    first = compare_probability_models(labels, candidate, baseline, candidate_name="candidate",
+        baseline_name="baseline", block_length=4, bootstrap_resamples=400, random_seed=19)
+    second = compare_probability_models(labels, candidate, baseline, candidate_name="candidate",
+        baseline_name="baseline", block_length=4, bootstrap_resamples=400, random_seed=19)
+    assert first.block_length_sensitivity == second.block_length_sensitivity
+    assert [item.block_length for item in first.block_length_sensitivity] == [2, 4, 8]
+    primary = next(item for item in first.block_length_sensitivity if item.block_length == 4)
+    assert primary.brier_difference_ci_low == first.brier_difference_ci_low
+    assert primary.log_loss_difference_ci_high == first.log_loss_difference_ci_high
+
+
 def test_probability_one_is_included_in_last_reliability_bin():
     result = probability_diagnostics([1, 0], [1.0, 0.0], bins=2)
     assert result.reliability_bins[-1].count == 1
