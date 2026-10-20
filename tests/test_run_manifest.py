@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.evaluation import ForexBar
+from app.dataset_provenance import build_dataset_provenance
 from app.run_manifest import ExperimentRegistry, build_run_manifest
 
 
@@ -77,3 +78,55 @@ def test_registry_rejects_unknown_run_and_bad_status(tmp_path):
         registry.record_result("missing", status="COMPLETED")
     with pytest.raises(ValueError, match="status"):
         registry.record_result("missing", status="REGISTERED")
+
+
+def _fixture_provenance(version="v1"):
+    bars = make_bars()
+    return build_dataset_provenance(
+        source_name="fixture-provider", source_version=version, snapshot_sha256="a" * 64,
+        retrieved_at=datetime(2025, 1, 2, tzinfo=timezone.utc), timestamp_timezone="UTC",
+        duplicate_policy="reject", adjustment_policy="none", license_or_terms_reference="fixture-only",
+        instruments=["EUR/USD"], timeframe="M5", row_count=len(bars),
+    )
+
+
+def test_provenance_is_persisted_and_bound_to_manifest_identity():
+    bars = make_bars()
+    provenance = _fixture_provenance()
+    kwargs = dict(
+        code_commit="abc123", model_id="qwen-local", model_revision="revision-1",
+        dataset_id="eurusd-m5-fixture-v1",
+        evaluation_config={"horizon_bars": 12, "cost_model": "explicit-v1"},
+        dataset_provenance=provenance, actual_snapshot_sha256="a" * 64,
+    )
+    first = build_run_manifest(bars, **kwargs)
+    second = build_run_manifest(bars, **kwargs)
+    assert first.run_id == second.run_id
+    assert first.dataset_provenance_sha256
+    assert first.dataset_provenance == provenance.to_dict()
+    assert first.to_dict()["dataset_provenance_sha256"] == first.dataset_provenance_sha256
+
+
+def test_provenance_bound_manifest_rejects_missing_or_mismatched_snapshot():
+    bars = make_bars()
+    kwargs = dict(
+        code_commit="abc123", model_id="qwen-local", model_revision="revision-1",
+        dataset_id="fixture", evaluation_config={}, dataset_provenance=_fixture_provenance(),
+    )
+    with pytest.raises(ValueError, match="actual_snapshot_sha256"):
+        build_run_manifest(bars, **kwargs)
+    with pytest.raises(ValueError, match="does not match"):
+        build_run_manifest(bars, **kwargs, actual_snapshot_sha256="b" * 64)
+
+
+def test_provenance_changes_change_run_identity():
+    bars = make_bars()
+    common = dict(
+        code_commit="abc123", model_id="qwen-local", model_revision="revision-1",
+        dataset_id="eurusd-m5-fixture-v1",
+        evaluation_config={"horizon_bars": 12, "cost_model": "explicit-v1"},
+        actual_snapshot_sha256="a" * 64,
+    )
+    first = build_run_manifest(bars, **common, dataset_provenance=_fixture_provenance("v1"))
+    changed = build_run_manifest(bars, **common, dataset_provenance=_fixture_provenance("v2"))
+    assert first.run_id != changed.run_id
