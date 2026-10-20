@@ -60,8 +60,70 @@ def test_cli_audit_fails_closed_when_artifact_verification_raises(tmp_path, monk
     captured = capsys.readouterr()
 
     assert code == 1
-    error = json.loads(captured.err)
+    error = json.loads(captured.out)
     assert error["verified"] is False
     assert error["actionable"] is False
     assert "hash" in error["error"]
+    assert captured.err == ""
+
+
+def test_cli_status_emits_run_and_attempt_history_without_mutation(tmp_path, monkeypatch, capsys):
+    ledger_path = tmp_path / "research.sqlite"
+    ledger_path.write_bytes(b"")
+    run = {"run_id": "fixture-run", "status": "failed", "expected_prediction_rows": 8}
+    attempts = [{"attempt_number": 1, "status": "failed"}, {"attempt_number": 2, "status": "failed"}]
+
+    class FakeLedger:
+        def __init__(self, _path):
+            pass
+
+        def get_run_status(self, run_id):
+            assert run_id == "fixture-run"
+            return run
+
+        def get_run_attempts(self, run_id):
+            assert run_id == "fixture-run"
+            return attempts
+
+    monkeypatch.setattr(research_cli, "PredictionLedger", FakeLedger)
+    code = research_cli.main(["status", "--run-id", "fixture-run", "--ledger", str(ledger_path)])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    payload = json.loads(captured.out)
+    assert payload["found"] is True
+    assert payload["run"]["status"] == "failed"
+    assert payload["attempts"] == attempts
+    assert payload["actionable"] is False
+    assert captured.err == ""
+
+
+def test_cli_status_returns_two_for_unknown_run(tmp_path, monkeypatch, capsys):
+    ledger_path = tmp_path / "research.sqlite"
+    ledger_path.write_bytes(b"")
+
+    class FakeLedger:
+        def __init__(self, _path):
+            pass
+
+        def get_run_status(self, _run_id):
+            return None
+
+    monkeypatch.setattr(research_cli, "PredictionLedger", FakeLedger)
+    code = research_cli.main(["status", "--run-id", "unknown", "--ledger", str(ledger_path)])
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert json.loads(captured.out) == {"attempts": [], "found": False, "run_id": "unknown"}
+    assert captured.err == ""
+
+
+def test_cli_status_returns_two_for_missing_ledger(tmp_path, capsys):
+    code = research_cli.main([
+        "status", "--run-id", "fixture-run", "--ledger", str(tmp_path / "missing.sqlite")
+    ])
+    captured = capsys.readouterr()
+
+    assert code == 2
+    assert "ledger file does not exist" in captured.err
     assert captured.out == ""
