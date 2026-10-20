@@ -74,3 +74,22 @@ New experiment reports include a deterministic `model_selection_audit`. Candidat
 The audit explicitly records that test metrics were not used for selection. The report inspector recomputes the audit from the report's validation metrics and rejects a mismatch, even when the outer report fingerprint has been recomputed. Legacy reports without this optional field remain readable. The dashboard displays the protocol, common-fold count, ranking, and selection-withheld status.
 
 This is a transparent research protocol, not a guarantee against every form of adaptive overfitting. Repeated experiments, human decisions, feature leakage, overlapping windows, regime changes, and small validation samples remain risks. Final test partitions must not be used to tune or choose models; report inspection does not prove that a human followed that rule outside the recorded artifact. The selected name is not a model promotion or execution authorization, and all outputs remain non-actionable.
+
+
+## Chronological out-of-sample period robustness audit
+
+New reports include `oos_period_robustness_audit`, a descriptive post-selection diagnostic
+based only on per-fold test metrics. It requires at least three common fold indices with
+finite Brier and log-loss for all candidate models, then divides the chronologically
+ordered fold indices into balanced EARLY, MIDDLE, and LATE groups. It reports per-period
+median Brier/log-loss, worst-fold Brier/log-loss, and each candidate's full test-fold
+metric range. It does not pool predictions or observations, rank models, choose a model,
+or run a significance test. The report inspector recomputes the diagnostic and rejects
+a mismatch even if the outer report fingerprint was recomputed.
+
+The groups are based on fold index order supplied by the evaluation plan; they are not
+market-regime labels and do not prove independent samples. If test windows overlap,
+underlying observations may repeat across folds. This audit cannot establish robustness
+to actual economic regimes, profitability, or generalization. Genuine historical OHLC
+data and a predeclared evaluation protocol remain necessary; synthetic fixtures validate
+software mechanics only. All outputs remain research-only and non-actionable.
