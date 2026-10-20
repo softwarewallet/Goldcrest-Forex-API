@@ -26,6 +26,97 @@ function formatNumber(value: unknown, digits = 4): string {
   return numeric === null ? "—" : numeric.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
+
+function median(values: number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function stabilityMetric(values: number[]): JsonRecord | null {
+  if (!values.length) return null;
+  const wins = values.filter(value => value < 0).length;
+  const losses = values.filter(value => value > 0).length;
+  return {
+    folds_with_metric: values.length,
+    candidate_wins: wins,
+    ties: values.length - wins - losses,
+    candidate_losses: losses,
+    median_candidate_minus_baseline: median(values),
+  };
+}
+
+function buildFoldStability(foldResults: JsonRecord | null, comparisons: unknown[]): JsonRecord[] {
+  if (!foldResults || !comparisons.length) return [];
+  const models = new Map<string, Map<number, JsonRecord>>();
+  for (const [name, rows] of Object.entries(foldResults)) {
+    const folds = new Map<number, JsonRecord>();
+    if (Array.isArray(rows)) {
+      for (const item of rows) {
+        const fold = record(item);
+        const index = numberValue(valueAt(fold, "fold_index"));
+        if (fold && index !== null && Number.isInteger(index) && index >= 0) folds.set(index, fold);
+      }
+    }
+    models.set(name, folds);
+  }
+
+  const pairs = new Map<string, { candidate: string; baseline: string; partition: string }>();
+  for (const item of comparisons) {
+    const row = record(item);
+    const candidate = valueAt(row, "candidate_name");
+    const baseline = valueAt(row, "baseline_name");
+    const partition = valueAt(row, "partition");
+    if (typeof candidate !== "string" || typeof baseline !== "string" ||
+        (partition !== "validation" && partition !== "test")) continue;
+    pairs.set(JSON.stringify([candidate, baseline, partition]), { candidate, baseline, partition });
+  }
+
+  const output: JsonRecord[] = [];
+  for (const pair of pairs.values()) {
+    const candidateFolds = models.get(pair.candidate);
+    const baselineFolds = models.get(pair.baseline);
+    if (!candidateFolds || !baselineFolds) continue;
+    const common = [...candidateFolds.keys()].filter(index => baselineFolds.has(index)).sort((a, b) => a - b);
+    const brier: number[] = [];
+    const logLoss: number[] = [];
+    let sampleMismatch = false;
+    const included: number[] = [];
+    for (const index of common) {
+      const candidateMetrics = record(valueAt(candidateFolds.get(index) || null, pair.partition));
+      const baselineMetrics = record(valueAt(baselineFolds.get(index) || null, pair.partition));
+      if (!candidateMetrics || !baselineMetrics) continue;
+      const candidateCount = numberValue(valueAt(candidateMetrics, "sample_count"));
+      const baselineCount = numberValue(valueAt(baselineMetrics, "sample_count"));
+      if (candidateCount === null || baselineCount === null || candidateCount !== baselineCount) {
+        sampleMismatch = true;
+        break;
+      }
+      included.push(index);
+      for (const [key, values] of [["brier_score", brier], ["log_loss", logLoss]] as const) {
+        const candidateValue = numberValue(valueAt(candidateMetrics, key));
+        const baselineValue = numberValue(valueAt(baselineMetrics, key));
+        if (candidateValue !== null && baselineValue !== null) values.push(candidateValue - baselineValue);
+      }
+    }
+    output.push({
+      candidate_name: pair.candidate,
+      baseline_name: pair.baseline,
+      partition: pair.partition,
+      fold_indices: included,
+      fold_count: included.length,
+      metrics: {
+        brier_score: stabilityMetric(brier),
+        log_loss: stabilityMetric(logLoss),
+      },
+      sample_count_mismatch: sampleMismatch,
+      actionable: false,
+    });
+  }
+  return output;
+}
+
 function Metric({ label, value, note }: { label: string; value: string; note?: string }) {
   return <div className="research-report-metric"><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>;
 }
@@ -70,6 +161,7 @@ export default function ResearchReportPanel() {
   const labels = record(valueAt(report, "label_preparation"));
   const foldResults = record(valueAt(evaluation, "fold_results"));
   const pairedComparisons = Array.isArray(valueAt(evaluation, "paired_comparisons")) ? valueAt(evaluation, "paired_comparisons") as unknown[] : [];
+  const foldStability = buildFoldStability(foldResults, pairedComparisons);
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
     folds: Array.isArray(rows) ? rows : [],
@@ -160,6 +252,24 @@ export default function ResearchReportPanel() {
         <Metric label="LABELED ROWS" value={textValue(valueAt(labels, "output_rows") ?? valueAt(labels, "labeled_rows"))} note="Matured outcomes only" />
       </div>
       {quality && <div className="research-report-note"><b>Cadence interpretation:</b> {warnings.map(textValue).join(" ") || "Cadence gaps require provider/session-aware review."}</div>}
+      {foldStability.length > 0 && <div className="research-model-table-wrap">
+        <h3>Fold stability · direction consistency</h3>
+        <p className="research-report-note">Counts and median candidate-minus-baseline differences are descriptive summaries across matching folds, not significance tests. Negative Brier/log-loss deltas favor the candidate. Overlapping test windows are not independent, and these summaries do not establish profitability.</p>
+        <table className="research-model-table"><thead><tr><th>CANDIDATE</th><th>BASELINE</th><th>PARTITION</th><th>FOLDS</th><th>BRIER W/T/L</th><th>MEDIAN BRIER Δ</th><th>LOG-LOSS W/T/L</th><th>MEDIAN LOG-LOSS Δ</th></tr></thead><tbody>{foldStability.map((item, index) => {
+          const metrics = record(valueAt(item, "metrics"));
+          const brier = record(valueAt(metrics, "brier_score"));
+          const logLoss = record(valueAt(metrics, "log_loss"));
+          const mismatch = valueAt(item, "sample_count_mismatch") === true;
+          return <tr key={`stability-${index}`}>
+            <td>{textValue(valueAt(item, "candidate_name"))}</td><td>{textValue(valueAt(item, "baseline_name"))}</td>
+            <td>{textValue(valueAt(item, "partition"))}</td><td>{textValue(valueAt(item, "fold_count"))}</td>
+            <td>{mismatch ? "INCONSISTENT N" : `${textValue(valueAt(brier, "candidate_wins"))}/${textValue(valueAt(brier, "ties"))}/${textValue(valueAt(brier, "candidate_losses"))}`}</td>
+            <td>{mismatch ? "—" : formatNumber(valueAt(brier, "median_candidate_minus_baseline"))}</td>
+            <td>{mismatch ? "INCONSISTENT N" : `${textValue(valueAt(logLoss, "candidate_wins"))}/${textValue(valueAt(logLoss, "ties"))}/${textValue(valueAt(logLoss, "candidate_losses"))}`}</td>
+            <td>{mismatch ? "—" : formatNumber(valueAt(logLoss, "median_candidate_minus_baseline"))}</td>
+          </tr>;
+        })}</tbody></table>
+      </div>}
       {pairedComparisons.length > 0 && <div className="research-model-table-wrap">
         <h3>Paired out-of-sample comparison · candidate vs training-prevalence baseline</h3>
         <p className="research-report-note">Negative candidate-minus-baseline Brier/log-loss differences favor the candidate. An interval that crosses zero is not clear evidence of a difference. These are per-fold comparisons; overlapping test windows are not independent observations. Validation comparisons are diagnostic, and final-test comparisons must not be used for tuning.</p>

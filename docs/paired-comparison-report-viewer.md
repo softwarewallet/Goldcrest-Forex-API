@@ -56,3 +56,12 @@ runner-generated reports include them.
 A timestamp-set fingerprint does not prove that source data or features are correct,
 that timestamps reflect real market availability, or that metrics are profitable. It
 is an integrity check for pairing, not a market-data authenticity certificate.
+
+
+## Fold-to-fold stability diagnostics
+
+The report inspector now derives a descriptive stability summary for each candidate/baseline/partition pair represented in the paired-comparison records. It compares Brier score and log-loss separately within each common fold and reports the number of folds where the candidate is lower, tied, or higher, plus the median candidate-minus-baseline difference and the exact fold indices included.
+
+Negative Brier/log-loss differences favor the candidate. The median is a robust descriptive center, not a pooled metric or a significance estimate. Only common folds with equal sample counts are compared; inconsistent counts fail closed. Missing metric values are omitted for that metric rather than imputed.
+
+Fold counts are not independent sample counts. Repeated/overlapping test windows, small numbers of folds, regime changes, repeated model experimentation, and source-data limitations still constrain interpretation. These summaries intentionally calculate no p-values, do not correct multiple testing, do not select a model, and do not establish trading performance or profitability. The research API remains non-actionable.
