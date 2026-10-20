@@ -7,6 +7,8 @@ connects research model outputs to serving/trading.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -44,6 +46,7 @@ class BinaryMetrics:
     mean_predicted_probability: float
     expected_calibration_error: float = 0.0
     reliability_bins: tuple[ReliabilityBin, ...] = ()
+    observation_identity_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,9 +93,23 @@ def _validate_examples(examples: Sequence[TimedBinaryExample], feature_names: Se
                 raise ValueError(f"feature {name!r} must be finite numeric data")
 
 
-def _metrics(labels: Sequence[int], probabilities: Sequence[float]) -> BinaryMetrics:
+def _metrics(
+    labels: Sequence[int], probabilities: Sequence[float], *,
+    observation_timestamps: Sequence[datetime] | None = None,
+) -> BinaryMetrics:
     if not labels or len(labels) != len(probabilities):
         raise ValueError("metrics require non-empty aligned labels and probabilities")
+    identity_sha256 = None
+    if observation_timestamps is not None:
+        if len(observation_timestamps) != len(labels):
+            raise ValueError("observation timestamps must align with labels and probabilities")
+        identities = [_utc(value, "observation identity").isoformat().replace("+00:00", "Z")
+                      for value in observation_timestamps]
+        if len(set(identities)) != len(identities):
+            raise ValueError("observation timestamps must be unique within a scored partition")
+        identity_sha256 = hashlib.sha256(json.dumps(
+            sorted(identities), separators=(",", ":"), ensure_ascii=False,
+        ).encode("utf-8")).hexdigest()
     if any(not math.isfinite(p) or not 0 <= p <= 1 for p in probabilities):
         raise ValueError("predicted probabilities must be finite and within [0, 1]")
     eps = 1e-15
@@ -111,6 +128,7 @@ def _metrics(labels: Sequence[int], probabilities: Sequence[float]) -> BinaryMet
         mean_predicted_probability=sum(probabilities) / len(probabilities),
         expected_calibration_error=calibration.expected_calibration_error,
         reliability_bins=calibration.reliability_bins,
+        observation_identity_sha256=identity_sha256,
     )
 
 
@@ -172,7 +190,8 @@ def evaluate_binary_walk_forward(
                 if probability is None:
                     raise ValueError("model output lacks probability_class_1")
                 probabilities.append(float(probability))
-            return _metrics([row.label for row in rows], probabilities)
+            return _metrics([row.label for row in rows], probabilities,
+                             observation_timestamps=[row.timestamp for row in rows])
         results.append(ModelFoldResult(
             fold_index=fold.fold_index,
             model_type=str(getattr(model, "model_type", type(model).__name__)),
