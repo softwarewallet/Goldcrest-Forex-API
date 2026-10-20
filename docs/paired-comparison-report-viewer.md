@@ -36,3 +36,23 @@ its unsigned SHA-256 fingerprint recomputed.
 These are structural consistency checks only. They do not independently recompute
 metrics from the SQLite ledger, authenticate the input data, prove feature causality,
 or establish profitability. The API remains offline and non-actionable.
+
+
+## Exact paired-observation identity fingerprints
+
+Each scored validation/test metric now records a SHA-256 fingerprint of the sorted UTC
+observation timestamps used for that partition. The SQLite ledger independently records
+the same fingerprint on each paired comparison after confirming that candidate and
+baseline rows contain identical matured observation identities, labels, and label
+maturity timestamps.
+
+The report inspector checks that candidate and baseline metric fingerprints agree and,
+when the paired comparison carries a fingerprint, that it matches the corresponding
+fold/partition metrics. This detects reports that retain equal sample counts while
+silently associating a comparison with a different observation set. Existing reports
+without these optional fingerprints remain readable for backward compatibility; new
+runner-generated reports include them.
+
+A timestamp-set fingerprint does not prove that source data or features are correct,
+that timestamps reflect real market availability, or that metrics are profitable. It
+is an integrity check for pairing, not a market-data authenticity certificate.
