@@ -306,3 +306,20 @@ def test_inspection_recomputes_temporal_calibration_stability_audit(tmp_path):
     path.write_text(json.dumps(tampered), encoding="utf-8")
     with pytest.raises(ValueError, match="temporal_calibration_stability_audit does not match"):
         inspect_experiment_report(path)
+
+
+def test_inspection_recomputes_calibration_sample_adequacy_audit(tmp_path):
+    report = _report()
+    report["calibration_sample_adequacy_audit"] = {
+        "minimum_sample_count_screen": 30,
+        "minimum_minor_class_count_screen": 10,
+        "minimum_populated_bin_count_screen": 5,
+        "comparisons": [],
+        "interpretation": "tampered",
+        "actionable": False,
+    }
+    _rewrite_fingerprint(report)
+    path = tmp_path / "tampered-calibration-sample-adequacy.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    with pytest.raises(ValueError, match="calibration_sample_adequacy_audit does not match fold metrics"):
+        inspect_experiment_report(path)

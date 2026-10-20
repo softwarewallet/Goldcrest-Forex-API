@@ -166,6 +166,8 @@ export default function ResearchReportPanel() {
   const oosRobustness = record(valueAt(evaluation, "oos_period_robustness_audit"));
   const regimeUncertainty = record(valueAt(evaluation, "regime_uncertainty_audit"));
   const blockLengthAudit = record(valueAt(evaluation, "block_length_sensitivity_audit"));
+  const sampleAdequacy = record(valueAt(evaluation, "calibration_sample_adequacy_audit"));
+  const sampleAdequacyRows = Array.isArray(valueAt(sampleAdequacy, "comparisons")) ? valueAt(sampleAdequacy, "comparisons") as unknown[] : [];
   const temporalCalibration = record(valueAt(evaluation, "temporal_calibration_stability_audit"));
   const temporalCalibrationRows = Array.isArray(valueAt(temporalCalibration, "comparisons")) ? valueAt(temporalCalibration, "comparisons") as unknown[] : [];
   const blockLengthRows = Array.isArray(valueAt(blockLengthAudit, "comparisons")) ? valueAt(blockLengthAudit, "comparisons") as unknown[] : [];
@@ -369,6 +371,21 @@ export default function ResearchReportPanel() {
             <td>{textValue(valueAt(comparison, "interpretation"))}</td>
           </tr>;
         })}</tbody></table>
+      </div>}
+      {sampleAdequacyRows.length > 0 && <div className="research-model-table-wrap">
+        <h3>Calibration sample adequacy · class balance and bin counts</h3>
+        <p className="research-report-note">Screens per-fold validation/test sample counts, positive/negative class counts, and sparse populated reliability bins. Thresholds are descriptive review flags, not statistical guarantees. Missing class counts are reported as unavailable rather than inferred.</p>
+        <table className="research-model-table"><thead><tr><th>MODEL</th><th>FOLD</th><th>PARTITION</th><th>N</th><th>POSITIVE</th><th>NEGATIVE</th><th>PREVALENCE</th><th>POPULATED BINS</th><th>SPARSE BINS</th><th>STATUS</th></tr></thead><tbody>{sampleAdequacyRows.map((item, index) => {
+          const row = record(item);
+          return <tr key={"sample-adequacy-" + index}>
+            <td>{textValue(valueAt(row, "model_name"))}</td><td>{textValue(valueAt(row, "fold_index"))}</td>
+            <td>{textValue(valueAt(row, "partition"))}</td><td>{textValue(valueAt(row, "sample_count"))}</td>
+            <td>{textValue(valueAt(row, "positive_count"))}</td><td>{textValue(valueAt(row, "negative_count"))}</td>
+            <td>{formatNumber(valueAt(row, "positive_prevalence"))}</td><td>{textValue(valueAt(row, "populated_reliability_bins"))}</td>
+            <td>{textValue(valueAt(row, "sparse_populated_reliability_bins"))}</td><td>{textValue(valueAt(row, "status"))}</td>
+          </tr>;
+        })}</tbody></table>
+        <p className="research-report-note">{textValue(valueAt(sampleAdequacy, "interpretation"))}</p>
       </div>}
       {temporalCalibrationRows.length > 0 && <div className="research-model-table-wrap">
         <h3>Temporal calibration stability · chronological ECE</h3>
