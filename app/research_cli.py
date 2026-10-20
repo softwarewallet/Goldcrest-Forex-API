@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.prediction_ledger import PredictionLedger
 from app.research_artifact_audit import verify_research_artifacts
+from app.research_report_inspection import inspect_experiment_report
 
 
 def _emit(payload: dict) -> None:
@@ -39,11 +40,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status.add_argument("--run-id", required=True, help="registered experiment run ID")
     status.add_argument("--ledger", required=True, type=Path, help="path to the research SQLite ledger")
+
+    inspect = subparsers.add_parser(
+        "inspect",
+        help="validate a report fingerprint and summarize per-model, per-fold metrics",
+    )
+    inspect.add_argument("--report", required=True, type=Path, help="path to fingerprinted JSON report")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "inspect":
+        if not args.report.is_file():
+            print(f"ERROR: report file does not exist: {args.report}", file=sys.stderr)
+            return 2
+        try:
+            summary = inspect_experiment_report(args.report)
+        except (OSError, ValueError, RuntimeError) as exc:
+            _emit({"verified": False, "actionable": False, "error": str(exc)})
+            return 1
+        _emit(summary)
+        return 0 if summary.get("verified") is True and summary.get("actionable") is False else 1
+
     if args.command == "audit":
         if not args.report.is_file():
             print(f"ERROR: report file does not exist: {args.report}", file=sys.stderr)
