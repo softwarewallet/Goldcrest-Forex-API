@@ -297,7 +297,7 @@ export default function ResearchReportPanel() {
       </div>}
       {regimeUncertainty && <div className="research-model-table-wrap">
         <h3>Fold uncertainty &amp; declared regime stratification</h3>
-        <p className="research-report-note">Quartiles and ranges describe fold-to-fold dispersion; they are not confidence intervals. Regime results require explicit manifest labels, source and method. This viewer does not infer market regimes.</p>
+        <p className="research-report-note">Quartiles and ranges describe fold-to-fold dispersion, not confidence intervals. Regime stratification appears only when each label has an explicit availability timestamp, a validity interval covering the actual test window, declared source/method, and SHA-256 source-snapshot fingerprint. Legacy string-only labels remain visible for audit but are withheld from stratification.</p>
         <div className="research-report-metrics">
           <Metric label="COMMON TEST FOLDS" value={textValue(Array.isArray(valueAt(regimeUncertainty, "common_complete_test_fold_indices")) ? (valueAt(regimeUncertainty, "common_complete_test_fold_indices") as unknown[]).length : 0)} note="Complete Brier/log-loss folds" />
           <Metric label="CONFIDENCE INTERVALS" value={valueAt(regimeUncertainty, "confidence_intervals_produced") === false ? "NOT PRODUCED" : "REVIEW REQUIRED"} note="IQR/range only" />
@@ -323,7 +323,7 @@ export default function ResearchReportPanel() {
               return <tr key={"regime-" + index + "-" + metricName}><td>{textValue(valueAt(row, "candidate_name"))}</td><td>{textValue(valueAt(row, "regime"))}</td><td>{textValue(valueAt(row, "fold_count"))}</td><td>{metricName}</td><td>{formatNumber(valueAt(metric, "median"))}</td><td>{formatNumber(valueAt(metric, "minimum"))}</td><td>{formatNumber(valueAt(metric, "maximum"))}</td></tr>;
             });
           })}</tbody></table>
-          : <div className="research-report-empty">No declared regime stratification available. Provide predeclared fold labels and source/method metadata in manifest.fold_regime_annotations; groups with fewer than two common folds are withheld.</div>}
+          : <div className="research-report-empty">No point-in-time-valid regime stratification available. Provide source/method, source_snapshot_sha256, and per-fold label/available_at_utc/valid_from_utc/valid_through_utc in manifest.fold_regime_annotations, with actual test boundaries. Groups with fewer than two common folds are withheld.</div>}
         <p className="research-report-note">{textValue(valueAt(regimeUncertainty, "interpretation"))}</p>
       </div>}
       {foldStability.length > 0 && <div className="research-model-table-wrap">

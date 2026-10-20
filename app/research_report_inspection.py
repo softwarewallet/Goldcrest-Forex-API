@@ -222,7 +222,7 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
     if regime_uncertainty is not None:
         if not isinstance(regime_uncertainty, dict):
             raise ValueError("regime_uncertainty_audit must be a JSON object")
-        expected_regime_uncertainty = build_regime_uncertainty_audit(fold_results, comparisons, manifest.get("fold_regime_annotations"))
+        expected_regime_uncertainty = build_regime_uncertainty_audit(fold_results, comparisons, manifest.get("fold_regime_annotations"), manifest.get("fold_temporal_boundaries"))
         if _canonical(regime_uncertainty) != _canonical(expected_regime_uncertainty):
             raise ValueError("regime_uncertainty_audit does not match declared annotations and fold metrics")
 
