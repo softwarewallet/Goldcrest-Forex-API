@@ -67,7 +67,7 @@ def _qualified_type(value: Any) -> str:
 
 
 def _source_sha256(value: Any) -> str | None:
-    target = value if inspect.isclass(value) else type(value)
+    target = value if (inspect.isclass(value) or inspect.isfunction(value) or inspect.ismethod(value)) else type(value)
     try:
         source = inspect.getsource(target)
     except (OSError, TypeError):
