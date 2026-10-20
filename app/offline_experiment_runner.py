@@ -73,6 +73,15 @@ def run_offline_experiment(
     reproducibility = reproducibility_manifest(factories, initial_models)
     run_manifest = dict(manifest)
     run_manifest["reproducibility"] = reproducibility
+    # Bind point-in-time regime checks to test boundaries from the actual evaluation plan.
+    run_manifest["fold_temporal_boundaries"] = [
+        {
+            "fold_index": fold.fold_index,
+            "test_start_utc": _utc(min(bar.timestamp for bar in fold.test), "test fold boundary").isoformat().replace("+00:00", "Z"),
+            "test_end_utc": _utc(max(bar.timestamp for bar in fold.test), "test fold boundary").isoformat().replace("+00:00", "Z"),
+        }
+        for fold in plan.folds
+    ]
     initial_model_configs = {name: snapshot_model_configuration(model) for name, model in initial_models.items()}
     fold_results: dict[str, list[ModelFoldResult]] = {name: [] for name in factories}
     prediction_records: list[PredictionRecord] = []
