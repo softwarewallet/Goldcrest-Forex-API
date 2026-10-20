@@ -65,6 +65,7 @@ export default function ResearchReportPanel() {
   const quality = record(valueAt(report, "data_quality_audit"));
   const lineage = record(valueAt(report, "artifact_lineage"));
   const temporalAudit = record(valueAt(manifest, "temporal_integrity_audit"));
+  const reproducibility = record(valueAt(manifest, "reproducibility"));
   const features = record(valueAt(report, "feature_preparation"));
   const labels = record(valueAt(report, "label_preparation"));
   const foldResults = record(valueAt(evaluation, "fold_results"));
@@ -111,6 +112,24 @@ export default function ResearchReportPanel() {
           <small>EVALUATION</small><code>{textValue(valueAt(lineage, "evaluation_dataset_sha256"))}</code>
         </div>
         <p className="research-report-note">The pipeline checks byte-level hash continuity between generated artifacts and the evaluated CSV. This proves artifact linkage, not the authenticity of upstream data or the absence of leakage in externally supplied features.</p>
+      </div>}
+      {reproducibility && <div className="research-lineage">
+        <div><b>REPRODUCIBILITY MANIFEST</b><span>DECLARED CONFIGURATION · NON-ACTIONABLE</span></div>
+        <p>Runtime versions, model factory configuration, model source fingerprints, and configuration hashes captured for this experiment.</p>
+        <div className="research-lineage-hashes">
+          <small>MANIFEST SHA-256</small><code>{textValue(valueAt(reproducibility, "manifest_sha256"))}</code>
+          <small>PYTHON</small><code>{textValue(valueAt(record(valueAt(reproducibility, "environment")), "python_version"))} · {textValue(valueAt(record(valueAt(reproducibility, "environment")), "python_implementation"))}</code>
+          <small>PLATFORM</small><code>{textValue(valueAt(record(valueAt(reproducibility, "environment")), "platform"))}</code>
+          <small>NUMPY</small><code>{textValue(valueAt(record(valueAt(record(valueAt(reproducibility, "environment")), "packages")), "numpy"))}</code>
+          <small>SCIKIT-LEARN</small><code>{textValue(valueAt(record(valueAt(record(valueAt(reproducibility, "environment")), "packages")), "scikit-learn"))}</code>
+          <small>LIGHTGBM</small><code>{textValue(valueAt(record(valueAt(record(valueAt(reproducibility, "environment")), "packages")), "lightgbm"))}</code>
+          <small>XGBOOST</small><code>{textValue(valueAt(record(valueAt(record(valueAt(reproducibility, "environment")), "packages")), "xgboost"))}</code>
+        </div>
+        {record(valueAt(reproducibility, "initial_model_configuration")) && <details><summary>Inspect model configuration fingerprints</summary><div className="research-model-table-wrap"><table className="research-model-table"><thead><tr><th>MODEL</th><th>CLASS</th><th>VERSION</th><th>CONFIG SHA-256</th><th>SOURCE SHA-256</th></tr></thead><tbody>{Object.entries(record(valueAt(reproducibility, "initial_model_configuration")) || {}).map(([name, item]) => {
+          const config = record(item);
+          return <tr key={name}><td>{name}</td><td>{textValue(valueAt(config, "model_class"))}</td><td>{textValue(valueAt(config, "model_version"))}</td><td><code>{textValue(valueAt(config, "configuration_sha256"))}</code></td><td><code>{textValue(valueAt(config, "source_sha256"))}</code></td></tr>;
+        })}</tbody></table></div></details>}
+        <p className="research-report-note">Fingerprints help detect configuration drift and support auditability; they do not guarantee bitwise reproducibility across hardware or authenticate market data.</p>
       </div>}
       {temporalAudit && <div className="research-lineage">
         <div><b>TEMPORAL INTEGRITY AUDIT</b><span>{valueAt(temporalAudit, "test_windows_overlap") === true ? "OVERLAPPING TEST WINDOWS" : "NO REPEATED TEST TIMESTAMPS"}</span></div>
