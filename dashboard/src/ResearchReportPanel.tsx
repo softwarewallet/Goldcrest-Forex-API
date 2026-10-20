@@ -165,6 +165,8 @@ export default function ResearchReportPanel() {
   const selectionAudit = record(valueAt(evaluation, "model_selection_audit"));
   const oosRobustness = record(valueAt(evaluation, "oos_period_robustness_audit"));
   const regimeUncertainty = record(valueAt(evaluation, "regime_uncertainty_audit"));
+  const blockLengthAudit = record(valueAt(evaluation, "block_length_sensitivity_audit"));
+  const blockLengthRows = Array.isArray(valueAt(blockLengthAudit, "comparisons")) ? valueAt(blockLengthAudit, "comparisons") as unknown[] : [];
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
     folds: Array.isArray(rows) ? rows : [],
@@ -365,6 +367,29 @@ export default function ResearchReportPanel() {
             <td>{textValue(valueAt(comparison, "interpretation"))}</td>
           </tr>;
         })}</tbody></table>
+      </div>}
+      {blockLengthRows.length > 0 && <div className="research-model-table-wrap">
+        <h3>Bootstrap uncertainty · block-length sensitivity</h3>
+        <p className="research-report-note">Intervals are recomputed on the same paired loss differences using shorter, configured, and longer block lengths. Stable means interval sign classifications match only across the lengths shown; this is not proof of significance or robustness to every dependence structure. This diagnostic never selects a block length or model.</p>
+        <table className="research-model-table"><thead><tr><th>CANDIDATE</th><th>BASELINE</th><th>FOLD</th><th>PARTITION</th><th>N</th><th>TESTED LENGTHS</th><th>SENSITIVITY</th><th>INTERVALS</th></tr></thead><tbody>{blockLengthRows.map((item, index) => {
+          const row = record(item);
+          const sensitivity = Array.isArray(valueAt(row, "sensitivity")) ? valueAt(row, "sensitivity") as unknown[] : [];
+          return <tr key={"block-sensitivity-" + index}>
+            <td>{textValue(valueAt(row, "candidate_name"))}</td><td>{textValue(valueAt(row, "baseline_name"))}</td>
+            <td>{textValue(valueAt(row, "fold_index"))}</td><td>{textValue(valueAt(row, "partition"))}</td>
+            <td>{textValue(valueAt(row, "sample_count"))}</td>
+            <td>{Array.isArray(valueAt(row, "tested_block_lengths")) ? (valueAt(row, "tested_block_lengths") as unknown[]).join(", ") : "—"}</td>
+            <td>{textValue(valueAt(row, "status"))}</td>
+            <td><details><summary>View intervals</summary>{sensitivity.map((entry, entryIndex) => {
+              const result = record(entry);
+              return <div key={"block-interval-" + entryIndex}><b>Block {textValue(valueAt(result, "block_length"))}</b>
+                <div>Brier: {formatNumber(valueAt(result, "brier_difference_ci_low"))} … {formatNumber(valueAt(result, "brier_difference_ci_high"))} ({textValue(valueAt(result, "brier_direction"))})</div>
+                <div>Log loss: {formatNumber(valueAt(result, "log_loss_difference_ci_low"))} … {formatNumber(valueAt(result, "log_loss_difference_ci_high"))} ({textValue(valueAt(result, "log_loss_direction"))})</div>
+              </div>;
+            })}</details></td>
+          </tr>;
+        })}</tbody></table>
+        <p className="research-report-note">{textValue(valueAt(blockLengthAudit, "interpretation"))}</p>
       </div>}
       {modelRows.length > 0 ? <div className="research-model-table-wrap"><h3>Walk-forward results · per-fold metrics</h3><table className="research-model-table"><thead><tr><th>MODEL</th><th>FOLDS</th><th>TEST SAMPLES</th><th>MEAN BRIER</th><th>MEAN LOG LOSS</th><th>MEAN ACCURACY</th><th>MEAN ECE</th></tr></thead><tbody>{modelRows.map(model => {
         const tests = model.folds.map(fold => record(record(fold)?.test)).filter((item): item is JsonRecord => item !== null);

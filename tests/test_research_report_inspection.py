@@ -241,3 +241,25 @@ def test_inspection_rejects_selection_audit_that_uses_different_validation_metri
 
     with pytest.raises(ValueError, match="model_selection_audit does not match validation-only fold metrics"):
         inspect_experiment_report(path)
+
+
+
+def test_inspection_recomputes_block_length_sensitivity_audit(tmp_path):
+    report = _report()
+    sensitivity = [
+        {"block_length": 1, "brier_difference_ci_low": -0.06, "brier_difference_ci_high": -0.01,
+         "log_loss_difference_ci_low": -0.12, "log_loss_difference_ci_high": -0.02,
+         "brier_direction": "CANDIDATE_LOWER", "log_loss_direction": "CANDIDATE_LOWER"},
+        {"block_length": 2, "brier_difference_ci_low": -0.04, "brier_difference_ci_high": 0.01,
+         "log_loss_difference_ci_low": -0.09, "log_loss_difference_ci_high": 0.02,
+         "brier_direction": "INCLUDES_ZERO", "log_loss_direction": "INCLUDES_ZERO"},
+    ]
+    report["paired_comparisons"][0]["comparison"] = {"block_length": 1,
+        "brier_difference_ci_low": -0.06, "brier_difference_ci_high": -0.01,
+        "log_loss_difference_ci_low": -0.12, "log_loss_difference_ci_high": -0.02,
+        "block_length_sensitivity": sensitivity}
+    _rewrite_fingerprint(report)
+    path = tmp_path / "tampered-block-sensitivity-audit.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    with pytest.raises(ValueError, match="block_length_sensitivity_audit does not match"):
+        inspect_experiment_report(path)
