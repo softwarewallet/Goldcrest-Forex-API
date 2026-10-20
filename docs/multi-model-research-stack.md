@@ -32,6 +32,11 @@ python -m app.historical_tabular_research \
   --run-id eurusd-m15-xgb-lgbm-2026-10-20-01 \
   --data-source "documented provider/export" \
   --dataset-version "export-revision-1" \
+  --retrieved-at-utc "2026-10-20T07:00:00Z" \
+  --timestamp-timezone "UTC" \
+  --duplicate-policy "reject duplicate timestamps" \
+  --adjustment-policy "replace with the actual provider adjustment convention" \
+  --license-or-terms-reference "replace with the actual provider license or terms" \
   --label-definition "Externally prepared label definition; state exact horizon and tie/neutral rule" \
   --class-1-means UP \
   --initial-train-bars 2000 \
@@ -175,6 +180,11 @@ python -m app.historical_research_pipeline \
   --run-id eurusd-m15-pipeline-2026-10-20-01 \
   --data-source "documented provider/export" \
   --dataset-version "export-revision-1" \
+  --retrieved-at-utc "2026-10-20T07:00:00Z" \
+  --timestamp-timezone "UTC" \
+  --duplicate-policy "reject duplicate timestamps" \
+  --adjustment-policy "replace with the actual provider adjustment convention" \
+  --license-or-terms-reference "replace with the actual provider license or terms" \
   --horizon-bars 3 \
   --neutral-band-bps 0.5 \
   --neutral-policy error \
