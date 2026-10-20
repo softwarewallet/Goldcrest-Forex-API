@@ -93,6 +93,13 @@ def snapshot_factory_configuration(factory: Callable[[], Any]) -> dict[str, Any]
             "keyword_defaults": _json_safe(getattr(factory, "__kwdefaults__", None), context="factory.keyword_defaults"),
             "source_sha256": _source_sha256(factory),
         }
+        if not inspect.isclass(factory) and not inspect.isfunction(factory) and not inspect.ismethod(factory):
+            public_factory_config = {
+                key: value for key, value in vars(factory).items() if not key.startswith("_")
+            }
+            descriptor["callable_object_configuration"] = _json_safe(
+                public_factory_config, context="factory.callable_object_configuration"
+            )
         closure = getattr(factory, "__closure__", None)
         if closure:
             freevars = getattr(getattr(factory, "__code__", None), "co_freevars", ())
