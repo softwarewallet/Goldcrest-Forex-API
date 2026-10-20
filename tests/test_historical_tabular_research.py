@@ -17,7 +17,7 @@ def write_csv(path, rows, fields=None):
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({key: row[key] for key in fields if key in row} for row in rows)
 
 
 def sample_rows(count=8):
