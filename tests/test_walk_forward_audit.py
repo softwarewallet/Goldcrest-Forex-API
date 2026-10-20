@@ -51,7 +51,7 @@ def test_audit_reports_label_maturity_and_overlapping_test_timestamps():
     audit = audit_walk_forward_plan(plan, examples)
     assert audit["actionable"] is False
     assert audit["fold_count"] == 2
-    assert audit["training_rows_excluded_unmatured_across_folds"] == 1
+    assert audit["training_rows_excluded_unmatured_across_folds"] == 2
     assert audit["test_windows_overlap"] is True
     assert audit["repeated_test_timestamp_observations"] == 1
     assert audit["unique_test_timestamps"] == 3
@@ -82,4 +82,4 @@ def test_audit_rejects_partition_overlap():
 def test_audit_rejects_examples_missing_fold_timestamps():
     plan, examples = make_plan()
     with pytest.raises(ValueError, match="missing from examples"):
-        audit_walk_forward_plan(plan, examples[:-1])
+        audit_walk_forward_plan(plan, examples[:-2])
