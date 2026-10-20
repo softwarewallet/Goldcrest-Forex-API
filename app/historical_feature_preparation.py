@@ -19,9 +19,11 @@ from typing import Sequence
 from app.evaluation import ForexBar, validate_bars
 
 REQUIRED_COLUMNS = {"symbol", "timeframe", "timestamp", "open", "high", "low", "close"}
+WARMUP_ROWS = 34
 FEATURE_COLUMNS = (
-    "return_1", "return_3", "return_5", "range_pct", "body_pct",
-    "close_location", "volatility_14",
+    "return_1", "return_3", "return_5", "return_10", "range_pct", "body_pct",
+    "close_location", "volatility_14", "ema_gap_12_26", "rsi_14", "atr_14_pct",
+    "macd_hist_pct",
 )
 
 
@@ -36,6 +38,28 @@ def _timestamp(value: str, line: int) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ValueError(f"line {line}: timestamp must include a timezone offset")
     return parsed
+
+
+
+def _ema(values: list[float], period: int) -> list[float]:
+    """Recursive EMA seeded with the first observation; causal by construction."""
+    alpha = 2.0 / (period + 1.0)
+    result = [float(values[0])]
+    for value in values[1:]:
+        result.append(alpha * float(value) + (1.0 - alpha) * result[-1])
+    return result
+
+
+def _wilder_average(values: list[float], period: int) -> list[float | None]:
+    result: list[float | None] = [None] * len(values)
+    if len(values) <= period:
+        return result
+    result[period] = sum(values[1:period + 1]) / period
+    for index in range(period + 1, len(values)):
+        prior = result[index - 1]
+        assert prior is not None
+        result[index] = (prior * (period - 1) + values[index]) / period
+    return result
 
 
 def prepare_features(input_csv: str | Path, output_csv: str | Path) -> dict[str, object]:
@@ -54,8 +78,8 @@ def prepare_features(input_csv: str | Path, output_csv: str | Path) -> dict[str,
         if missing:
             raise ValueError(f"CSV is missing required columns: {sorted(missing)}")
         rows = list(reader)
-    if len(rows) < 16:
-        raise ValueError("at least 16 OHLC rows are required for the 14-return volatility warm-up")
+    if len(rows) <= WARMUP_ROWS:
+        raise ValueError(f"at least {WARMUP_ROWS + 1} OHLC rows are required for the documented indicator warm-up")
 
     bars: list[ForexBar] = []
     for line, row in enumerate(rows, start=2):
@@ -84,34 +108,54 @@ def prepare_features(input_csv: str | Path, output_csv: str | Path) -> dict[str,
     ):
         raise ValueError("source rows must already be chronological")
 
-    closes = [b.close for b in bars]
-    returns = [closes[i] / closes[i - 1] - 1.0 for i in range(1, len(closes))]
+    closes = [bar.close for bar in bars]
+    returns = [0.0] + [closes[i] / closes[i - 1] - 1.0 for i in range(1, len(closes))]
+    gains = [0.0] + [max(closes[i] - closes[i - 1], 0.0) for i in range(1, len(closes))]
+    losses = [0.0] + [max(closes[i - 1] - closes[i], 0.0) for i in range(1, len(closes))]
+    true_ranges = [bars[0].high - bars[0].low] + [
+        max(bars[i].high - bars[i].low, abs(bars[i].high - closes[i - 1]), abs(bars[i].low - closes[i - 1]))
+        for i in range(1, len(bars))
+    ]
+    avg_gain = _wilder_average(gains, 14)
+    avg_loss = _wilder_average(losses, 14)
+    atr = _wilder_average(true_ranges, 14)
+    ema12, ema26 = _ema(closes, 12), _ema(closes, 26)
+    macd_line = [fast - slow for fast, slow in zip(ema12, ema26)]
+    macd_signal = _ema(macd_line, 9)
     output_rows: list[dict[str, str | float]] = []
     for i, bar in enumerate(bars):
-        # 14 completed one-bar returns are required; no future rows are consulted.
-        if i < 15:
+        if i < WARMUP_ROWS:
             continue
-        one_bar_returns = returns[i - 14:i]
         candle_range = bar.high - bar.low
+        up, down = avg_gain[i], avg_loss[i]
+        atr_value = atr[i]
+        assert up is not None and down is not None and atr_value is not None
+        if down == 0:
+            rsi = 50.0 if up == 0 else 100.0
+        else:
+            rsi = 100.0 - 100.0 / (1.0 + up / down)
         features = {
-            "return_1": returns[i - 1],
+            "return_1": returns[i],
             "return_3": closes[i] / closes[i - 3] - 1.0,
             "return_5": closes[i] / closes[i - 5] - 1.0,
+            "return_10": closes[i] / closes[i - 10] - 1.0,
             "range_pct": candle_range / bar.close,
             "body_pct": (bar.close - bar.open) / bar.open,
             "close_location": (bar.close - bar.low) / candle_range if candle_range else 0.5,
-            "volatility_14": statistics.pstdev(one_bar_returns),
+            "volatility_14": statistics.pstdev(returns[i - 13:i + 1]),
+            "ema_gap_12_26": (ema12[i] - ema26[i]) / bar.close,
+            "rsi_14": rsi,
+            "atr_14_pct": atr_value / bar.close,
+            "macd_hist_pct": (macd_line[i] - macd_signal[i]) / bar.close,
         }
         if not all(math.isfinite(value) for value in features.values()):
             raise ValueError(f"non-finite feature calculated at row {i + 2}")
+        if not 0 <= features["rsi_14"] <= 100:
+            raise ValueError(f"RSI out of bounds at row {i + 2}")
         output_rows.append({
-            "symbol": bar.symbol,
-            "timeframe": bar.timeframe,
+            "symbol": bar.symbol, "timeframe": bar.timeframe,
             "timestamp": bar.timestamp.isoformat(),
-            "open": bar.open,
-            "high": bar.high,
-            "low": bar.low,
-            "close": bar.close,
+            "open": bar.open, "high": bar.high, "low": bar.low, "close": bar.close,
             **features,
         })
 
@@ -131,9 +175,21 @@ def prepare_features(input_csv: str | Path, output_csv: str | Path) -> dict[str,
         "input_rows": len(bars),
         "output_rows": len(output_rows),
         "warmup_rows_excluded": len(bars) - len(output_rows),
+        "warmup_policy": f"exclude first {WARMUP_ROWS} rows for indicator initialization",
         "symbol": bars[0].symbol,
         "timeframe": bars[0].timeframe,
         "feature_columns": list(FEATURE_COLUMNS),
+        "feature_definitions": {
+            "return_1/3/5/10": "close-to-close returns over the named number of bars",
+            "range_pct": "(high-low)/close",
+            "body_pct": "(close-open)/open",
+            "close_location": "(close-low)/(high-low), or 0.5 for zero-range candles",
+            "volatility_14": "population standard deviation of the latest 14 close-to-close returns",
+            "ema_gap_12_26": "(recursive EMA12 - EMA26)/close; each EMA seeded with first close",
+            "rsi_14": "Wilder-smoothed RSI from close changes; initial averages use 14 changes",
+            "atr_14_pct": "Wilder-smoothed true range over 14 bars divided by close",
+            "macd_hist_pct": "(EMA12-EMA26 minus EMA9 signal EMA)/close",
+        },
         "feature_policy": "current-and-past OHLC only; no future data used",
         "label_policy": "not generated; label horizon and neutral/tie policy remain explicit user inputs",
         "actionable": False,
