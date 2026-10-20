@@ -161,13 +161,42 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         if key in seen_comparisons:
             raise ValueError("duplicate paired comparison identity")
         seen_comparisons.add(key)
+        paired_metrics = []
         for model_name, role in ((candidate, "candidate"), (baseline, "baseline")):
             fold_metrics = metrics_by_model_fold.get((model_name, fold_index))
             if fold_metrics is None:
                 raise ValueError(f"paired comparison {role} references a missing fold")
-            metric_count = fold_metrics[partition].get("sample_count")
+            metric = fold_metrics[partition]
+            metric_count = metric.get("sample_count")
             if isinstance(metric_count, bool) or not isinstance(metric_count, int) or metric_count != sample_count:
                 raise ValueError(f"paired comparison sample_count does not match {role} fold metrics")
+            paired_metrics.append(metric)
+
+        candidate_identity = paired_metrics[0].get("observation_identity_sha256")
+        baseline_identity = paired_metrics[1].get("observation_identity_sha256")
+        comparison_identity = comparison.get("observation_identity_sha256")
+        for label, digest in (
+            ("candidate metric", candidate_identity),
+            ("baseline metric", baseline_identity),
+            ("paired comparison", comparison_identity),
+        ):
+            if digest is not None:
+                if not isinstance(digest, str) or len(digest) != 64:
+                    raise ValueError(f"{label} observation identity fingerprint must be a SHA-256 digest")
+                try:
+                    bytes.fromhex(digest)
+                except ValueError as exc:
+                    raise ValueError(f"{label} observation identity fingerprint must be hexadecimal") from exc
+        if (candidate_identity is None) != (baseline_identity is None):
+            raise ValueError("paired metric observation identity fingerprints must both be present or both absent")
+        if candidate_identity is not None and candidate_identity != baseline_identity:
+            raise ValueError("candidate and baseline observation identity fingerprints do not match")
+        expected_identity = candidate_identity
+        if comparison_identity is not None:
+            if expected_identity is None:
+                raise ValueError("paired comparison identity fingerprint lacks matching fold metric fingerprints")
+            if comparison_identity != expected_identity:
+                raise ValueError("paired comparison observation identity fingerprint does not match fold metrics")
 
     warnings = report.get("warnings", [])
     if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
