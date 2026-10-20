@@ -68,6 +68,7 @@ export default function ResearchReportPanel() {
   const features = record(valueAt(report, "feature_preparation"));
   const labels = record(valueAt(report, "label_preparation"));
   const foldResults = record(valueAt(evaluation, "fold_results"));
+  const pairedComparisons = Array.isArray(valueAt(evaluation, "paired_comparisons")) ? valueAt(evaluation, "paired_comparisons") as unknown[] : [];
   const modelRows = foldResults ? Object.entries(foldResults).map(([name, rows]) => ({
     name,
     folds: Array.isArray(rows) ? rows : [],
@@ -140,6 +141,28 @@ export default function ResearchReportPanel() {
         <Metric label="LABELED ROWS" value={textValue(valueAt(labels, "output_rows") ?? valueAt(labels, "labeled_rows"))} note="Matured outcomes only" />
       </div>
       {quality && <div className="research-report-note"><b>Cadence interpretation:</b> {warnings.map(textValue).join(" ") || "Cadence gaps require provider/session-aware review."}</div>}
+      {pairedComparisons.length > 0 && <div className="research-model-table-wrap">
+        <h3>Paired out-of-sample comparison · candidate vs training-prevalence baseline</h3>
+        <p className="research-report-note">Negative candidate-minus-baseline Brier/log-loss differences favor the candidate. An interval that crosses zero is not clear evidence of a difference. These are per-fold comparisons; overlapping test windows are not independent observations. Validation comparisons are diagnostic, and final-test comparisons must not be used for tuning.</p>
+        <table className="research-model-table"><thead><tr><th>CANDIDATE</th><th>BASELINE</th><th>FOLD</th><th>PARTITION</th><th>N</th><th>BRIER Δ</th><th>BRIER CI</th><th>LOG LOSS Δ</th><th>LOG LOSS CI</th><th>INTERPRETATION</th></tr></thead><tbody>{pairedComparisons.map((item, index) => {
+          const row = record(item);
+          const comparison = record(valueAt(row, "comparison"));
+          const brierLow = valueAt(comparison, "brier_difference_ci_low");
+          const brierHigh = valueAt(comparison, "brier_difference_ci_high");
+          const logLow = valueAt(comparison, "log_loss_difference_ci_low");
+          const logHigh = valueAt(comparison, "log_loss_difference_ci_high");
+          return <tr key={`${textValue(valueAt(row, "candidate_name"))}-${textValue(valueAt(row, "fold_index"))}-${textValue(valueAt(row, "partition"))}-${index}`}>
+            <td>{textValue(valueAt(row, "candidate_name"))}</td><td>{textValue(valueAt(row, "baseline_name"))}</td>
+            <td>{numberValue(valueAt(row, "fold_index")) === null || numberValue(valueAt(row, "fold_index"))! < 0 ? "—" : textValue(valueAt(row, "fold_index"))}</td>
+            <td>{textValue(valueAt(row, "partition"))}</td><td>{textValue(valueAt(row, "sample_count"))}</td>
+            <td>{formatNumber(valueAt(comparison, "brier_difference_candidate_minus_baseline"))}</td>
+            <td>{formatNumber(brierLow)} … {formatNumber(brierHigh)}</td>
+            <td>{formatNumber(valueAt(comparison, "log_loss_difference_candidate_minus_baseline"))}</td>
+            <td>{formatNumber(logLow)} … {formatNumber(logHigh)}</td>
+            <td>{textValue(valueAt(comparison, "interpretation"))}</td>
+          </tr>;
+        })}</tbody></table>
+      </div>}
       {modelRows.length > 0 ? <div className="research-model-table-wrap"><h3>Walk-forward results · per-fold metrics</h3><table className="research-model-table"><thead><tr><th>MODEL</th><th>FOLDS</th><th>TEST SAMPLES</th><th>MEAN BRIER</th><th>MEAN LOG LOSS</th><th>MEAN ACCURACY</th><th>MEAN ECE</th></tr></thead><tbody>{modelRows.map(model => {
         const tests = model.folds.map(fold => record(record(fold)?.test)).filter((item): item is JsonRecord => item !== null);
         const average = (key: string) => {

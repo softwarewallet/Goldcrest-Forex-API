@@ -96,6 +96,8 @@ def build_experiment_report(
         comparisons.append(row)
     comparisons.sort(key=lambda row: (
         str(row.get("candidate_name", "")),
+        int(row.get("fold_index", -1)),
+        str(row.get("partition", "")),
         str(row.get("baseline_name", "")),
         int(row.get("sample_count", 0)),
     ))

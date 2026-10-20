@@ -74,6 +74,8 @@ class LedgerComparison:
     baseline_name: str
     comparison: object
     actionable: bool = False
+    fold_index: int = -1
+    partition: str = "unknown"
 
 
 class PredictionLedger:
@@ -472,4 +474,4 @@ class PredictionLedger:
             block_length=block_length, bootstrap_resamples=bootstrap_resamples,
             confidence_level=confidence_level, random_seed=random_seed,
         )
-        return LedgerComparison(len(labels), candidate_name, baseline_name, result, False)
+        return LedgerComparison(len(labels), candidate_name, baseline_name, result, False, fold_index, partition)
