@@ -11,6 +11,7 @@ from typing import Any, Mapping, Sequence
 
 from app.block_bootstrap import BlockBootstrapComparison, compare_with_block_bootstrap
 from app.cost_aware_evaluation import CostAwareSummary, RoundTripCosts, score_outcomes
+from app.dataset_provenance import DatasetProvenance
 from app.evaluation import EvaluationConfig, ForexBar, validate_bars
 from app.outcome_labeling import OutcomeLabelResult
 from app.run_manifest import ExperimentRegistry, RunManifest, build_run_manifest
@@ -46,14 +47,24 @@ def prepare_research_run(
     test_bars: int,
     step_bars: int,
     registry: ExperimentRegistry,
+    dataset_provenance: DatasetProvenance | Mapping[str, Any] | None = None,
+    actual_snapshot_sha256: str | None = None,
 ) -> PreparedResearchRun:
     """Validate one explicitly configured dataset and register per-symbol fold plans.
 
     Input rows must already be chronological per symbol/timeframe. The function refuses
     mixed timeframes, unrequested symbols, duplicate/non-monotonic bars, invalid OHLC,
     and missing timestamps. It deliberately does not sort, fill, fetch, or silently drop.
+
+    For provenance-bound runs, callers must provide both a provenance record and the
+    SHA-256 digest of the exact original snapshot bytes before parsing/transformation.
+    The digest is consistency evidence, not source authentication.
     """
     config.validate()
+    if (dataset_provenance is None) != (actual_snapshot_sha256 is None):
+        raise ValueError(
+            "dataset_provenance and actual_snapshot_sha256 must be supplied together"
+        )
     if not bars:
         raise ValueError("bars must not be empty")
     quality = validate_bars(bars)
@@ -84,6 +95,8 @@ def prepare_research_run(
         model_revision=model_revision,
         dataset_id=config.dataset_version,
         evaluation_config=asdict(config),
+        dataset_provenance=dataset_provenance,
+        actual_snapshot_sha256=actual_snapshot_sha256,
     )
     inserted = registry.register(manifest)
     return PreparedResearchRun(
