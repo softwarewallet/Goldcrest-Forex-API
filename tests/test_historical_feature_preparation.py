@@ -8,7 +8,7 @@ import pytest
 from app.historical_feature_preparation import FEATURE_COLUMNS, prepare_features
 
 
-def write_ohlc(path, count=24):
+def write_ohlc(path, count=40):
     start = datetime(2025, 1, 1, tzinfo=timezone.utc)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=[
@@ -30,15 +30,15 @@ def write_ohlc(path, count=24):
 
 def test_prepare_features_is_causal_and_records_provenance(tmp_path):
     source, output = tmp_path / "raw.csv", tmp_path / "features.csv"
-    write_ohlc(source, 24)
+    write_ohlc(source, 40)
 
     report = prepare_features(source, output)
 
     with output.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     assert report["input_rows"] == 24
-    assert report["output_rows"] == 9
-    assert report["warmup_rows_excluded"] == 15
+    assert report["output_rows"] == 6
+    assert report["warmup_rows_excluded"] == 34
     assert len(report["input_sha256"]) == 64
     assert report["actionable"] is False
     assert set(FEATURE_COLUMNS).issubset(rows[0])
@@ -48,7 +48,7 @@ def test_prepare_features_is_causal_and_records_provenance(tmp_path):
 
 def test_prepare_features_rejects_nonchronological_input(tmp_path):
     source, output = tmp_path / "unordered.csv", tmp_path / "features.csv"
-    write_ohlc(source, 20)
+    write_ohlc(source, 40)
     with source.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     rows[3], rows[4] = rows[4], rows[3]
@@ -81,3 +81,33 @@ def test_prepare_features_rejects_same_input_and_output_path(tmp_path):
     write_ohlc(source, 20)
     with pytest.raises(ValueError, match="paths must differ"):
         prepare_features(source, source)
+
+
+
+def test_technical_features_are_causal_to_the_row_timestamp(tmp_path):
+    source_a, source_b = tmp_path / "a.csv", tmp_path / "b.csv"
+    out_a, out_b = tmp_path / "a_features.csv", tmp_path / "b_features.csv"
+    write_ohlc(source_a, 45)
+    with source_a.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    changed = [dict(row) for row in rows]
+    changed[-1]["close"] = str(float(changed[-1]["close"]) + 0.01)
+    changed[-1]["high"] = str(float(changed[-1]["high"]) + 0.01)
+    changed[-1]["open"] = str(float(changed[-1]["open"]) + 0.01)
+    with source_b.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=changed[0].keys())
+        writer.writeheader()
+        writer.writerows(changed)
+
+    prepare_features(source_a, out_a)
+    prepare_features(source_b, out_b)
+    with out_a.open(encoding="utf-8", newline="") as handle:
+        first = list(csv.DictReader(handle))
+    with out_b.open(encoding="utf-8", newline="") as handle:
+        second = list(csv.DictReader(handle))
+    assert len(first) == len(second)
+    for row_a, row_b in zip(first[:-1], second[:-1]):
+        for feature in FEATURE_COLUMNS:
+            assert float(row_a[feature]) == pytest.approx(float(row_b[feature]), abs=0.0)
+    assert set(FEATURE_COLUMNS) <= set(first[-1])
+    assert all(0 <= float(row["rsi_14"]) <= 100 for row in first)
