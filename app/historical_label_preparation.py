@@ -133,6 +133,7 @@ def label_historical_features(
         "input_path": str(source),
         "output_path": str(destination),
         "input_sha256": digest,
+        "output_sha256": hashlib.sha256(destination.read_bytes()).hexdigest(),
         "input_rows": len(rows),
         "output_rows": len(output_rows),
         "tail_rows_without_matured_outcome": horizon_bars,
