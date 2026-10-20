@@ -21,3 +21,18 @@ Each experiment run now records a nested reproducibility manifest containing Pyt
 The runner fingerprints these details into the ledger run contract and report. It uses a preflight model instance for the first fold, then requires a fresh instance with the same model version and configuration in later folds. Reused instances or configuration drift fail closed. Non-serializable factory closures must be replaced with explicit JSON-compatible configuration rather than being silently ignored.
 
 The report inspector verifies the aggregate reproducibility fingerprint and the nested factory/model configuration fingerprints. This detects accidental or inconsistent changes; an unsigned self-fingerprint is not proof against a deliberate editor who can recompute hashes. Environment snapshots also do not guarantee bitwise repeatability across hardware, native libraries, or parallel execution. The data-source provenance and causal-feature limitations remain unchanged.
+
+
+## Semantic integrity checks
+
+The read-only report inspector also validates the meaning and identity of each paired
+comparison, not just the report's self-fingerprint. Candidate and baseline names must
+resolve to models in the report; the fold and partition must exist for both; the
+comparison's sample count must equal each side's recorded partition sample count; and
+duplicate candidate/baseline/fold/partition comparisons are rejected. These checks catch
+dangling references and internally inconsistent reports even if a report was edited and
+its unsigned SHA-256 fingerprint recomputed.
+
+These are structural consistency checks only. They do not independently recompute
+metrics from the SQLite ledger, authenticate the input data, prove feature causality,
+or establish profitability. The API remains offline and non-actionable.

@@ -36,7 +36,6 @@ def _metrics(value: Any, *, context: str) -> dict[str, int | float | bool | str 
         elif isinstance(item, float) and math.isfinite(item):
             output[key] = item
         elif isinstance(item, (dict, list)):
-            # Keep structured diagnostics intact, but validate their JSON compatibility.
             _canonical({"value": item})
             output[key] = item
         else:
@@ -94,6 +93,8 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
     if not isinstance(fold_results, dict) or not fold_results:
         raise ValueError("fold_results must contain at least one model")
     models: list[dict[str, Any]] = []
+    fold_index_by_model: dict[str, set[int]] = {}
+    metrics_by_model_fold: dict[tuple[str, int], dict[str, dict[str, Any]]] = {}
     for model_name, folds in sorted(fold_results.items()):
         if not isinstance(model_name, str) or not model_name.strip():
             raise ValueError("model names must be non-empty strings")
@@ -112,12 +113,13 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
                 raise ValueError("every fold must remain actionable=false")
             if "validation" not in fold or "test" not in fold:
                 raise ValueError(f"fold {index} must contain separate validation and test metrics")
+            validation = _metrics(fold["validation"], context=f"{model_name} fold {index} validation")
+            test = _metrics(fold["test"], context=f"{model_name} fold {index} test")
+            metrics_by_model_fold[(model_name, index)] = {"validation": validation, "test": test}
             summarized_folds.append({
-                "fold_index": index,
-                "validation": _metrics(fold["validation"], context=f"{model_name} fold {index} validation"),
-                "test": _metrics(fold["test"], context=f"{model_name} fold {index} test"),
-                "actionable": False,
+                "fold_index": index, "validation": validation, "test": test, "actionable": False,
             })
+        fold_index_by_model[model_name] = seen
         models.append({"model_name": model_name, "folds": sorted(summarized_folds, key=lambda row: row["fold_index"])})
 
     exclusions = report.get("exclusions", {})
@@ -134,29 +136,51 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
     comparisons = report.get("paired_comparisons", [])
     if not isinstance(comparisons, list) or any(not isinstance(item, dict) for item in comparisons):
         raise ValueError("paired_comparisons must be a list of objects")
+    seen_comparisons: set[tuple[str, str, int, str]] = set()
     for comparison in comparisons:
         if comparison.get("actionable", False) is not False:
             raise ValueError("paired comparisons must remain actionable=false")
+        candidate = comparison.get("candidate_name")
+        baseline = comparison.get("baseline_name")
+        fold_index = comparison.get("fold_index")
+        partition = comparison.get("partition")
+        sample_count = comparison.get("sample_count")
+        if not isinstance(candidate, str) or candidate not in fold_index_by_model:
+            raise ValueError("paired comparison candidate_name must reference a reported model")
+        if not isinstance(baseline, str) or baseline not in fold_index_by_model:
+            raise ValueError("paired comparison baseline_name must reference a reported model")
+        if candidate == baseline:
+            raise ValueError("paired comparison candidate and baseline must differ")
+        if isinstance(fold_index, bool) or not isinstance(fold_index, int) or fold_index < 0:
+            raise ValueError("paired comparison fold_index must be a non-negative integer")
+        if partition not in {"validation", "test"}:
+            raise ValueError("paired comparison partition must be validation or test")
+        if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 1:
+            raise ValueError("paired comparison sample_count must be a positive integer")
+        key = (candidate, baseline, fold_index, partition)
+        if key in seen_comparisons:
+            raise ValueError("duplicate paired comparison identity")
+        seen_comparisons.add(key)
+        for model_name, role in ((candidate, "candidate"), (baseline, "baseline")):
+            fold_metrics = metrics_by_model_fold.get((model_name, fold_index))
+            if fold_metrics is None:
+                raise ValueError(f"paired comparison {role} references a missing fold")
+            metric_count = fold_metrics[partition].get("sample_count")
+            if isinstance(metric_count, bool) or not isinstance(metric_count, int) or metric_count != sample_count:
+                raise ValueError(f"paired comparison sample_count does not match {role} fold metrics")
 
     warnings = report.get("warnings", [])
     if not isinstance(warnings, list) or any(not isinstance(item, str) for item in warnings):
         raise ValueError("warnings must be a list of strings")
 
     return {
-        "verified": True,
-        "run_id": run_id,
-        "report_sha256": supplied,
-        "schema_version": report["schema_version"],
-        "scope": "OFFLINE_RESEARCH_ONLY",
-        "actionable": False,
-        "models": models,
-        "paired_comparisons": comparisons,
-        "exclusions": dict(sorted(normalized_exclusions.items())),
-        "warnings": warnings,
+        "verified": True, "run_id": run_id, "report_sha256": supplied,
+        "schema_version": report["schema_version"], "scope": "OFFLINE_RESEARCH_ONLY",
+        "actionable": False, "models": models, "paired_comparisons": comparisons,
+        "exclusions": dict(sorted(normalized_exclusions.items())), "warnings": warnings,
         "evaluation_contract": report.get("evaluation_contract", {}),
         "interpretation": {
-            "pooled_test_metrics": False,
-            "limitations": interpretation.get("limitations", []),
+            "pooled_test_metrics": False, "limitations": interpretation.get("limitations", []),
             "source_data_authenticated": False,
             "meaning": "Fingerprint verifies report integrity only; it does not establish data correctness, calibration, profitability, or generalization.",
         },
