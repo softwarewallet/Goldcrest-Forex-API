@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from app.research_reproducibility import verify_reproducibility_manifest
+from app.fold_stability import summarize_fold_stability
 
 
 def _canonical(value: Mapping[str, Any]) -> bytes:
@@ -206,6 +207,7 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
         "verified": True, "run_id": run_id, "report_sha256": supplied,
         "schema_version": report["schema_version"], "scope": "OFFLINE_RESEARCH_ONLY",
         "actionable": False, "models": models, "paired_comparisons": comparisons,
+        "fold_stability": summarize_fold_stability(fold_results, comparisons),
         "exclusions": dict(sorted(normalized_exclusions.items())), "warnings": warnings,
         "evaluation_contract": report.get("evaluation_contract", {}),
         "interpretation": {
