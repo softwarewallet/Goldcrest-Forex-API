@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.historical_tabular_research import load_historical_dataset
+from app.historical_tabular_research import _parser, load_historical_dataset
 
 
 def write_csv(path, rows, fields=None):
@@ -106,3 +106,15 @@ def test_loader_rejects_nonbinary_labels_and_nonfinite_features(tmp_path):
     write_csv(path, rows)
     with pytest.raises(ValueError, match="must be finite"):
         load_historical_dataset(path, ("rsi", "return_5"))
+
+
+
+def test_research_cli_requires_explicit_dataset_provenance():
+    actions = {action.dest: action for action in _parser()._actions}
+    for name in (
+        "data_source", "dataset_version", "retrieved_at_utc",
+        "timestamp_timezone", "duplicate_policy", "adjustment_policy",
+        "license_or_terms_reference",
+    ):
+        assert name in actions
+        assert actions[name].required is True
