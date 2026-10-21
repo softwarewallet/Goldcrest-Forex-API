@@ -9,3 +9,5 @@ scikit-learn>=1.5,<2.0
 lightgbm>=4.7,<5.0
 xgboost>=3.4,<4.0
 optuna>=4.0,<5.0
+yfinance>=0.2.65,<1.0
+backtrader==1.9.78.123
