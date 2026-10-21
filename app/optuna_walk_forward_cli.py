@@ -112,7 +112,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     destination = Path(args.report)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     print(json.dumps({
