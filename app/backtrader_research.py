@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,23 @@ def _load_signal_frame(csv_path: str | Path) -> tuple[pd.DataFrame, str]:
     frame = frame.set_index("timestamp")
     frame["volume"] = pd.to_numeric(frame.get("volume", 0.0), errors="coerce").fillna(0.0) if "volume" in frame else 0.0
     return frame, hashlib.sha256(raw).hexdigest()
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if hasattr(value, "item"):
+        try:
+            return _json_safe(value.item())
+        except (ValueError, TypeError):
+            return str(value)
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    return str(value)
 
 
 def run_backtrader_replay(
@@ -124,9 +142,8 @@ def run_backtrader_replay(
             "Predictive accuracy and simulated returns do not guarantee future profitability.",
         ],
     }
-    # Ensure analysis objects can be written as JSON without silently coercing unknown objects.
-    json.dumps(payload, default=str, allow_nan=False)
-    return payload
+    # Convert Backtrader nested analysis containers and non-finite statistics to JSON-safe values.
+    return _json_safe(payload)
 
 
 def write_backtrader_report(report: dict[str, Any], path: str | Path) -> str:
