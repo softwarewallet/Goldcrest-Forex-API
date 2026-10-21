@@ -151,6 +151,5 @@ def download_yfinance_ohlc(
     if output_manifest is not None:
         destination = Path(output_manifest)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(snapshot.to_dict(), indent=2, sort_keys=True) + "
-", encoding="utf-8")
+        destination.write_text(json.dumps(snapshot.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return export, snapshot
