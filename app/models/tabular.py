@@ -16,6 +16,8 @@ import numpy as np
 import lightgbm as lgb
 import xgboost as xgb
 
+from app.resource_profile import get_ml_thread_count
+
 _PROBABILITY_SEMANTICS = "uncalibrated_probability_of_class_1_research_only"
 
 
@@ -128,7 +130,7 @@ class LightGBMResearchModel:
     ) -> "LightGBMResearchModel":
         matrix = _validated_matrix(feature_rows, self.feature_names)
         target = _validated_labels(labels, len(matrix))
-        options: dict[str, Any] = {"n_estimators": 100, "verbosity": -1, "random_state": 42}
+        options: dict[str, Any] = {"n_estimators": 100, "verbosity": -1, "random_state": 42, "n_jobs": get_ml_thread_count()}
         if params:
             options.update(dict(params))
         classifier = lgb.LGBMClassifier(**options)
@@ -203,7 +205,7 @@ class XGBoostResearchModel:
         options: dict[str, Any] = {
             "n_estimators": 100, "max_depth": 4, "learning_rate": 0.05,
             "objective": "binary:logistic", "eval_metric": "logloss",
-            "tree_method": "hist", "n_jobs": 2, "random_state": 42,
+            "tree_method": "hist", "n_jobs": get_ml_thread_count(), "random_state": 42,
         }
         if params:
             options.update(dict(params))

@@ -38,3 +38,17 @@ Protected routes use `X-API-Key`. Set `LLAMA_MODEL_ID` to the exact ID returned 
 The initial prediction service is scaffolding, not a validated trading strategy. It deliberately returns `NO_TRADE` even when the LLM suggests BUY or SELL, until a quantitative rule is validated. Model self-reported confidence is not used as a calibrated probability. No broker credentials are accepted or stored.
 
 See `docs/phase-1-audit.md` for current audit findings and remaining work.
+
+
+## Resource-aware Ubuntu runtime
+
+For constrained laptops, run the lightweight environment preflight before starting research:
+
+```bash
+python -m app.runtime_diagnostics
+python -m app.runtime_diagnostics --json
+```
+
+XGBoost and LightGBM use a conservative RAM-aware CPU thread limit. Override it for
+controlled benchmarks with `GOLDCREST_ML_THREADS=1` (or another positive integer).
+See `docs/resource-aware-runtime.md` for limits, diagnostics, and safeguards.
