@@ -11,3 +11,4 @@ xgboost>=3.4,<4.0
 optuna>=4.0,<5.0
 yfinance>=0.2.65,<1.0
 backtrader==1.9.78.123
+ctrader-open-api==0.9.2
