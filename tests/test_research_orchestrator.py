@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -59,7 +59,7 @@ def test_research_dataset_builder_emits_matured_labels_and_hashes(tmp_path):
         for i in range(70):
             close = 1.1 + i * 0.0002 + (i % 4) * 0.00003
             writer.writerow({
-                "timestamp": (datetime(2026, 1, 1, tzinfo=timezone.utc).replace() + __import__("datetime").timedelta(minutes=15 * i)).isoformat().replace("+00:00", "Z"),
+                "timestamp": (datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=15 * i)).isoformat().replace("+00:00", "Z"),
                 "open": close - 0.00005,
                 "high": close + 0.0001,
                 "low": close - 0.0001,
