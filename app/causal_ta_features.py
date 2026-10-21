@@ -7,6 +7,7 @@ CI and lightweight environments usable. This module has no broker or live depend
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timezone
 from typing import Sequence
 
 import numpy as np
@@ -112,12 +113,12 @@ def build_causal_ohlc_features(bars: Sequence[ForexBar]) -> CausalFeatureBatch:
     timestamps = [bar.timestamp for bar in bars]
     if any(ts.tzinfo is None or ts.utcoffset() is None for ts in timestamps):
         raise ValueError("bar timestamps must be timezone-aware")
-    utc_times = [ts.astimezone(__import__("datetime").timezone.utc) for ts in timestamps]
+    utc_times = [ts.astimezone(timezone.utc) for ts in timestamps]
     if utc_times != sorted(utc_times) or len(set(utc_times)) != len(utc_times):
         raise ValueError("bars must be strictly chronological with unique timestamps")
     for bar in bars:
         values = (bar.open, bar.high, bar.low, bar.close)
-        if not all(np.isfinite(v) for v in values) or bar.low > min(bar.open, bar.close) or bar.high < max(bar.open, bar.close) or bar.high < bar.low or bar.close <= 0:
+        if not all(np.isfinite(v) and v > 0 for v in values) or bar.low > min(bar.open, bar.close) or bar.high < max(bar.open, bar.close) or bar.high < bar.low:
             raise ValueError("bars contain invalid OHLC values")
 
     open_ = np.asarray([b.open for b in bars], dtype=float)
