@@ -265,13 +265,13 @@ def write_optuna_walk_forward_report(report: OptunaWalkForwardReport, path: str 
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     payload = report.to_dict()
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     payload["actionable"] = False
     payload["test_metrics_used_for_tuning"] = False
     payload["report_warning"] = (
         "Offline predictive research only. Metrics are not evidence of profitability; "
         "do not connect this report to broker execution."
     )
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     destination.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return str(destination)
