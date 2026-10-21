@@ -56,7 +56,9 @@ def prepare_research_dataset(
     """Create a causal, explicitly labelled dataset accepted by the walk-forward CLI."""
     if not symbol.strip() or symbol.strip() != symbol.strip().upper():
         raise ValueError("symbol must be non-empty and uppercase")
-    if timeframe.strip().upper() not in {"M1", "M5", "M15", "M30", "H1", "H4", "D1"}:
+    symbol = symbol.strip().upper()
+    timeframe = timeframe.strip().upper()
+    if timeframe not in {"M1", "M5", "M15", "M30", "H1", "H4", "D1"}:
         raise ValueError("unsupported timeframe")
     if isinstance(horizon_bars, bool) or not isinstance(horizon_bars, int) or horizon_bars < 1:
         raise ValueError("horizon_bars must be a positive integer")
@@ -103,10 +105,10 @@ def prepare_research_dataset(
 
         if "symbol" in row and row["symbol"].strip().upper() != symbol:
             raise ValueError(f"line {line} symbol does not match requested symbol {symbol}")
-        if "timeframe" in row and row["timeframe"].strip().upper() != timeframe.strip().upper():
+        if "timeframe" in row and row["timeframe"].strip().upper() != timeframe:
             raise ValueError(f"line {line} timeframe does not match requested timeframe")
         bars.append(ForexBar(
-            symbol=symbol, timeframe=timeframe.strip().upper(), timestamp=ts,
+            symbol=symbol, timeframe=timeframe, timestamp=ts,
             open=values["open"], high=values["high"], low=values["low"], close=values["close"],
         ))
 
@@ -139,7 +141,7 @@ def prepare_research_dataset(
         label = int(is_up if class_1_means == "UP" else is_down)
         row: dict[str, Any] = {
             "symbol": symbol,
-            "timeframe": timeframe.strip().upper(),
+            "timeframe": timeframe,
             "timestamp": timestamps[index].isoformat().replace("+00:00", "Z"),
             "open": bars[index].open,
             "high": bars[index].high,
@@ -164,7 +166,7 @@ def prepare_research_dataset(
         "scope": "OFFLINE_RESEARCH_DATASET_PREPARATION",
         "actionable": False,
         "symbol": symbol,
-        "timeframe": timeframe.strip().upper(),
+        "timeframe": timeframe,
         "data_source": data_source.strip(),
         "source_version": source_version.strip(),
         "retrieved_at_utc": retrieved_at.isoformat().replace("+00:00", "Z"),
