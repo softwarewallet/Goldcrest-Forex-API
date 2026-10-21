@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np\nimport pandas as pd
+import numpy as np
+import pandas as pd
 
 
 _ALLOWED_INTERVALS = {"1d", "5d", "1wk", "1mo", "3mo", "1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
@@ -111,10 +112,11 @@ def download_yfinance_ohlc(
     frame = raw.copy()
     frame.index = pd.to_datetime(frame.index, utc=True)
     frame.index.name = "timestamp"
-    frame = frame[~frame.index.duplicated(keep=False)]
+    if frame.index.duplicated().any():
+        raise ValueError("Yahoo Finance returned duplicate timestamps; snapshot rejected")
     frame = frame.sort_index()
     if frame.empty:
-        raise ValueError("no unique timestamp rows remain after validation")
+        raise ValueError("no timestamp rows remain after validation")
     for name in required:
         frame[name] = pd.to_numeric(frame[name], errors="coerce")
     if "volume" not in frame:
@@ -149,5 +151,6 @@ def download_yfinance_ohlc(
     if output_manifest is not None:
         destination = Path(output_manifest)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(snapshot.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        destination.write_text(json.dumps(snapshot.to_dict(), indent=2, sort_keys=True) + "
+", encoding="utf-8")
     return export, snapshot
