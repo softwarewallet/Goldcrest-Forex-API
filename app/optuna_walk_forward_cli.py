@@ -103,12 +103,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     payload["actionable"] = False
     payload["test_metrics_used_for_tuning"] = False
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     payload["report_warning"] = (
         "Offline predictive research only. Metrics are not evidence of profitability; "
         "do not connect this report to broker execution."
     )
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     destination = Path(args.report)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
