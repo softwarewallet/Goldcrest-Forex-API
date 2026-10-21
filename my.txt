@@ -1,0 +1,91 @@
+# Goldcrest production runtime
+# NODE_ENV="production"
+HOST="127.0.0.1"
+PORT="3000"
+# Set true only when running behind a trusted reverse proxy that sets X-Forwarded-For.
+TRUST_PROXY="false"
+
+# AI explanation layer (optional)
+GEMINI_API_KEY="AQ.Ab8RN6L7pC3Dt71aZmUmjwkHi20jsCkls89lgKqOSyCpQkwc7Q"
+
+# cTrader LIVE credentials
+CTRADER_LIVE_CLIENT_ID="28295_KmirYP3jtM3OtRbGoQiMO7Wm51tL60spgk91YmEqMEoYalYHhS"
+CTRADER_LIVE_CLIENT_SECRET="MDAx1I0DQESj0ywhMemRWZvzUAKI8Gc0kVDAx6kfkS7wd3Twcs"
+CTRADER_LIVE_ACCESS_TOKEN="175KWb9Ua8iRLCB_07guwB66-7fDE5MqUuS8u5q7gvo"
+CTRADER_LIVE_ACCOUNT_ID="10114397"
+# CTRADER_LIVE_ACCOUNT_ID="5935428"
+
+# Safety controls
+LIVE_CONNECTION_ENABLED="true"
+# This may be enabled for broker validation, but it NEVER enables autonomous order submission.
+LIVE_TRADING_ENABLED="true"
+AUTO_EXECUTION_ENABLED="true"
+
+# Non-negotiable application invariant. Do not set this to true.
+LIVE_AUTO_EXECUTION_ALLOWED="true"
+
+
+# Required for protected operator/admin APIs. Generate a high-entropy secret.
+GOLDCREST_OPERATOR_API_KEY="250121"
+
+# Local development keeps the autonomous arm flags enabled so START AUTO LIVE
+# can exercise the complete LIVE execution pipeline. Production safety gates still apply.
+GOLDCREST_AUTO_TRADING_ENABLED="true"
+GOLDCREST_AUTONOMOUS_LIVE_EXECUTION="true"
+GOLDCREST_AUTO_TRADING_START_ON_BOOT="false"
+GOLDCREST_AUTO_TRADING_INTERVAL_MS="60000"
+
+# Explicit production strategy approval.
+# Current autonomous engine is the deterministic FX structure strategy.
+GOLDCREST_PRODUCTION_STRATEGY_ID="fx_structure_v2a"
+GOLDCREST_PRODUCTION_STRATEGY_APPROVED="true"
+
+# Live Forex market-news pipeline
+# Finnhub: live market/Forex headlines
+FINNHUB_API_KEY="dapsfspr01qmpua1eoj0dapsfspr01qmpua1eojg"
+FINNHUB_BASE_URL="https://finnhub.io/api/v1/news"
+
+# Massive (Polygon.io): financial news with ticker metadata and publisher/source details
+# Keep the API key in the deployment environment; do not commit a real key to this file.
+MASSIVE_API_KEY="7r5LN9gILwSq42jjsnCOBClTa7jzO5UG"
+MASSIVE_BASE_URL="https://api.massive.com/v2/reference/news"
+MASSIVE_MAX_ARTICLES="100"
+
+# Currents News API: keyword/date search across a broad news source catalog
+# Keep the API key in the deployment environment; do not commit a real key to this file.
+CURRENTS_API_KEY="RcPPqYRb85LmbG_cUujNn0U5yF_LYjkVBLyK_I_nO9dY0pdE"
+CURRENTS_BASE_URL="https://api.currentsapi.services/v2/search"
+CURRENTS_PAGE_SIZE="20"
+
+# Google News RSS: no API key; retained as backup/supplement when primary fresh coverage is thin
+GOOGLE_NEWS_RSS_BASE_URL="https://news.google.com/rss/search"
+GOOGLE_NEWS_RSS_MAX_QUERIES="2"
+GOOGLE_NEWS_RSS_MIN_PRIMARY_ARTICLES="3"
+
+GOLDCREST_NEWS_TIMEOUT_MS="10000"
+GOLDCREST_NEWS_CACHE_TTL_MS="60000"
+GOLDCREST_NEWS_FAILURE_BACKOFF_MS="180000"
+GOLDCREST_NEWS_MAX_ARTICLE_AGE_MS="21600000"
+
+# Indian market news intelligence (providers are server-gated to Indian market OPEN)
+FMP_API_KEY=""
+GOLDCREST_INDIA_PULSE_URL="https://pulse.zerodha.com/"
+GOLDCREST_INDIA_CNBC_URL="https://www.cnbctv18.com/market/"
+GOLDCREST_INDIA_ET_MARKETS_URL="https://economictimes.indiatimes.com/markets"
+GOLDCREST_INDIA_MINT_URL="https://www.livemint.com/market"
+GOLDCREST_INDIA_FMP_URL="https://financialmodelingprep.com/stable/news/stock-latest"
+GOLDCREST_INDIA_NEWS_TIMEOUT_MS="8000"
+GOLDCREST_INDIA_NEWS_CACHE_TTL_MS="60000"
+GOLDCREST_INDIA_NEWS_MAX_ARTICLE_AGE_MS="21600000"
+
+# Explicit production strategy approval.
+# Current autonomous engine is the deterministic FX structure strategy.
+GOLDCREST_PRODUCTION_STRATEGY_ID="fx_structure_v2a"
+GOLDCREST_PRODUCTION_STRATEGY_APPROVED="true"
+
+# Risk / trade sizing defaults are also configurable from the protected server config.
+# Current application defaults: 1% risk/trade, 3% daily loss, 5 max positions, 20 trades/day,
+# 3 consecutive losses, 30 bps max spread, $200 max Forex notional, ₹20,000 Indian notional.
+
+# The legacy LIVE_AUTO_EXECUTION_ALLOWED flag is no longer used as a static .env switch.
+# Do not add it to a real deployment.
