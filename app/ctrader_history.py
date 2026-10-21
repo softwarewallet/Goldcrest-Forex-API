@@ -75,20 +75,19 @@ def normalize_ctrader_trendbars(
         try:
             ts = _timestamp(bar)
             raw_low = _field(bar, "low")
-            if raw_low is None:
-                # Generic normalized records may already have absolute OHLC.
-                values = {name: float(_field(bar, name)) for name in ("open", "high", "low", "close")}
-            else:
+            delta_fields = (_field(bar, "deltaOpen"), _field(bar, "deltaHigh"), _field(bar, "deltaClose"))
+            if raw_low is not None and all(value is not None for value in delta_fields):
                 low_base = float(raw_low) / price_scale
-                open_delta = float(_field(bar, "deltaOpen")) / price_scale
-                high_delta = float(_field(bar, "deltaHigh")) / price_scale
-                close_delta = float(_field(bar, "deltaClose")) / price_scale
+                open_delta, high_delta, close_delta = (float(value) / price_scale for value in delta_fields)
                 values = {
                     "open": low_base + open_delta,
                     "high": low_base + high_delta,
                     "low": low_base,
                     "close": low_base + close_delta,
                 }
+            else:
+                # Generic normalized records may already have absolute OHLC.
+                values = {name: float(_field(bar, name)) for name in ("open", "high", "low", "close")}
             if any(not math.isfinite(value) or value <= 0 for value in values.values()):
                 raise ValueError("prices must be finite and positive")
             if values["low"] > min(values["open"], values["close"]) or values["high"] < max(values["open"], values["close"]) or values["high"] < values["low"]:
