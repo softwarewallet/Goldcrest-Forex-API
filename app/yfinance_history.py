@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
+import numpy as np\nimport pandas as pd
 
 
 _ALLOWED_INTERVALS = {"1d", "5d", "1wk", "1mo", "3mo", "1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
@@ -122,7 +122,7 @@ def download_yfinance_ohlc(
     frame["volume"] = pd.to_numeric(frame["volume"], errors="coerce").fillna(0.0)
     if frame[list(required)].isna().any().any():
         raise ValueError("OHLC contains missing or non-numeric values")
-    if not frame[list(required)].map(lambda col: col.map(lambda value: pd.notna(value) and abs(float(value)) != float("inf"))).all().all():
+    if not np.isfinite(frame[list(required)].to_numpy(dtype=float)).all():
         raise ValueError("OHLC contains non-finite values")
     if ((frame["low"] > frame[["open", "close"]].min(axis=1)) |
         (frame["high"] < frame[["open", "close"]].max(axis=1)) |
