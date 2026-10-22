@@ -357,3 +357,129 @@ def test_dashboard_cors_rejects_unconfigured_origin():
         )
     assert response.status_code == 400
     assert "access-control-allow-origin" not in response.headers
+
+
+def _create_test_prediction(client, request_id):
+    from app.llama_client import LlamaClient
+
+    async def fake_analyze(self, payload):
+        return "outcome-test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
+        )
+
+    # Monkeypatching is applied by the caller before this helper is used.
+    response = client.post(
+        "/api/v1/predictions",
+        headers={"X-API-Key": api_key()},
+        json=market_payload(request_id),
+    )
+    return response
+
+
+def test_record_outcome_rejects_unknown_prediction():
+    from uuid import uuid4
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/outcomes",
+            headers={"X-API-Key": api_key()},
+            json={
+                "prediction_id": str(uuid4()),
+                "outcome_label": "HORIZON_EXPIRED",
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "details": {},
+            },
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Prediction not found"
+
+
+def test_record_outcome_rejects_future_observation(monkeypatch):
+    from app.llama_client import LlamaClient
+
+    async def fake_analyze(self, payload):
+        return "outcome-test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
+        )
+
+    monkeypatch.setattr(LlamaClient, "analyze", fake_analyze)
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/predictions",
+            headers={"X-API-Key": api_key()},
+            json=market_payload("outcome-future-observation"),
+        )
+        assert created.status_code == 200
+        response = client.post(
+            "/api/v1/outcomes",
+            headers={"X-API-Key": api_key()},
+            json={
+                "prediction_id": created.json()["prediction_id"],
+                "outcome_label": "HORIZON_EXPIRED",
+                "observed_at": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(),
+                "details": {},
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "observed_at cannot be in the future"
+
+
+def test_record_outcome_is_idempotency_protected_and_audited(monkeypatch):
+    from app.llama_client import LlamaClient
+
+    async def fake_analyze(self, payload):
+        return "outcome-test-model", (
+            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
+            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
+        )
+
+    monkeypatch.setattr(LlamaClient, "analyze", fake_analyze)
+    headers = {"X-API-Key": api_key()}
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/v1/predictions",
+            headers=headers,
+            json=market_payload("outcome-single-record"),
+        )
+        assert created.status_code == 200
+        prediction_id = created.json()["prediction_id"]
+        outcome_body = {
+            "prediction_id": prediction_id,
+            "outcome_label": "HORIZON_EXPIRED",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "details": {"protocol": "test-horizon-v1"},
+        }
+        first = client.post("/api/v1/outcomes", headers=headers, json=outcome_body)
+        duplicate = client.post("/api/v1/outcomes", headers=headers, json=outcome_body)
+        audit = client.get("/api/v1/audit?limit=100", headers=headers)
+
+    assert first.status_code == 200
+    assert first.json() == {"status": "recorded", "prediction_id": prediction_id}
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "Outcome already recorded"
+    assert audit.status_code == 200
+    assert any(
+        event["event_type"] == "outcome"
+        and event["request_id"] == "outcome-single-record"
+        and event["outcome"] == "HORIZON_EXPIRED"
+        for event in audit.json()
+    )
+
+
+def test_outcome_requires_api_key():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/outcomes",
+            json={
+                "prediction_id": "prediction-test",
+                "outcome_label": "UNKNOWN",
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "details": {},
+            },
+        )
+
+    assert response.status_code in {401, 503}
