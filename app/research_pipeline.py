@@ -19,6 +19,7 @@ from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
+from app.research_data_quality import audit_ohlc_csv_file
 
 
 def _sha256(path: str | Path) -> str:
@@ -105,6 +106,16 @@ def run_research_pipeline(
             "actionable": False,
         }
 
+    data_quality_path = destination / f"{run_id}_data_quality_audit.json"
+    data_quality = audit_ohlc_csv_file(
+        raw_csv, data_quality_path, expected_symbol=instrument, expected_timeframe=period
+    )
+    if data_quality["status"] == "FAIL":
+        raise ValueError(
+            f"historical OHLC quality audit failed; inspect {data_quality_path}: "
+            f"{data_quality['errors']}"
+        )
+
     dataset_csv = destination / f"{instrument}_{period}_research_dataset.csv"
     dataset_manifest_path = destination / f"{instrument}_{period}_research_dataset.manifest.json"
     dataset_manifest = prepare_research_dataset(
@@ -157,6 +168,11 @@ def run_research_pipeline(
         "retrieved_at_utc": retrieved_at_utc,
         "raw_ohlc_path": str(raw_csv),
         "raw_ohlc_sha256": raw_sha256,
+        "data_quality_audit_path": str(data_quality_path),
+        "data_quality_audit_sha256": _sha256(data_quality_path),
+        "data_quality_audit_status": data_quality["status"],
+        "data_quality_observed_gap_count": data_quality["observed_gap_count"],
+        "data_quality_warnings": data_quality["warnings"],
         "dataset_path": str(dataset_csv),
         "dataset_sha256": _sha256(dataset_csv),
         "dataset_manifest_path": str(dataset_manifest_path),
