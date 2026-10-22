@@ -21,6 +21,7 @@ from app.research_experiment_matrix import run_experiment_matrix, write_experime
 from app.research_provenance_auditor import audit_experiment_matrix_file
 from app.research_data_quality import audit_ohlc_csv_file
 from app.research_temporal_leakage_auditor import audit_temporal_integrity_file
+from app.research_feature_provenance_auditor import audit_feature_provenance_file
 
 
 def _sha256(path: str | Path) -> str:
@@ -66,6 +67,7 @@ def run_research_pipeline(
     include_ablation: bool = True,
     strict_provenance_audit: bool = False,
     strict_temporal_audit: bool = False,
+    strict_feature_provenance_audit: bool = False,
 ) -> dict[str, Any]:
     """Run ingestion (optional), dataset preparation, and fixed-fold model comparison."""
     if fetch_ctrader == (ohlc_csv is not None):
@@ -161,6 +163,9 @@ def run_research_pipeline(
     temporal_audit_path = destination / f"{run_id}_temporal_audit.json"
     temporal_audit = audit_temporal_integrity_file(matrix_report_path, temporal_audit_path)
     temporal_audit_sha256 = _sha256(temporal_audit_path)
+    feature_provenance_path = destination / f"{run_id}_feature_provenance_audit.json"
+    feature_provenance_audit = audit_feature_provenance_file(dataset_csv, dataset_manifest_path, feature_provenance_path)
+    feature_provenance_sha256 = _sha256(feature_provenance_path)
 
     payload: dict[str, Any] = {
         "schema_version": 1,
@@ -195,6 +200,10 @@ def run_research_pipeline(
         "temporal_audit_sha256": temporal_audit_sha256,
         "temporal_audit_status": temporal_audit["status"],
         "strict_temporal_audit": strict_temporal_audit,
+        "feature_provenance_audit_path": str(feature_provenance_path),
+        "feature_provenance_audit_sha256": feature_provenance_sha256,
+        "feature_provenance_audit_status": feature_provenance_audit["status"],
+        "strict_feature_provenance_audit": strict_feature_provenance_audit,
         "strict_provenance_audit": strict_provenance_audit,
         "ingestion": ingestion,
         "label_horizon_bars": horizon_bars,
@@ -238,6 +247,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-ablation", action="store_true", help="Compare only the full causal feature set")
     parser.add_argument("--strict-provenance-audit", action="store_true", help="Return a nonzero exit code if the structural provenance audit fails")
     parser.add_argument("--strict-temporal-audit", action="store_true", help="Return exit code 4 if temporal-boundary audit fails")
+    parser.add_argument("--strict-feature-provenance-audit", action="store_true", help="Return exit code 5 if feature provenance audit fails")
     return parser
 
 
@@ -268,6 +278,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_ablation=not args.no_ablation,
             strict_provenance_audit=args.strict_provenance_audit,
             strict_temporal_audit=args.strict_temporal_audit,
+            strict_feature_provenance_audit=args.strict_feature_provenance_audit,
         )
     except Exception as exc:
         # Errors are concise and do not print credential-bearing objects.
@@ -280,6 +291,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.strict_temporal_audit and result.get("temporal_audit_status") == "FAIL":
         print("research pipeline completed, but strict temporal audit failed; inspect the temporal audit receipt", file=sys.stderr)
         return 4
+    if args.strict_feature_provenance_audit and result.get("feature_provenance_audit_status") == "FAIL":
+        print("research pipeline completed, but strict feature provenance audit failed; inspect the receipt", file=sys.stderr)
+        return 5
     return 0
 
 
