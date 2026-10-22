@@ -381,3 +381,37 @@ html,body,#root{width:100%;height:100%;min-height:0;overflow:hidden}
 
 /* API-backed statistical research comparison */
 .research-comparison-panel{background:linear-gradient(145deg,rgba(13,21,34,.98),rgba(9,16,27,.98));border:1px solid var(--line);border-radius:16px;padding:22px;margin:24px 0;min-width:0}.comparison-controls{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin:18px 0}.comparison-controls label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:11px}.comparison-controls input{width:180px;max-width:100%;background:#080f1b;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px}.comparison-controls button{background:rgba(69,225,231,.1);border:1px solid rgba(69,225,231,.35);border-radius:8px;color:var(--cyan);padding:10px 14px;font-size:10px;font-weight:800;letter-spacing:.08em}.comparison-controls button:disabled{opacity:.55;cursor:wait}.comparison-message{border:1px dashed var(--line);border-radius:10px;padding:20px;color:var(--muted);line-height:1.6}.comparison-message.error{border-color:rgba(255,112,132,.35);color:#ff9aa9}.comparison-stratum{border:1px solid var(--line);border-radius:12px;margin:16px 0;overflow:hidden}.comparison-stratum-title{display:flex;align-items:center;gap:12px;background:rgba(69,225,231,.04);border-bottom:1px solid var(--line);padding:13px 16px}.comparison-stratum-title b{font-size:14px}.comparison-stratum-title span{font:11px 'DM Mono',monospace;color:var(--cyan);background:rgba(69,225,231,.08);padding:4px 7px;border-radius:5px}.comparison-table-wrap{width:100%;overflow-x:auto}.comparison-table{width:100%;border-collapse:collapse;min-width:760px;text-align:left}.comparison-table th{font-size:9px;letter-spacing:.07em;color:var(--muted);font-weight:700;text-transform:uppercase;padding:12px 14px;border-bottom:1px solid var(--line);white-space:nowrap}.comparison-table td{padding:13px 14px;border-bottom:1px solid rgba(27,42,62,.7);font:11px 'DM Mono',monospace;color:#c6d2e4;white-space:nowrap}.comparison-table tr:last-child td{border-bottom:0}.comparison-model-name{font-family:Manrope,system-ui,sans-serif!important;color:var(--text)!important;font-weight:700}.interval-range{display:block;color:var(--muted);font-size:10px;margin-top:5px}.comparison-eligible,.comparison-ineligible{font-size:9px;font-weight:800;letter-spacing:.04em}.comparison-eligible{color:var(--green)}.comparison-ineligible{color:#eabf79}.comparison-pairs{display:flex;flex-direction:column;gap:9px;padding:14px 16px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}.comparison-pair{display:flex;gap:14px;flex-wrap:wrap;align-items:center;border:1px solid rgba(27,42,62,.8);border-radius:8px;padding:10px;color:#bdcce0;font:10px 'DM Mono',monospace}.comparison-pair span:first-child{color:var(--text);font-weight:700}.comparison-disclaimer{font-size:10px;line-height:1.7;color:var(--muted);margin:18px 0 0}
+
+
+/* Persistent offline experiment registry inspector */
+.experiment-registry-panel{background:linear-gradient(145deg,rgba(13,21,34,.98),rgba(9,16,27,.98));border:1px solid var(--line);border-radius:16px;padding:22px;margin:24px 0;min-width:0}
+.registry-intro{font-size:11px;line-height:1.7;color:var(--muted);max-width:900px}
+.registry-controls{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:16px 0}
+.registry-controls label{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:11px}
+.registry-controls input{width:150px;max-width:100%;background:#080f1b;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px}
+.registry-controls button{background:rgba(69,225,231,.1);border:1px solid rgba(69,225,231,.35);border-radius:8px;color:var(--cyan);padding:10px 14px;font-size:10px;font-weight:800;letter-spacing:.08em}
+.registry-controls button:disabled{opacity:.55;cursor:wait}
+.registry-layout{display:grid;grid-template-columns:minmax(240px,.85fr) minmax(0,1.5fr);gap:14px;align-items:start}
+.registry-run-list,.registry-detail{border:1px solid var(--line);border-radius:11px;min-width:0;overflow:hidden}
+.registry-list-count{padding:12px 14px;border-bottom:1px solid var(--line);font:9px 'DM Mono',monospace;color:var(--muted);letter-spacing:.06em}
+.registry-run{display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;padding:13px 14px;border:0;border-bottom:1px solid rgba(27,42,62,.8);background:transparent;color:var(--text);cursor:pointer}
+.registry-run:last-child{border-bottom:0}
+.registry-run:hover,.registry-run.selected{background:rgba(69,225,231,.06);box-shadow:inset 2px 0 var(--cyan)}
+.registry-run-top{display:flex;justify-content:space-between;gap:8px;align-items:center}.registry-run-top b{font-size:12px}.registry-run-top b small{font:10px 'DM Mono',monospace;color:var(--cyan);margin-left:5px}.registry-run-top i{font-size:9px;color:var(--muted);font-style:normal;text-align:right}
+.registry-run-id{font:10px 'DM Mono',monospace;color:#bdcce0;overflow-wrap:anywhere}
+.registry-run-meta{display:flex;flex-direction:column;gap:4px;font:8px 'DM Mono',monospace;color:var(--muted);overflow-wrap:anywhere}
+.registry-detail{padding:16px}
+.registry-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:15px}.registry-detail-head h3{font-size:15px;overflow-wrap:anywhere;margin:6px 0 0}
+.registry-hashes{display:grid;grid-template-columns:1fr;gap:8px;margin:12px 0}
+.registry-hashes>div{display:grid;gap:6px;background:#080f1b;border:1px solid var(--line);padding:10px;border-radius:7px;min-width:0}
+.registry-hashes small{font:8px 'DM Mono',monospace;color:var(--muted);letter-spacing:.07em}
+.registry-hashes code{font:10px 'DM Mono',monospace;color:#9fdce6;overflow-wrap:anywhere;white-space:normal}
+.registry-fold-summary{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.registry-fold-summary span{display:grid;gap:5px;min-width:90px;flex:1;background:rgba(69,225,231,.04);border:1px solid var(--line);border-radius:8px;padding:11px}
+.registry-fold-summary b{font:12px 'DM Mono',monospace;color:var(--text);overflow-wrap:anywhere}.registry-fold-summary small{font-size:8px;color:var(--muted)}
+.registry-detail h4{font-size:11px;letter-spacing:.04em;margin:18px 0 10px}
+.registry-experiment,.registry-manifest{border:1px solid var(--line);border-radius:8px;margin:8px 0;overflow:hidden}
+.registry-experiment summary,.registry-manifest summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center;cursor:pointer;padding:11px;background:rgba(69,225,231,.035);font-size:10px}
+.registry-experiment summary b{color:var(--text)}.registry-experiment summary span{color:var(--cyan)}.registry-experiment summary small{color:var(--muted);margin-left:auto}
+.registry-experiment pre,.registry-manifest pre{padding:12px;margin:0;max-height:280px;overflow:auto;background:#060b13;color:#b6d2e0;font:9px/1.6 'DM Mono',monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:850px){.registry-layout{grid-template-columns:1fr}.registry-run-list{max-height:300px;overflow:auto}.registry-detail-head h3{font-size:13px}}
