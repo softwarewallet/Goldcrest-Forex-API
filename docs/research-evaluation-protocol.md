@@ -16,6 +16,12 @@ Define the minimum evidence required before Goldcrest Forex API publishes predic
 
 These are operational/research bookkeeping measures, not directional accuracy, probability calibration, expected return, or profitability. Empty datasets return a null coverage ratio rather than divide by zero. `GET /api/v1/performance` uses database-side aggregate counts to avoid loading every record into application memory.
 
+## SciPy research statistics
+
+`GET /api/v1/research/statistics` exposes a SciPy-backed Jeffreys beta-binomial credible interval for the recorded share of `TARGET_FIRST` among `TARGET_FIRST`/`STOP_FIRST` outcomes. Only resolved barrier-hit labels are included; ambiguous bars, horizon expiry, insufficient data, and other labels are excluded. With zero eligible observations, the share and interval are null.
+
+This is descriptive sample uncertainty, not prediction accuracy, a calibrated forecast, expected return, or profitability. It does not account for serial dependence, sample selection, spreads, slippage, or strategy economics. It is research telemetry only and cannot create actionable signals or affect execution.
+
 ## Requirements before scoring
 
 1. **Freeze the target definition.** Specify instrument, timeframe, prediction timestamp, evaluation horizon and exact target event. Do not mix incompatible horizons.
