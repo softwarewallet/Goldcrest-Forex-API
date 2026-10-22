@@ -187,7 +187,7 @@ export default function App() {
   <div className="ops-atmosphere"/><div className="ops-scanline"/>
   <header className="ops-heading">
     <div><span className="ops-kicker"><i/> GOLDCREST INTELLIGENCE SYSTEMS <b>/</b> OPERATIONS UNIVERSE</span><h2>One intelligence. <span>Connected systems.</span></h2><p>Research architecture, model services and evidence in one operational view.</p></div>
-    <div className="ops-state"><span className={state === "connected" ? "live-dot" : ""}/><div><b>{state === "connected" ? "SYSTEM LINKED" : state === "degraded" ? "PARTIAL LINK" : "LOCAL VISUALIZATION"}</b><small>{lastSync ? `LAST SYNC ${new Date(lastSync).toLocaleTimeString()}` : {busy ? "API REQUESTS IN FLIGHT" : lastSync ? "LATEST API POLL COMPLETE" : "WAITING FOR API TELEMETRY"}}</small></div></div>
+    <div className="ops-state"><span className={state === "connected" ? "live-dot" : ""}/><div><b>{state === "connected" ? "SYSTEM LINKED" : state === "degraded" ? "PARTIAL LINK" : "LOCAL VISUALIZATION"}</b><small>{busy ? "API REQUESTS IN FLIGHT" : lastSync ? `LAST SYNC ${new Date(lastSync).toLocaleTimeString()}` : "WAITING FOR API TELEMETRY"}</small></div></div>
   </header>
   <div className="ops-scene">
     <aside className="ops-glass ops-left">
