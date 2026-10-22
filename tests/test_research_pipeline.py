@@ -101,6 +101,13 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert stored["provenance_audit_sha256"]
     assert stored["provenance_audit_status"] == audit["status"] == "FAIL"
     assert stored["strict_provenance_audit"] is False
+    temporal_path = tmp_path / "run" / "unit-test_temporal_audit.json"
+    assert temporal_path.exists()
+    temporal = json.loads(temporal_path.read_text(encoding="utf-8"))
+    assert stored["temporal_audit_status"] == temporal["status"] == "FAIL"
+    assert temporal["source_report_sha256"] == stored["experiment_matrix_report_sha256"]
+    assert stored["temporal_audit_sha256"]
+    assert stored["strict_temporal_audit"] is False
 
 
 def test_pipeline_requires_existing_ohlc_file(tmp_path):
@@ -216,3 +223,37 @@ def test_pipeline_stops_before_dataset_build_when_raw_quality_fails(tmp_path, mo
     stored = json.loads(receipt.read_text(encoding="utf-8"))
     assert stored["status"] == "FAIL"
     assert stored["actionable"] is False
+
+
+
+def test_strict_temporal_cli_returns_four_when_audit_fails(monkeypatch, capsys):
+    monkeypatch.setattr(
+        research_pipeline,
+        "run_research_pipeline",
+        lambda **kwargs: {
+            "run_id": "strict-temporal-fail-test",
+            "provenance_audit_status": "PASS",
+            "temporal_audit_status": "FAIL",
+            "actionable": False,
+            "execution_connected": False,
+        },
+    )
+    code = research_pipeline.main([
+        "--ohlc-csv", "unused.csv",
+        "--symbol", "EURUSD",
+        "--timeframe", "M15",
+        "--horizon-bars", "4",
+        "--class-1-means", "UP",
+        "--terms-reference", "provider terms",
+        "--source-version", "test-export-v1",
+        "--run-id", "strict-temporal-fail-test",
+        "--initial-train-bars", "100",
+        "--validation-bars", "20",
+        "--test-bars", "20",
+        "--step-bars", "20",
+        "--strict-temporal-audit",
+    ])
+    captured = capsys.readouterr()
+    assert code == 4
+    assert "strict temporal audit failed" in captured.err
+    assert '"execution_connected": false' in captured.out
