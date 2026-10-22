@@ -56,3 +56,25 @@ __all__ = [
     "AuditEvent", "OutcomeRecord", "PredictionRecord", "utc_now",
     "BinaryModelOutput", "LightGBMResearchModel", "XGBoostResearchModel",
 ]
+
+
+class ResearchExperimentRun(Base):
+    """Immutable, content-addressed record of an offline research experiment."""
+    __tablename__ = "research_experiment_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    run_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    fingerprint_sha256: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    dataset_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    timeframe: Mapped[str] = mapped_column(String(8), index=True)
+    protocol_version: Mapped[str] = mapped_column(String(64))
+    manifest: Mapped[dict] = mapped_column(JSON)
+    fold_results: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
+__all__ = [
+    "AuditEvent", "OutcomeRecord", "PredictionRecord", "ResearchExperimentRun", "utc_now",
+    "BinaryModelOutput", "LightGBMResearchModel", "XGBoostResearchModel",
+]
