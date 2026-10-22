@@ -396,7 +396,12 @@ async def register_research_experiment(payload: dict = Body(...), db: Session = 
         raise HTTPException(status_code=409, detail="run_id already exists with different experiment content")
     by_fingerprint = db.scalar(select(ResearchExperimentRun).where(ResearchExperimentRun.fingerprint_sha256 == fingerprint))
     if by_fingerprint:
-        return _experiment_response(by_fingerprint)
+        if by_fingerprint.run_id == run_id:
+            return _experiment_response(by_fingerprint)
+        raise HTTPException(
+            status_code=409,
+            detail="Identical experiment content is already registered under a different run_id",
+        )
     record = ResearchExperimentRun(
         run_id=run_id, fingerprint_sha256=fingerprint, dataset_sha256=dataset_hash.lower(),
         symbol=symbol.strip().upper(), timeframe=timeframe.strip().upper(),
