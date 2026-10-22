@@ -35,7 +35,12 @@ def _timestamp(value: str, field: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
-def audit_feature_provenance(dataset_csv: str | Path, manifest_path: str | Path) -> dict[str, Any]:
+def audit_feature_provenance(
+    dataset_csv: str | Path,
+    manifest_path: str | Path,
+    *,
+    feature_source_path: str | Path | None = None,
+) -> dict[str, Any]:
     dataset_path, manifest_file = Path(dataset_csv), Path(manifest_path)
     errors: list[str] = []
     warnings: list[str] = []
@@ -87,6 +92,14 @@ def audit_feature_provenance(dataset_csv: str | Path, manifest_path: str | Path)
         errors.append("feature_implementation_sha256_invalid")
     if manifest.get("feature_implementation_file") != "app/causal_ta_features.py":
         errors.append("feature_implementation_file_missing_or_unrecognized")
+    source_path = Path(feature_source_path) if feature_source_path is not None else Path(__file__).with_name("causal_ta_features.py")
+    try:
+        actual_implementation_hash = _sha256(source_path)
+    except OSError:
+        actual_implementation_hash = None
+        errors.append("feature_implementation_source_unreadable")
+    if actual_implementation_hash is not None and actual_implementation_hash != implementation_hash:
+        errors.append("feature_implementation_sha256_mismatch")
 
     row_count = 0
     if dataset_hash:
@@ -149,8 +162,14 @@ def audit_feature_provenance(dataset_csv: str | Path, manifest_path: str | Path)
     }
 
 
-def audit_feature_provenance_file(dataset_csv: str | Path, manifest_path: str | Path, receipt_path: str | Path) -> dict[str, Any]:
-    result = audit_feature_provenance(dataset_csv, manifest_path)
+def audit_feature_provenance_file(
+    dataset_csv: str | Path,
+    manifest_path: str | Path,
+    receipt_path: str | Path,
+    *,
+    feature_source_path: str | Path | None = None,
+) -> dict[str, Any]:
+    result = audit_feature_provenance(dataset_csv, manifest_path, feature_source_path=feature_source_path)
     result["source_dataset_sha256"] = _sha256(Path(dataset_csv)) if Path(dataset_csv).is_file() else None
     target = Path(receipt_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -164,12 +183,13 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--receipt", required=True)
+    parser.add_argument("--feature-source", help="Feature source file to verify; defaults to app/causal_ta_features.py beside this auditor")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    result = audit_feature_provenance_file(args.dataset, args.manifest, args.receipt)
+    result = audit_feature_provenance_file(args.dataset, args.manifest, args.receipt, feature_source_path=args.feature_source)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result["status"] != "FAIL" else 2
 
