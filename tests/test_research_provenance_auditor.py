@@ -83,7 +83,7 @@ def test_file_audit_writes_receipt_with_source_hash(tmp_path):
 
 def test_audit_rejects_invalid_fold_count_and_window_count():
     payload = sample_report()
-    payload["fold_count"] = True
+    payload["fold_count"] = -1
     payload["common_fold_test_windows"] = []
     result = audit_experiment_matrix(payload)
     assert "invalid_fold_count" in result["errors"]
