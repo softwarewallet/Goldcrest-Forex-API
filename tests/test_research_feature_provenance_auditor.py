@@ -74,8 +74,8 @@ def test_feature_provenance_detects_dataset_tampering(tmp_path):
 def test_feature_provenance_detects_schema_fingerprint_mismatch(tmp_path):
     dataset = tmp_path / "dataset.csv"
     dataset.write_text(
-        "symbol,timeframe,timestamp,open,high,low,close,label,label_available_at,return_1\\n"
-        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.01\\n",
+        "symbol,timeframe,timestamp,open,high,low,close,label,label_available_at,return_1\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.01\n",
         encoding="utf-8",
     )
     payload = _manifest(dataset, ["return_1"])
