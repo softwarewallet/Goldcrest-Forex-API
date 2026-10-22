@@ -78,6 +78,15 @@ def audit_feature_provenance(dataset_csv: str | Path, manifest_path: str | Path)
         feature_names = []
     elif len(feature_names) != len(set(feature_names)):
         errors.append("feature_names_duplicate")
+    schema_hash = manifest.get("feature_schema_sha256")
+    expected_schema_hash = hashlib.sha256(_canonical({"feature_names": feature_names})).hexdigest() if feature_names else None
+    if not isinstance(schema_hash, str) or schema_hash != expected_schema_hash:
+        errors.append("feature_schema_sha256_mismatch")
+    implementation_hash = manifest.get("feature_implementation_sha256")
+    if not isinstance(implementation_hash, str) or len(implementation_hash) != 64 or any(ch not in "0123456789abcdef" for ch in implementation_hash):
+        errors.append("feature_implementation_sha256_invalid")
+    if manifest.get("feature_implementation_file") != "app/causal_ta_features.py":
+        errors.append("feature_implementation_file_missing_or_unrecognized")
 
     row_count = 0
     if dataset_hash:

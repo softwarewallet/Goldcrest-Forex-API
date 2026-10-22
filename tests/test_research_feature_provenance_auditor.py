@@ -12,6 +12,9 @@ def _manifest(dataset, features):
         "automatic_sorting": False,
         "automatic_imputation": False,
         "feature_names": features,
+        "feature_schema_sha256": hashlib.sha256(json.dumps({"feature_names": features}, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")).hexdigest(),
+        "feature_implementation_sha256": "a" * 64,
+        "feature_implementation_file": "app/causal_ta_features.py",
         "feature_timestamp_rule": "Each feature at t uses only OHLC observations timestamped <= t.",
         "output_dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
     }
@@ -66,3 +69,23 @@ def test_feature_provenance_detects_dataset_tampering(tmp_path):
     result = audit_feature_provenance(dataset, manifest)
     assert result["status"] == "FAIL"
     assert "dataset_sha256_mismatch" in result["errors"]
+
+
+def test_feature_provenance_detects_schema_fingerprint_mismatch(tmp_path):
+    dataset = tmp_path / "dataset.csv"
+    dataset.write_text(
+        "symbol,timeframe,timestamp,open,high,low,close,label,label_available_at,return_1\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.01\n",
+        encoding="utf-8",
+    )
+    payload = _manifest(dataset, ["return_1"])
+    payload["feature_schema_sha256"] = "0" * 64
+    payload.pop("manifest_sha256")
+    payload["manifest_sha256"] = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+    result = audit_feature_provenance(dataset, manifest)
+    assert result["status"] == "FAIL"
+    assert "feature_schema_sha256_mismatch" in result["errors"]

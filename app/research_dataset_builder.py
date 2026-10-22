@@ -161,6 +161,8 @@ def prepare_research_dataset(
         writer.writeheader()
         writer.writerows(emitted)
     output_sha256 = hashlib.sha256(output_path.read_bytes()).hexdigest()
+    feature_schema_sha256 = hashlib.sha256(_canonical_json({"feature_names": feature_names})).hexdigest()
+    feature_implementation_sha256 = hashlib.sha256(Path(__file__).with_name("causal_ta_features.py").read_bytes()).hexdigest()
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "scope": "OFFLINE_RESEARCH_DATASET_PREPARATION",
@@ -176,6 +178,9 @@ def prepare_research_dataset(
         "input_rows": len(bars),
         "output_rows": len(emitted),
         "feature_names": feature_names,
+        "feature_schema_sha256": feature_schema_sha256,
+        "feature_implementation_sha256": feature_implementation_sha256,
+        "feature_implementation_file": "app/causal_ta_features.py",
         "feature_backend": feature_batch.indicator_backend,
         "feature_timestamp_rule": "Each feature at t uses only OHLC observations timestamped <= t.",
         "label_definition": f"Binary forward-close direction over {horizon_bars} bars; class 1 means {class_1_means}; equality maps to class 0.",
