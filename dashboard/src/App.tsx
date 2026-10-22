@@ -206,10 +206,22 @@ export default function App() {
           </div>
           <div className="neural-bridge bridge-in"><span/><span/><span/><span/><span/></div>
           <div className="neural-core-column">
+            <div className="core-network-backdrop" aria-hidden="true">
+              <svg viewBox="0 0 520 350" preserveAspectRatio="xMidYMid meet">
+                <defs><linearGradient id="traceGradient"><stop offset="0" stopColor="#42d9ed" stopOpacity=".08"/><stop offset=".5" stopColor="#8c79ff" stopOpacity=".8"/><stop offset="1" stopColor="#49e3cb" stopOpacity=".12"/></linearGradient><radialGradient id="coreGlow"><stop offset="0" stopColor="#3addeb" stopOpacity=".2"/><stop offset="1" stopColor="#3addeb" stopOpacity="0"/></radialGradient></defs>
+                <ellipse cx="260" cy="166" rx="230" ry="142" fill="url(#coreGlow)"/>
+                <g className="network-traces" fill="none" stroke="url(#traceGradient)" strokeWidth="1">
+                  <path d="M18 60 L100 105 L164 78 L225 128 L260 166 L310 115 L370 80 L500 45"/><path d="M8 150 L75 150 L140 185 L210 168 L260 166 L326 200 L408 165 L510 180"/><path d="M38 280 L112 230 L168 256 L222 205 L260 166 L308 242 L375 260 L488 292"/><path d="M100 20 L130 92 L112 230"/><path d="M420 28 L370 80 L408 165 L375 260"/><path d="M75 150 L100 105 L164 78 L310 115 L370 80"/><path d="M140 185 L168 256 L308 242 L326 200 L408 165"/>
+                </g>
+                <g className="network-nodes" fill="#55e8ef">
+                  <circle cx="18" cy="60" r="3"/><circle cx="100" cy="105" r="4"/><circle cx="164" cy="78" r="3"/><circle cx="225" cy="128" r="4"/><circle cx="310" cy="115" r="4"/><circle cx="370" cy="80" r="3"/><circle cx="500" cy="45" r="3"/><circle cx="8" cy="150" r="3"/><circle cx="75" cy="150" r="4"/><circle cx="140" cy="185" r="3"/><circle cx="326" cy="200" r="4"/><circle cx="408" cy="165" r="3"/><circle cx="510" cy="180" r="3"/><circle cx="38" cy="280" r="3"/><circle cx="112" cy="230" r="4"/><circle cx="168" cy="256" r="3"/><circle cx="308" cy="242" r="4"/><circle cx="375" cy="260" r="3"/><circle cx="488" cy="292" r="3"/><circle cx="100" cy="20" r="3"/><circle cx="420" cy="28" r="3"/>
+                </g>
+              </svg>
+            </div>
             <div className="core-orbit orbit-outer"><i/><i/><i/></div><div className="core-orbit orbit-middle"><i/><i/></div><div className="core-orbit orbit-inner"><div className="core-glyph"><span/><span/><span/><span/><span/></div></div>
             <div className="core-label">GOLDCREST <b>NEURAL CORE</b></div>
-            <div className="core-status"><i className={busy || probeState === "running" ? "state-on" : ""}/>{probeState === "running" ? "INFERENCE REQUEST IN FLIGHT" : busy ? "POLLING LIVE API STATE" : probeState === "passed" ? "INFERENCE PROBE PASSED" : probeState === "failed" ? "INFERENCE PROBE FAILED" : "IDLE · NO ACTIVE INFERENCE"}</div>
-            <div className="core-subsystems"><span>FEATURES</span><span>MODEL</span><span>VALIDATION</span></div>
+            <div className="core-status"><i className={busy || probeState === "running" ? "state-on" : ""}/>{probeState === "running" ? "INFERENCE REQUEST IN FLIGHT" : busy ? "POLLING LIVE API STATE" : probeState === "passed" ? "INFERENCE PROBE PASSED" : probeState === "failed" ? "INFERENCE PROBE FAILED" : "IDLE · AWAITING REAL INPUT"}</div>
+            <div className="core-subsystems"><span>FEATURE EXTRACTION</span><span>MODEL INFERENCE</span><span>VALIDATION</span></div>
           </div>
           <div className="neural-bridge bridge-out"><span/><span/><span/><span/><span/></div>
           <div className="neural-column outputs-column">
