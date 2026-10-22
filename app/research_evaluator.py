@@ -5,6 +5,7 @@ used as a live trading signal generator. Labels are research outcomes only.
 """
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Iterable, Literal
 
 OutcomeLabel = Literal[
@@ -43,10 +44,10 @@ def _validate_bar(bar: PriceBar) -> None:
     if bar.timestamp.tzinfo is None or bar.timestamp.utcoffset() is None:
         raise ValueError("Bar timestamp must be timezone-aware")
     values = (bar.open, bar.high, bar.low, bar.close)
-    if any(not isinstance(value, (int, float)) or value <= 0 for value in values):
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
         raise ValueError("OHLC prices must be positive finite numbers")
-    if not all(value == value and abs(value) != float("inf") for value in values):
-        raise ValueError("OHLC prices must be finite")
+    if any(not isfinite(value) or value <= 0 for value in values):
+        raise ValueError("OHLC prices must be positive finite numbers")
     if bar.high < max(bar.open, bar.close, bar.low):
         raise ValueError("Bar high violates OHLC constraints")
     if bar.low > min(bar.open, bar.close, bar.high):
@@ -72,7 +73,10 @@ def evaluate_barrier_outcome(
         raise ValueError("prediction_at must be timezone-aware")
     if direction not in ("LONG", "SHORT"):
         raise ValueError("direction must be LONG or SHORT")
-    if not (0 < target_price < float("inf")) or not (0 < stop_price < float("inf")):
+    prices = (target_price, stop_price)
+    if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in prices):
+        raise ValueError("Target and stop prices must be positive and finite")
+    if any(not isfinite(value) or value <= 0 for value in prices):
         raise ValueError("Target and stop prices must be positive and finite")
     if horizon_bars < 1:
         raise ValueError("horizon_bars must be >= 1")
