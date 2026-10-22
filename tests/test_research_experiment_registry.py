@@ -18,7 +18,7 @@ def _payload(run_id=None):
         "timeframe": "M15",
         "protocol_version": "walk-forward-v1",
         "manifest": {
-            "schema_version": 1, "dataset_sha256": "a" * 64, "fold_count": 2,
+            "schema_version": 1, "dataset_sha256": "a" * 64, "fold_count": 2, "test_run_id": run_id,
             "actionable": False, "automatic_winner_selection": False,
             "test_metrics_used_for_selection": False,
             "experiments": [{
