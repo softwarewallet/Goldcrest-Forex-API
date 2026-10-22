@@ -12,7 +12,7 @@ The POST body requires `run_id`, `dataset_sha256`, `symbol`, `timeframe`, `proto
 
 ## Reproducibility and idempotency
 
-A canonical JSON representation of the dataset digest, symbol, timeframe, protocol version, and manifest is SHA-256 fingerprinted. Repeating the same run ID with the same content is idempotent. Reusing a run ID with changed content returns HTTP 409. A matching fingerprint under a different run ID resolves to the existing record. Database uniqueness constraints protect both run IDs and fingerprints against concurrent duplicates.
+A canonical JSON representation of the dataset digest, symbol, timeframe, protocol version, and manifest is SHA-256 fingerprinted. Repeating the same run ID with the same content is idempotent. Reusing a run ID with changed content returns HTTP 409. Registering identical content under a different run ID returns HTTP 409 so each run ID remains explicit and cannot silently alias another record. Database uniqueness constraints protect both run IDs and fingerprints against concurrent duplicates.
 
 ## Guardrails and interpretation
 
