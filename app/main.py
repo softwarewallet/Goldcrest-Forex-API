@@ -15,6 +15,7 @@ from app.models import AuditEvent, OutcomeRecord, PredictionRecord
 from app.prediction_service import _parse_model_output, create_prediction, request_fingerprint
 from app.schemas import HealthResponse, OutcomeRequest, PredictionRequest, PredictionResponse
 from app.security import require_api_key
+from app.research_api import router as research_router
 
 
 @asynccontextmanager
@@ -25,6 +26,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Goldcrest Forex API", version="0.1.0",
               description="AI market-analysis API; no broker execution routes.", lifespan=lifespan)
+
+app.include_router(research_router)
 
 # Keep browser access explicit; configure trusted dashboard origins through GOLDCREST_CORS_ORIGINS.
 app.add_middleware(
