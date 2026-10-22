@@ -239,3 +239,37 @@
 @media(max-width:1250px){.neural-flow{grid-template-columns:minmax(155px,1fr) 28px minmax(210px,1fr) 28px minmax(155px,1fr);gap:5px}.orbit-outer{width:200px;height:200px}.orbit-middle{width:166px;height:166px}.orbit-inner{width:126px;height:126px}.core-label{margin-top:204px}.neural-module{padding:10px 7px;gap:7px}.neural-module em{display:none}}
 @media(max-width:900px){.neural-stage{padding:20px 16px}.neural-stage-head{flex-direction:column}.neural-flow{grid-template-columns:1fr;gap:12px}.neural-column{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}.neural-column-label{grid-column:1/-1}.neural-bridge{height:22px;flex-direction:row;align-items:center;justify-content:space-around}.neural-bridge:before{left:10%;right:10%;top:50%}.neural-bridge span{animation:none!important}.neural-core-column{min-height:300px}.core-orbit{top:8px}.core-label{margin-top:214px}.output-summary{min-width:0}.output-signal{grid-column:1/-1}}
 @media(max-width:560px){.neural-column{grid-template-columns:1fr}.neural-column-label,.output-signal{grid-column:auto}.neural-stage-foot>b{width:100%;margin-left:0}.neural-stage-state{font-size:7px}.neural-stage-head h2{font-size:21px}}
+
+
+/* Refinement pass: make the neural field the visual anchor, not another dashboard card. */
+.neural-stage{padding:30px 30px 20px;background:radial-gradient(ellipse at 52% 52%,rgba(23,58,100,.42),transparent 48%),linear-gradient(130deg,#081523 0%,#0a1020 50%,#111127 100%);border-color:#294962}
+.neural-stage-head h2{font-size:clamp(25px,2.5vw,36px);letter-spacing:-1.4px}.neural-stage-head p{font-size:12px;max-width:600px}
+.neural-flow{grid-template-columns:minmax(205px,.92fr) minmax(330px,1.55fr) minmax(215px,.92fr);gap:22px;min-height:410px}
+.neural-bridge{position:absolute;top:50%;width:calc((100% - 480px)/2);height:1px;z-index:2;display:block;pointer-events:none;background:linear-gradient(90deg,#45dfea00,#45dfea88,#9b7bff88);box-shadow:0 0 14px #43d9e41c}
+.bridge-in{left:calc(25% - 14px)}.bridge-out{right:calc(25% - 14px);background:linear-gradient(90deg,#9b7bff88,#5de2b188,#5de2b100)}
+.neural-bridge:before{display:none}.neural-bridge span{position:absolute;top:-2px;left:0;width:5px;height:5px;opacity:.12}
+.neural-stage-active .neural-bridge span{animation:neuralParticle 1.8s linear infinite}.neural-stage-active .bridge-out span{animation-name:neuralParticleOut}
+@keyframes neuralParticle{0%{left:0;opacity:0;transform:scale(.7)}15%{opacity:1}100%{left:100%;opacity:0;transform:scale(1.5)}}
+@keyframes neuralParticleOut{0%{left:0;opacity:0;transform:scale(.7)}15%{opacity:1}100%{left:100%;opacity:0;transform:scale(1.5)}}
+.neural-core-column{min-height:390px;overflow:visible}
+.core-network-backdrop{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;opacity:.9}
+.core-network-backdrop svg{width:100%;height:100%;overflow:visible}
+.network-traces{stroke-dasharray:5 8;animation:traceDrift 20s linear infinite}
+.network-nodes circle{filter:drop-shadow(0 0 5px #55e8ef);opacity:.65;animation:nodePulse 3s ease-in-out infinite alternate}
+.network-nodes circle:nth-child(3n){animation-delay:.8s}.network-nodes circle:nth-child(2n){animation-delay:1.5s}
+@keyframes traceDrift{to{stroke-dashoffset:-260}}
+@keyframes nodePulse{from{opacity:.25;r:2px}to{opacity:.95;r:4px}}
+.orbit-outer{width:270px;height:270px;top:25px;border-color:#3bd8ee3d;box-shadow:0 0 65px #31d9e710,inset 0 0 45px #31d9e710}
+.orbit-middle{top:52px;width:216px;height:216px;border-color:#a38cff85}
+.orbit-inner{top:85px;width:150px;height:150px;border-color:#56e6e4;box-shadow:0 0 55px #36d9e625,inset 0 0 40px #36d9e61f;background:radial-gradient(circle,#173d58a8,#0b142400 72%)}
+.core-label{margin-top:272px;font-size:9px}.core-label b{font-size:14px;letter-spacing:2px}
+.core-status{font-size:8px}.core-subsystems{gap:6px}.core-subsystems span{font-size:7px;color:#a8bbd7;background:#10182a99}
+.neural-module{padding:15px 13px;border-color:#29445d;background:linear-gradient(110deg,#10283bd9,#0a1422f5);transition:transform .2s,border-color .2s,box-shadow .2s}
+.neural-module:hover{transform:translateX(3px);border-color:#3e90a7;box-shadow:0 0 25px #39d9e410}
+.neural-module b{font-size:11px}.neural-module small{font-size:9px}.module-symbol{width:36px;height:36px}
+.output-summary{padding:15px;border-color:#2b4059}.output-summary strong{font-size:28px}.output-summary small{font-size:8px}.output-summary>span{font-size:9px}
+.output-signal{padding:14px 12px}.output-signal b{font-size:10px}.output-signal small{font-size:9px}
+.neural-stage-foot{margin-top:20px;padding-top:17px}
+@media(max-width:1250px){.neural-flow{grid-template-columns:minmax(170px,.9fr) minmax(270px,1.3fr) minmax(175px,.9fr);gap:14px}.bridge-in{left:calc(25% - 7px)}.bridge-out{right:calc(25% - 7px)}.orbit-outer{width:230px;height:230px}.orbit-middle{width:188px;height:188px}.orbit-inner{width:132px;height:132px}.core-label{margin-top:242px}.core-subsystems span{font-size:6px}}
+@media(max-width:900px){.neural-flow{grid-template-columns:1fr;gap:12px}.neural-bridge{position:relative;top:auto;left:auto;right:auto;width:auto;height:22px;display:flex;flex-direction:row;align-items:center;justify-content:space-around}.neural-bridge:before{display:block;left:10%;right:10%;top:50%}.neural-bridge span{position:relative;top:auto;left:auto}.neural-core-column{min-height:360px}.core-network-backdrop{inset:0 5%}.core-label{margin-top:242px}.neural-column{grid-template-columns:repeat(3,minmax(0,1fr))}.neural-column-label{grid-column:1/-1}.output-signal{grid-column:1/-1}}
+@media(max-width:560px){.neural-stage{padding:20px 14px}.neural-flow{gap:8px}.neural-column{grid-template-columns:1fr}.neural-column-label,.output-signal{grid-column:auto}.neural-stage-head h2{font-size:24px}.neural-stage-foot>b{width:100%;margin-left:0}.core-subsystems{flex-wrap:wrap;justify-content:center}}
