@@ -178,7 +178,7 @@ def audit_ohlc_csv_file(
     )
     target = Path(destination)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\\n", encoding="utf-8")
+    target.write_text(json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     result["receipt_path"] = str(target)
     result["receipt_sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
     return result
