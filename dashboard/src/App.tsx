@@ -183,56 +183,96 @@ export default function App() {
       {probeState !== "not-run" && <div className={`probe-banner ${probeState}`}><span>{probeState === "passed" ? "✓" : probeState === "failed" ? "!" : "…"}</span><div><b>{probeState === "passed" ? "Actual model inference probe passed" : probeState === "failed" ? "Actual model inference probe failed" : "Running a real model completion…"}</b><p>{probeState === "passed" ? `Validated JSON completion from ${probeModel}. This confirms connectivity and response format only—not prediction quality.` : probeState === "failed" ? probeError : "Waiting for the inference endpoint to complete."}</p></div><button onClick={() => { setProbeState("not-run"); setProbeError(""); }}>DISMISS</button></div>}
       {error && <div className="error-banner" role="alert"><span>!</span><div><b>{state === "degraded" ? "Some research endpoints are unavailable" : "Research API unavailable"}</b><p>{error}</p><small>{state === "degraded" ? "Successful endpoints are refreshed independently. Failed sections may still show the last retrieved data." : "Check the API address, network access, and key. Existing signal data is not presented as live."}</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}{state === "offline" && lastSync && <div className="stale-banner" role="status"><Icon name="clock" /><div><b>Showing last successful snapshot</b><p>Live refresh failed. The records and counters below may be stale; last successful sync was {stamp(lastSync)}. Refresh or restore the API connection to update them.</p></div></div>}
 
-      <section className={`immersive-stage ${busy || probeState === "running" ? "neural-stage-active" : ""}`} aria-label="Interactive neural intelligence graph">
-        <div className="immersive-topline"><div><span className="eyebrow"><span className="eyebrow-line"/> GOLDCREST / NEURAL KNOWLEDGE GRAPH</span><h2>Market intelligence <span>in motion</span></h2><p>Explore the research architecture. Select any node to inspect its role and current system state.</p></div><div className="graph-live-state"><i className={state === "connected" ? "state-on" : ""}/>{state === "connected" ? "CONNECTED" : state === "degraded" ? "PARTIAL CONNECTION" : "OFFLINE VIEW"}</div></div>
-        <div className="immersive-workspace">
-          <div className="graph-viewport">
-            <div className="graph-vignette"/><div className="graph-grid"/>
-            <svg className="knowledge-graph" viewBox="0 0 1000 650" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Interactive conceptual map of market research processing">
-              <defs>
-                <radialGradient id="nodeGlow"><stop offset="0" stopColor="#b9fff8" stopOpacity=".95"/><stop offset=".35" stopColor="#4de6ee" stopOpacity=".35"/><stop offset="1" stopColor="#4de6ee" stopOpacity="0"/></radialGradient>
-                <radialGradient id="coreAura"><stop offset="0" stopColor="#b7b2ff" stopOpacity=".42"/><stop offset=".55" stopColor="#3acbdc" stopOpacity=".12"/><stop offset="1" stopColor="#071321" stopOpacity="0"/></radialGradient>
-                <linearGradient id="linkFlow"><stop offset="0" stopColor="#44d9e8" stopOpacity=".08"/><stop offset=".5" stopColor="#8c83ff" stopOpacity=".88"/><stop offset="1" stopColor="#f0d49a" stopOpacity=".3"/></linearGradient>
-                <filter id="softGlow"><feGaussianBlur stdDeviation="5"/></filter>
-              </defs>
-              <circle cx="480" cy="324" r="270" fill="url(#coreAura)"/>
-              <g className="graph-links" fill="none" stroke="url(#linkFlow)" strokeWidth="1.2">
-                <path d="M480 324 Q360 250 270 150"/><path d="M480 324 Q330 300 180 310"/><path d="M480 324 Q345 390 250 500"/><path d="M480 324 Q480 190 500 95"/><path d="M480 324 Q610 210 700 150"/><path d="M480 324 Q660 290 820 280"/><path d="M480 324 Q640 420 740 500"/><path d="M480 324 Q490 470 500 570"/>
-                <path d="M270 150 Q210 220 180 310"/><path d="M180 310 Q210 420 250 500"/><path d="M270 150 Q380 120 500 95"/><path d="M500 95 Q625 90 700 150"/><path d="M700 150 Q780 195 820 280"/><path d="M820 280 Q820 390 740 500"/><path d="M740 500 Q630 560 500 570"/><path d="M250 500 Q380 560 500 570"/>
-                <path d="M270 150 Q390 245 480 324" strokeDasharray="3 8"/><path d="M700 150 Q585 250 480 324" strokeDasharray="3 8"/><path d="M740 500 Q610 410 480 324" strokeDasharray="3 8"/>
-              </g>
-              <g className="graph-particles" fill="#6cecf0">
-                <circle r="3"><animateMotion dur="5s" repeatCount="indefinite" path="M270 150 Q360 250 480 324"/></circle>
-                <circle r="2.5"><animateMotion dur="6.5s" repeatCount="indefinite" path="M180 310 Q330 300 480 324"/></circle>
-                <circle r="3"><animateMotion dur="5.8s" repeatCount="indefinite" path="M250 500 Q345 390 480 324"/></circle>
-                <circle r="2.5"><animateMotion dur="7s" repeatCount="indefinite" path="M700 150 Q610 210 480 324"/></circle>
-                <circle r="3"><animateMotion dur="6s" repeatCount="indefinite" path="M820 280 Q660 290 480 324"/></circle>
-                <circle r="2.5"><animateMotion dur="7.2s" repeatCount="indefinite" path="M740 500 Q640 420 480 324"/></circle>
-              </g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="Market history" onClick={() => setSelectedGraphNode("history")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("history")}><circle className="node-halo" cx="270" cy="150" r="36"/><circle cx="270" cy="150" r="16" fill="url(#nodeGlow)"/><circle cx="270" cy="150" r="7" fill="#8ff7f4"/><text x="270" y="115" textAnchor="middle">MARKET HISTORY</text><text x="270" y="185" textAnchor="middle" className="node-sub">{state === "connected" ? "API LINKED" : "AWAITING DATA"}</text></g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="Technical features" onClick={() => setSelectedGraphNode("features")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("features")}><circle className="node-halo" cx="180" cy="310" r="31"/><circle cx="180" cy="310" r="13" fill="url(#nodeGlow)"/><circle cx="180" cy="310" r="6" fill="#8ff7f4"/><text x="180" y="278" textAnchor="middle">FEATURES</text><text x="180" y="341" textAnchor="middle" className="node-sub">CAUSAL TA</text></g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="Historical research" onClick={() => setSelectedGraphNode("research")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("research")}><circle className="node-halo" cx="250" cy="500" r="32"/><circle cx="250" cy="500" r="14" fill="url(#nodeGlow)"/><circle cx="250" cy="500" r="6" fill="#9a8cff"/><text x="250" y="465" textAnchor="middle">HISTORICAL</text><text x="250" y="485" textAnchor="middle">RESEARCH</text></g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="Model inventory" onClick={() => setSelectedGraphNode("models")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("models")}><circle className="node-halo" cx="500" cy="95" r="32"/><circle cx="500" cy="95" r="14" fill="url(#nodeGlow)"/><circle cx="500" cy="95" r="6" fill="#a89aff"/><text x="500" y="60" textAnchor="middle">MODEL LAYER</text></g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="News context" onClick={() => setSelectedGraphNode("news")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("news")}><circle className="node-halo" cx="700" cy="150" r="34"/><circle cx="700" cy="150" r="15" fill="url(#nodeGlow)"/><circle cx="700" cy="150" r="6" fill="#f0d49a"/><text x="700" y="112" textAnchor="middle">NEWS CONTEXT</text><text x="700" y="184" textAnchor="middle" className="node-sub">OPTIONAL INPUT</text></g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="Validation" onClick={() => setSelectedGraphNode("validation")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("validation")}><circle className="node-halo" cx="820" cy="280" r="36"/><circle cx="820" cy="280" r="16" fill="url(#nodeGlow)"/><circle cx="820" cy="280" r="7" fill="#f0d49a"/><text x="820" y="242" textAnchor="middle">VALIDATION</text><text x="820" y="314" textAnchor="middle" className="node-sub">RESEARCH GATE</text></g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="Research outputs" onClick={() => setSelectedGraphNode("outputs")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("outputs")}><circle className="node-halo" cx="740" cy="500" r="34"/><circle cx="740" cy="500" r="15" fill="url(#nodeGlow)"/><circle cx="740" cy="500" r="6" fill="#68e8c0"/><text x="740" y="463" textAnchor="middle">RESEARCH OUTPUT</text><text x="740" y="533" textAnchor="middle" className="node-sub">{predictions.length} STORED</text></g>
-              <g className="graph-node" role="button" tabIndex={0} aria-label="Audit trace" onClick={() => setSelectedGraphNode("audit")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("audit")}><circle className="node-halo" cx="500" cy="570" r="30"/><circle cx="500" cy="570" r="13" fill="url(#nodeGlow)"/><circle cx="500" cy="570" r="5" fill="#68e8c0"/><text x="500" y="610" textAnchor="middle">AUDIT TRACE</text></g>
-              <g className="central-core"><circle cx="480" cy="324" r="116" fill="none" stroke="#4edce6" strokeOpacity=".18"/><circle cx="480" cy="324" r="88" fill="none" stroke="#a395ff" strokeOpacity=".55" strokeDasharray="2 7"/><circle cx="480" cy="324" r="63" fill="#09172a" stroke="#56e7e8" strokeOpacity=".8"/><circle cx="480" cy="324" r="59" fill="url(#coreAura)"/><g transform="translate(480 324)" fill="#7ff8f0"><rect x="-20" y="-10" width="5" height="20" rx="2"/><rect x="-10" y="-22" width="5" height="44" rx="2"/><rect x="0" y="-31" width="5" height="62" rx="2"/><rect x="10" y="-17" width="5" height="34" rx="2"/><rect x="20" y="-8" width="5" height="16" rx="2"/></g><text x="480" y="420" textAnchor="middle" className="core-caption">GOLDCREST NEURAL CORE</text><text x="480" y="440" textAnchor="middle" className="node-sub">{probeState === "running" ? "INFERENCE IN FLIGHT" : probeState === "passed" ? "PROBE PASSED" : probeState === "failed" ? "PROBE FAILED" : "RESEARCH ARCHITECTURE"}</text></g>
-            </svg>
-            <div className="graph-bottom-legend"><span><i className="legend-cyan"/> DATA CONTEXT</span><span><i className="legend-violet"/> MODEL LAYER</span><span><i className="legend-green"/> RESEARCH RECORDS</span></div>
-          </div>
-          <aside className="graph-inspector">
-            <div className="inspector-kicker">NODE INSPECTOR / 0{["core","history","features","research","models","news","validation","outputs","audit"].indexOf(selectedGraphNode)+1}</div>
-            <h3>{({core:"Neural processing core",history:"Market history",features:"Feature extraction",research:"Historical research",models:"Model layer",news:"News context",validation:"Validation gate",outputs:"Research outputs",audit:"Audit trace"} as Record<string,string>)[selectedGraphNode]}</h3>
-            <p className="inspector-copy">{({core:"The central research architecture connects source data, causal features, model inference and validation. This conceptual map does not indicate active processing unless the API state confirms it.",history:"Historical OHLC data is the source layer for offline research. Live availability depends on the configured API and data-ingestion workflow.",features:"Causal technical features are derived from chronological bars. Feature availability and quality must be verified in the generated dataset report.",research:"Historical experiments use chronological validation and walk-forward evaluation. Reports are evidence for review, not live trading instructions.",models:"The model inventory is read from the configured API when available. A listed model is not evidence of predictive quality.",news:"News or sentiment is an optional research input only when a supported provider supplies data. Missing news is not fabricated.",validation:"Validation checks data provenance, fold consistency and out-of-sample evidence before research results are considered.",outputs:"Stored prediction records are retrieved from the API. The current count reflects records actually returned, not generated demo signals.",audit:"Audit events describe recorded system activity. No events are invented to fill this view."} as Record<string,string>)[selectedGraphNode]}</p>
-            <div className="inspector-divider"/>
-            <div className="inspector-metrics"><div><small>API LINK</small><b className={state === "connected" ? "metric-good" : "metric-muted"}>{state === "connected" ? "CONNECTED" : state === "degraded" ? "DEGRADED" : "OFFLINE"}</b></div><div><small>STORED SIGNALS</small><b>{performance?.predictions_total ?? "—"}</b></div><div><small>OBSERVED OUTCOMES</small><b>{performance?.outcomes_recorded ?? "—"}</b></div></div>
-            <div className="inspector-actions"><button onClick={() => setActivePanel("signals")}>OPEN SIGNAL LEDGER <span>↗</span></button><button onClick={() => setActivePanel("audit")}>VIEW AUDIT TRAIL <span>↗</span></button><button onClick={() => setActivePanel("models")}>INSPECT MODELS <span>↗</span></button></div>
-            <div className="inspector-status"><i className={probeState === "passed" ? "state-on" : ""}/><span>{probeState === "passed" ? "REAL INFERENCE PROBE PASSED" : probeState === "failed" ? "INFERENCE PROBE FAILED" : "NO ACTIVE INFERENCE CLAIMED"}</span></div>
-          </aside>
-        </div>
-        <div className="immersive-footer"><span>GOLDCRESTAI / INTELLIGENCE MAP</span><span>READ-ONLY · RESEARCH ONLY · NO ORDER ROUTES</span></div>
-      </section>
+      <section className={`ops-universe ${busy || probeState === "running" ? "ops-processing" : ""}`} aria-label="Goldcrest AI operations universe">
+  <div className="ops-atmosphere"/><div className="ops-scanline"/>
+  <header className="ops-heading">
+    <div><span className="ops-kicker"><i/> GOLDCREST INTELLIGENCE SYSTEMS <b>/</b> OPERATIONS UNIVERSE</span><h2>One intelligence. <span>Connected systems.</span></h2><p>Research architecture, model services and evidence in one operational view.</p></div>
+    <div className="ops-state"><span className={state === "connected" ? "live-dot" : ""}/><div><b>{state === "connected" ? "SYSTEM LINKED" : state === "degraded" ? "PARTIAL LINK" : "LOCAL VISUALIZATION"}</b><small>{lastSync ? `LAST SYNC ${new Date(lastSync).toLocaleTimeString()}` : "WAITING FOR API TELEMETRY"}</small></div></div>
+  </header>
+  <div className="ops-scene">
+    <aside className="ops-glass ops-left">
+      <div className="ops-panel-title"><span>01 / AGENT SQUAD</span><b>RESEARCH MODULES</b></div>
+      <button className={selectedGraphNode === "history" ? "ops-agent selected" : "ops-agent"} onClick={() => setSelectedGraphNode("history")}><i className="agent-orb cyan">⌁</i><span><b>Market research</b><small>Historical data layer</small></span><em className={state === "connected" ? "agent-live" : ""}>{state === "connected" ? "LINKED" : "STANDBY"}</em></button>
+      <button className={selectedGraphNode === "features" ? "ops-agent selected" : "ops-agent"} onClick={() => setSelectedGraphNode("features")}><i className="agent-orb blue">∿</i><span><b>Feature intelligence</b><small>Causal technical inputs</small></span><em>READY</em></button>
+      <button className={selectedGraphNode === "news" ? "ops-agent selected" : "ops-agent"} onClick={() => setSelectedGraphNode("news")}><i className="agent-orb violet">✳</i><span><b>News & sentiment</b><small>Optional external context</small></span><em>OPTIONAL</em></button>
+      <button className={selectedGraphNode === "models" ? "ops-agent selected" : "ops-agent"} onClick={() => setSelectedGraphNode("models")}><i className="agent-orb purple">◈</i><span><b>Model intelligence</b><small>Inference server</small></span><em>{health?.inference_status?.toUpperCase() || "UNKNOWN"}</em></button>
+      <button className={selectedGraphNode === "validation" ? "ops-agent selected" : "ops-agent"} onClick={() => setSelectedGraphNode("validation")}><i className="agent-orb gold">⟡</i><span><b>Validation gate</b><small>Evidence & quality checks</small></span><em>RESEARCH</em></button>
+      <div className="ops-left-divider"/>
+      <div className="ops-mini-health"><span className="ops-kicker">SYSTEM INTEGRITY</span><div className="integrity-ring"><div><b>{state === "connected" ? "LINKED" : state === "degraded" ? "PARTIAL" : "OFFLINE"}</b><small>API STATUS</small></div></div><small className="integrity-caption">Research-only environment<br/>No broker or order routes</small></div>
+    </aside>
+    <div className="ops-world">
+      <div className="world-horizon"/><div className="world-grid"/>
+      <svg className="ops-city-art" viewBox="0 0 1000 650" preserveAspectRatio="xMidYMid meet" aria-label="Cinematic isometric intelligence campus visualization">
+        <defs>
+          <linearGradient id="floorTop" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#102c49"/><stop offset=".5" stopColor="#071827"/><stop offset="1" stopColor="#0c1830"/></linearGradient>
+          <linearGradient id="blueGlass" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#2acdf6" stopOpacity=".48"/><stop offset="1" stopColor="#1253a5" stopOpacity=".09"/></linearGradient>
+          <linearGradient id="violetGlass" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#b47cff" stopOpacity=".4"/><stop offset="1" stopColor="#3e247a" stopOpacity=".08"/></linearGradient>
+          <linearGradient id="greenGlass" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#55efca" stopOpacity=".35"/><stop offset="1" stopColor="#0d635b" stopOpacity=".1"/></linearGradient>
+          <linearGradient id="amberGlass" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#ffc56c" stopOpacity=".35"/><stop offset="1" stopColor="#7e431a" stopOpacity=".08"/></linearGradient>
+          <radialGradient id="reactorGlow"><stop stopColor="#5beeff" stopOpacity=".85"/><stop offset=".28" stopColor="#287bff" stopOpacity=".34"/><stop offset="1" stopColor="#1749b9" stopOpacity="0"/></radialGradient>
+          <filter id="neonBlur"><feGaussianBlur stdDeviation="5"/></filter>
+        </defs>
+        <g opacity=".65" fill="#10223b" stroke="#234b72" strokeWidth="1">
+          <path d="M40 120 L125 70 190 110 105 160Z"/><path d="M125 70V180L105 195V160Z"/><path d="M190 110V210L105 260V160Z"/>
+          <path d="M760 95 L840 50 920 96 840 142Z"/><path d="M760 95V200L840 246V142Z"/><path d="M920 96V210L840 246V142Z"/>
+          <path d="M400 70 L460 35 520 70 460 105Z"/><path d="M400 70V145L460 180V105Z"/><path d="M520 70V145L460 180V105Z"/>
+        </g>
+        <path d="M500 70 L920 300 500 560 80 300Z" fill="url(#floorTop)" stroke="#245b88" strokeWidth="1.5"/>
+        <path d="M500 95 L870 300 500 525 130 300Z" fill="none" stroke="#2c85b5" strokeOpacity=".3" strokeDasharray="3 8"/>
+        <g stroke="#2875a3" strokeOpacity=".28" strokeWidth="1"><path d="M500 70V560"/><path d="M80 300H920"/><path d="M185 242L605 472"/><path d="M290 185L710 415"/><path d="M395 127L815 357"/><path d="M185 357L605 127"/><path d="M290 415L710 185"/><path d="M395 472L815 242"/></g>
+        <g className="campus-links" fill="none" strokeWidth="2"><path d="M500 310L270 185L155 260" stroke="#3bcfff"/><path d="M500 310L730 170L855 235" stroke="#b37aff"/><path d="M500 310L250 420L155 360" stroke="#52efc2"/><path d="M500 310L740 420L855 350" stroke="#ffbd69"/><path d="M500 310L500 470" stroke="#37aaff"/></g>
+        <g className="campus-building" onClick={() => setSelectedGraphNode("history")} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("history")}>
+          <path d="M95 205L205 145L315 205L205 270Z" fill="#0d2e4b" stroke="#3acfff" strokeWidth="2"/><path d="M95 205V280L205 345V270Z" fill="url(#blueGlass)" stroke="#288fc9"/><path d="M315 205V280L205 345V270Z" fill="#0c2440" stroke="#288fc9"/><path d="M115 211L205 263L295 211M125 230L205 277L285 230M145 249L205 284L265 249" fill="none" stroke="#2d9ed3" strokeOpacity=".8"/><path d="M95 205L205 145L315 205" fill="none" stroke="#6beeff" strokeWidth="3" filter="url(#neonBlur)"/><path d="M95 205L205 145L315 205" fill="none" stroke="#6beeff" strokeWidth="1.5"/>
+          <g fill="#67dfff">{[0,1,2,3].map(i=><rect key={i} x={128+i*19} y={238+i*2} width="7" height="17" opacity=".65"/>)}</g>
+        </g>
+        <g className="campus-building" onClick={() => setSelectedGraphNode("models")} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("models")}>
+          <path d="M680 170L785 110L895 170L785 233Z" fill="#251b49" stroke="#bd86ff" strokeWidth="2"/><path d="M680 170V250L785 312V233Z" fill="url(#violetGlass)" stroke="#8d65db"/><path d="M895 170V250L785 312V233Z" fill="#1c183c" stroke="#8d65db"/><path d="M700 177L785 226L875 177M700 199L785 248L875 199M700 222L785 270L875 222" fill="none" stroke="#b78cff" strokeOpacity=".7"/><circle cx="785" cy="185" r="24" fill="none" stroke="#c29aff" strokeWidth="2"/><circle cx="785" cy="185" r="13" fill="none" stroke="#c29aff" strokeWidth="2"/><path d="M785 163V207M763 185H807" stroke="#c29aff"/>
+        </g>
+        <g className="campus-building" onClick={() => setSelectedGraphNode("features")} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("features")}>
+          <path d="M100 365L200 308L300 365L200 423Z" fill="#123c3c" stroke="#5df0c5" strokeWidth="2"/><path d="M100 365V435L200 494V423Z" fill="url(#greenGlass)" stroke="#39bca5"/><path d="M300 365V435L200 494V423Z" fill="#0c302e" stroke="#39bca5"/><path d="M120 373L200 419L280 373M120 394L200 440L280 394M145 415L200 447L255 415" fill="none" stroke="#57e8bf"/><path d="M155 354V330L176 318V343M188 342V317L209 305V330M221 354V330L242 318V342" fill="none" stroke="#6cf6cd" strokeWidth="3"/>
+        </g>
+        <g className="campus-building" onClick={() => setSelectedGraphNode("validation")} role="button" tabIndex={0} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("validation")}>
+          <path d="M700 365L800 308L900 365L800 423Z" fill="#39291e" stroke="#ffc36d" strokeWidth="2"/><path d="M700 365V435L800 494V423Z" fill="url(#amberGlass)" stroke="#d8954c"/><path d="M900 365V435L800 494V423Z" fill="#2b201a" stroke="#d8954c"/><path d="M720 373L800 419L880 373M720 394L800 440L880 394M745 415L800 447L855 415" fill="none" stroke="#ffbe6b"/><circle cx="800" cy="355" r="16" fill="none" stroke="#ffd28a" strokeWidth="2"/><path d="M792 355L798 361L809 347" fill="none" stroke="#ffd28a" strokeWidth="3"/>
+        </g>
+        <g className="central-reactor">
+          <ellipse cx="500" cy="320" rx="205" ry="112" fill="url(#reactorGlow)"/>
+          <ellipse cx="500" cy="320" rx="148" ry="81" fill="none" stroke="#2d9eff" strokeWidth="2" strokeOpacity=".55" className="reactor-orbit"/>
+          <ellipse cx="500" cy="320" rx="116" ry="63" fill="none" stroke="#5aeaf7" strokeWidth="1.5" strokeOpacity=".8" className="reactor-orbit orbit-reverse"/>
+          <ellipse cx="500" cy="320" rx="86" ry="47" fill="#0c3155" stroke="#59e9ff" strokeWidth="2"/>
+          <ellipse cx="500" cy="320" rx="72" ry="39" fill="#0c2a4b" stroke="#b2a0ff" strokeOpacity=".8" strokeDasharray="3 6"/>
+          <g stroke="#6ff7ff" strokeWidth="3" strokeLinecap="round"><path d="M475 326V316M488 337V304M500 344V292M512 334V307M525 325V315"/></g>
+          <path d="M500 270V245M500 370V395M420 320H395M580 320H605" stroke="#5beaff" strokeWidth="2" strokeOpacity=".8"/>
+          <circle cx="500" cy="320" r="5" fill="#fff" filter="url(#neonBlur)"/>
+        </g>
+        <g className="scene-labels" fontFamily="monospace" textAnchor="middle"><text x="205" y="125" fill="#8beaff">RESEARCH LAB</text><text x="785" y="91" fill="#d7b2ff">MODEL INTELLIGENCE</text><text x="200" y="300" fill="#8affd9">FEATURE SYSTEMS</text><text x="800" y="298" fill="#ffd293">VALIDATION HUB</text><text x="500" y="415" fill="#a9f7ff" className="reactor-label">GOLDCREST NEURAL CORE</text><text x="500" y="434" fill="#72a7ca" className="reactor-sub">{probeState === "running" ? "INFERENCE REQUEST IN PROGRESS" : probeState === "passed" ? "INFERENCE PROBE PASSED" : probeState === "failed" ? "PROBE FAILED · CHECK API" : "RESEARCH ARCHITECTURE"}</text></g>
+        <g className="scene-particles" fill="#8df7ff">{[0,1,2,3,4,5].map(i=><circle key={i} r={i%2?2:3}><animateMotion dur={4+i*.7+"s"} repeatCount="indefinite" path={["M205 260 L350 285 L500 320","M785 233 L640 282 L500 320","M200 423 L350 360 L500 320","M800 423 L650 360 L500 320","M500 470 L500 400 L500 320","M315 205 L400 260 L500 320"][i]}/></circle>)}</g>
+      </svg>
+      <div className="world-caption"><span><i/> INTERACTIVE SYSTEM MAP</span><span>SELECT A MODULE TO INSPECT</span></div>
+    </div>
+    <aside className="ops-glass ops-right">
+      <div className="ops-profile"><div className="ops-avatar">✳</div><div><b>NEURAL OPERATIONS</b><small>Goldcrest research environment</small></div><span className={state === "connected" ? "profile-status online" : "profile-status"}>{state === "connected" ? "●" : "●"}</span></div>
+      <div className="ops-section-head"><span>02 / LIVE TELEMETRY</span><b>System overview</b></div>
+      <div className="ops-stat"><span>API CONNECTIVITY</span><b className={state === "connected" ? "stat-good" : "stat-warn"}>{state === "connected" ? "CONNECTED" : state === "degraded" ? "DEGRADED" : "OFFLINE"}</b></div>
+      <div className="ops-stat"><span>STORED PREDICTIONS</span><b>{performance?.predictions_total ?? "—"}</b></div>
+      <div className="ops-stat"><span>OUTCOMES OBSERVED</span><b>{performance?.outcomes_recorded ?? "—"}</b></div>
+      <div className="ops-stat"><span>MODEL INVENTORY</span><b>{modelInventory?.models.length ?? "—"}</b></div>
+      <div className="ops-section-head objectives-head"><span>03 / WORKSPACE</span><b>Mission controls</b></div>
+      <button className="ops-control" onClick={() => setActivePanel("signals")}><i>⌁</i><span><b>Signal ledger</b><small>Stored research records</small></span><em>↗</em></button>
+      <button className="ops-control" onClick={() => setActivePanel("audit")}><i>⌗</i><span><b>Research audit</b><small>Recorded system events</small></span><em>↗</em></button>
+      <button className="ops-control" onClick={() => setActivePanel("models")}><i>◈</i><span><b>Model intelligence</b><small>Read-only inventory</small></span><em>↗</em></button>
+      <button className="ops-control" onClick={() => setActivePanel("research")}><i>⌘</i><span><b>Historical data lab</b><small>Inspect offline reports</small></span><em>↗</em></button>
+      <div className="ops-safety"><i/> RESEARCH ONLY <span>NO ORDER ROUTES</span></div>
+    </aside>
+  </div>
+  <div className="ops-bottom-rail">
+    <div className="rail-metric"><i className="rail-icon blue">◉</i><span><small>API LINK</small><b>{state === "connected" ? "CONNECTED" : state === "degraded" ? "DEGRADED" : "OFFLINE"}</b></span></div>
+    <div className="rail-metric"><i className="rail-icon green">✓</i><span><small>STORED SIGNALS</small><b>{performance?.predictions_total ?? "—"}</b></span></div>
+    <div className="rail-metric"><i className="rail-icon violet">◌</i><span><small>OUTCOMES</small><b>{performance?.outcomes_recorded ?? "—"}</b></span></div>
+    <div className="rail-metric"><i className="rail-icon gold">◇</i><span><small>MODEL INVENTORY</small><b>{modelInventory?.models.length ?? "—"}</b></span></div>
+    <div className="rail-metric"><i className="rail-icon blue">⌁</i><span><small>AUDIT EVENTS</small><b>{events.length}</b></span></div>
+    <div className="rail-safety">ISOLATED FROM EXECUTION SYSTEMS <b>● SAFE MODE</b></div>
+  </div>
+</section>
 
       <div className="hidden-detail-panels" aria-hidden="true">
       <section className="endpoint-health-panel" aria-label="API endpoint status">
