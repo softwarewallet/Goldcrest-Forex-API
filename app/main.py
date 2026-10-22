@@ -220,6 +220,29 @@ async def research_summary(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/v1/research/statistics", dependencies=[Depends(require_api_key)])
+async def research_statistics(db: Session = Depends(get_db)):
+    """Descriptive barrier-outcome statistics; not model accuracy or trading profitability."""
+    rows = db.execute(
+        select(OutcomeRecord.outcome_label, func.count())
+        .where(OutcomeRecord.outcome_label.in_(["TARGET_FIRST", "STOP_FIRST"]))
+        .group_by(OutcomeRecord.outcome_label)
+    ).all()
+    counts = {label: int(count) for label, count in rows}
+    from app.research_statistics import target_first_rate_summary
+
+    summary = target_first_rate_summary(
+        target_first=counts.get("TARGET_FIRST", 0),
+        stop_first=counts.get("STOP_FIRST", 0),
+    )
+    return {
+        "schema_version": "1.0",
+        **summary,
+        "excluded_outcomes": ["AMBIGUOUS", "HORIZON_EXPIRED", "INSUFFICIENT_DATA", "INVALIDATED", "UNKNOWN"],
+        "interpretation": "Descriptive target-hit share among recorded TARGET_FIRST/STOP_FIRST outcomes only. This is not prediction accuracy, calibrated probability, expected return, or profitability.",
+    }
+
+
 @app.get("/api/v1/audit", dependencies=[Depends(require_api_key)])
 async def audit(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
     rows = db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)).all()
