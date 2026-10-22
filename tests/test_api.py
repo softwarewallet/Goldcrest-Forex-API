@@ -359,24 +359,6 @@ def test_dashboard_cors_rejects_unconfigured_origin():
     assert "access-control-allow-origin" not in response.headers
 
 
-def _create_test_prediction(client, request_id):
-    from app.llama_client import LlamaClient
-
-    async def fake_analyze(self, payload):
-        return "outcome-test-model", (
-            '{"decision":"NO_TRADE","market_regime":"UNCERTAIN",'
-            '"reason_codes":["INSUFFICIENT_EVIDENCE"]}'
-        )
-
-    # Monkeypatching is applied by the caller before this helper is used.
-    response = client.post(
-        "/api/v1/predictions",
-        headers={"X-API-Key": api_key()},
-        json=market_payload(request_id),
-    )
-    return response
-
-
 def test_record_outcome_rejects_unknown_prediction():
     from uuid import uuid4
 
