@@ -11,8 +11,9 @@ def _headers():
 
 
 def _payload(run_id=None):
+    run_id = run_id or f"registry-test-{uuid4()}"
     return {
-        "run_id": run_id or f"registry-test-{uuid4()}",
+        "run_id": run_id,
         "dataset_sha256": "a" * 64,
         "symbol": "EURUSD",
         "timeframe": "M15",
