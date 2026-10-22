@@ -55,11 +55,17 @@ def audit_experiment_matrix(payload: Mapping[str, Any]) -> dict[str, Any]:
         errors.append("experiments_must_be_a_list")
         experiments = []
 
+    declared_fold_count = payload.get("fold_count")
+    if isinstance(declared_fold_count, bool) or not isinstance(declared_fold_count, int) or declared_fold_count < 0:
+        errors.append("invalid_fold_count")
+
     expected_windows = payload.get("common_fold_test_windows")
     normalized_expected: list[tuple[Any, Any, Any]] = []
     if not isinstance(expected_windows, list):
         errors.append("common_fold_test_windows_must_be_a_list")
     else:
+        if isinstance(declared_fold_count, int) and not isinstance(declared_fold_count, bool) and len(expected_windows) != declared_fold_count:
+            errors.append("common_fold_window_count_mismatch")
         for window in expected_windows:
             if not isinstance(window, dict):
                 errors.append("invalid_common_fold_window_record")
@@ -67,7 +73,9 @@ def audit_experiment_matrix(payload: Mapping[str, Any]) -> dict[str, Any]:
             normalized_expected.append((
                 window.get("fold_index"), window.get("test_start_utc"), window.get("test_end_utc")
             ))
-            if not window.get("test_start_utc") or not window.get("test_end_utc"):
+            if not isinstance(window.get("fold_index"), int) or isinstance(window.get("fold_index"), bool):
+                errors.append("common_fold_window_invalid_fold_index")
+            if not isinstance(window.get("test_start_utc"), str) or not window.get("test_start_utc").strip() or not isinstance(window.get("test_end_utc"), str) or not window.get("test_end_utc").strip():
                 errors.append("common_fold_window_missing_boundary")
 
     ids: set[str] = set()
@@ -111,7 +119,7 @@ def audit_experiment_matrix(payload: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(folds, list):
             errors.append(f"{prefix}_fold_results_must_be_a_list")
             continue
-        if len(folds) != payload.get("fold_count"):
+        if isinstance(declared_fold_count, int) and not isinstance(declared_fold_count, bool) and len(folds) != declared_fold_count:
             errors.append(f"{prefix}_fold_count_mismatch")
         if len(windows) != len(folds):
             errors.append(f"{prefix}_invalid_fold_record")
@@ -121,6 +129,11 @@ def audit_experiment_matrix(payload: Mapping[str, Any]) -> dict[str, Any]:
         for fold_index, fold in enumerate(folds):
             if not isinstance(fold, dict):
                 continue
+            if not isinstance(fold.get("fold_index"), int) or isinstance(fold.get("fold_index"), bool):
+                errors.append(f"{prefix}_fold_{fold_index}_invalid_fold_index")
+            for boundary in ("test_start_utc", "test_end_utc"):
+                if not isinstance(fold.get(boundary), str) or not fold.get(boundary).strip():
+                    errors.append(f"{prefix}_fold_{fold_index}_missing_{boundary}")
             if not isinstance(fold.get("best_params"), dict):
                 errors.append(f"{prefix}_fold_{fold_index}_missing_best_params")
             if isinstance(fold.get("trials_requested"), bool) or not isinstance(
@@ -134,7 +147,11 @@ def audit_experiment_matrix(payload: Mapping[str, Any]) -> dict[str, Any]:
                 errors.append(f"{prefix}_fold_{fold_index}_completed_trials_exceed_requested")
 
     declared_models = payload.get("model_types")
-    if isinstance(declared_models, list) and set(declared_models) != model_types:
+    if not isinstance(declared_models, list) or not all(isinstance(model, str) and model.strip() for model in declared_models):
+        errors.append("invalid_declared_model_types")
+    elif len(declared_models) != len(set(declared_models)):
+        errors.append("duplicate_declared_model_types")
+    elif set(declared_models) != model_types:
         errors.append("declared_model_types_do_not_match_experiments")
     if not experiments:
         warnings.append("no_experiment_records_to_audit")

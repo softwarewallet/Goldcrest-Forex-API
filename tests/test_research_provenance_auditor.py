@@ -79,3 +79,48 @@ def test_file_audit_writes_receipt_with_source_hash(tmp_path):
     stored = json.loads(destination.read_text(encoding="utf-8"))
     assert stored["source_report_sha256"] == result["source_report_sha256"]
     assert stored["status"] == "PASS"
+
+
+def test_audit_rejects_invalid_fold_count_and_window_count():
+    payload = sample_report()
+    payload["fold_count"] = -1
+    payload["common_fold_test_windows"] = []
+    result = audit_experiment_matrix(payload)
+    assert "invalid_fold_count" in result["errors"]
+    assert "common_fold_window_count_mismatch" in result["errors"]
+
+
+def test_audit_rejects_malformed_declared_model_types_without_crashing():
+    payload = sample_report()
+    payload["model_types"] = [["xgboost"], {"model": "lightgbm"}]
+    result = audit_experiment_matrix(payload)
+    assert result["status"] == "FAIL"
+    assert "invalid_declared_model_types" in result["errors"]
+
+
+def test_audit_rejects_missing_fold_boundaries():
+    payload = sample_report()
+    payload["experiments"][0]["fold_results"][0]["test_start_utc"] = None
+    result = audit_experiment_matrix(payload)
+    assert "experiment_0_fold_0_missing_test_start_utc" in result["errors"]
+
+
+def test_audit_receipt_hash_changes_when_source_report_changes(tmp_path):
+    source = tmp_path / "matrix.json"
+    receipt = tmp_path / "audit.json"
+    source.write_text(json.dumps(sample_report(), sort_keys=True), encoding="utf-8")
+    first = audit_experiment_matrix_file(source, receipt)
+    payload = sample_report()
+    payload["run_id"] = "eurusd-m15-run-02"
+    source.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    second = audit_experiment_matrix_file(source, receipt)
+    assert first["source_report_sha256"] != second["source_report_sha256"]
+    assert json.loads(receipt.read_text(encoding="utf-8"))["run_id"] == "eurusd-m15-run-02"
+
+
+def test_audit_rejects_duplicate_declared_model_types():
+    payload = sample_report()
+    payload["model_types"] = ["xgboost", "xgboost", "lightgbm"]
+    result = audit_experiment_matrix(payload)
+    assert result["status"] == "FAIL"
+    assert "duplicate_declared_model_types" in result["errors"]
