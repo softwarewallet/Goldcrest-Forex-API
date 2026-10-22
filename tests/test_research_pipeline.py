@@ -94,6 +94,13 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert stored["actionable"] is False
     assert stored["raw_ohlc_sha256"]
     assert stored["dataset_sha256"]
+    audit_path = tmp_path / "run" / "unit-test_provenance_audit.json"
+    assert audit_path.exists()
+    audit = json.loads(audit_path.read_text(encoding="utf-8"))
+    assert audit["source_report_sha256"] == stored["experiment_matrix_report_sha256"]
+    assert stored["provenance_audit_sha256"]
+    assert stored["provenance_audit_status"] == audit["status"] == "FAIL"
+    assert stored["strict_provenance_audit"] is False
 
 
 def test_pipeline_requires_existing_ohlc_file(tmp_path):

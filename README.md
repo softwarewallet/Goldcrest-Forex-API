@@ -52,3 +52,10 @@ python -m app.runtime_diagnostics --json
 XGBoost and LightGBM use a conservative RAM-aware CPU thread limit. Override it for
 controlled benchmarks with `GOLDCREST_ML_THREADS=1` (or another positive integer).
 See `docs/resource-aware-runtime.md` for limits, diagnostics, and safeguards.
+
+
+## Offline research provenance audit
+
+Each completed run writes a separate `<run-id>_provenance_audit.json` receipt beside the experiment-matrix report. The pipeline manifest records the receipt path, SHA-256 fingerprint, and audit status; the original experiment-matrix report is not modified. The auditor checks structural consistency and recorded safeguards only. It does not recompute metrics, prove absence of data leakage, validate provider data rights, or establish profitability.
+
+By default, a failed structural audit is recorded in the receipt and manifest while preserving the research artifacts for inspection. Add `--strict-provenance-audit` to make the CLI return exit code 3 when the audit status is `FAIL`. This mode still writes the audit receipt and pipeline manifest. The research pipeline remains offline unless `--fetch-ctrader` is explicitly selected, and no research output is connected to broker execution.

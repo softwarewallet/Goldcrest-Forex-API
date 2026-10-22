@@ -18,6 +18,7 @@ from app.ctrader_history_ingest import download_ctrader_history
 from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
+from app.research_provenance_auditor import audit_experiment_matrix_file
 
 
 def _sha256(path: str | Path) -> str:
@@ -61,6 +62,7 @@ def run_research_pipeline(
     bootstrap_resamples: int = 500,
     max_experiments: int = 20,
     include_ablation: bool = True,
+    strict_provenance_audit: bool = False,
 ) -> dict[str, Any]:
     """Run ingestion (optional), dataset preparation, and fixed-fold model comparison."""
     if fetch_ctrader == (ohlc_csv is not None):
@@ -140,6 +142,9 @@ def run_research_pipeline(
     )
     matrix_report_path = destination / f"{run_id}_experiment_matrix.json"
     write_experiment_matrix_report(report, matrix_report_path)
+    provenance_audit_path = destination / f"{run_id}_provenance_audit.json"
+    provenance_audit = audit_experiment_matrix_file(matrix_report_path, provenance_audit_path)
+    provenance_audit_sha256 = _sha256(provenance_audit_path)
 
     payload: dict[str, Any] = {
         "schema_version": 1,
@@ -162,6 +167,10 @@ def run_research_pipeline(
         "experiment_count": len(report.experiments),
         "experiment_matrix_report": str(matrix_report_path),
         "experiment_matrix_report_sha256": _sha256(matrix_report_path),
+        "provenance_audit_path": str(provenance_audit_path),
+        "provenance_audit_sha256": provenance_audit_sha256,
+        "provenance_audit_status": provenance_audit["status"],
+        "strict_provenance_audit": strict_provenance_audit,
         "ingestion": ingestion,
         "label_horizon_bars": horizon_bars,
         "class_1_means": class_1_means,
@@ -202,6 +211,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--bootstrap-resamples", type=int, default=500)
     parser.add_argument("--max-experiments", type=int, default=20)
     parser.add_argument("--no-ablation", action="store_true", help="Compare only the full causal feature set")
+    parser.add_argument("--strict-provenance-audit", action="store_true", help="Return a nonzero exit code if the structural provenance audit fails")
     return parser
 
 
@@ -230,12 +240,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             bootstrap_resamples=args.bootstrap_resamples,
             max_experiments=args.max_experiments,
             include_ablation=not args.no_ablation,
+            strict_provenance_audit=args.strict_provenance_audit,
         )
     except Exception as exc:
         # Errors are concise and do not print credential-bearing objects.
         print(f"research pipeline failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2))
+    if args.strict_provenance_audit and result.get("provenance_audit_status") == "FAIL":
+        print("research pipeline completed, but strict provenance audit failed; inspect the audit receipt", file=sys.stderr)
+        return 3
     return 0
 
 
