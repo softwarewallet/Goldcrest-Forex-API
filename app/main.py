@@ -243,6 +243,79 @@ async def research_statistics(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/v1/research/model-comparison", dependencies=[Depends(require_api_key)])
+async def research_model_comparison(
+    minimum_resolved_samples: int = Query(default=30, ge=1, le=1000000),
+    credible_level: float = Query(default=0.95, gt=0, lt=1),
+    db: Session = Depends(get_db),
+):
+    """Compare resolved barrier outcomes by recorded model ID; descriptive research only."""
+    from scipy.stats import beta, fisher_exact
+
+    rows = db.execute(
+        select(PredictionRecord.model_id, PredictionRecord.symbol, PredictionRecord.timeframe,
+               OutcomeRecord.outcome_label, func.count())
+        .join(OutcomeRecord, OutcomeRecord.prediction_id == PredictionRecord.id)
+        .where(OutcomeRecord.outcome_label.in_(["TARGET_FIRST", "STOP_FIRST"]))
+        .group_by(PredictionRecord.model_id, PredictionRecord.symbol,
+                  PredictionRecord.timeframe, OutcomeRecord.outcome_label)
+    ).all()
+    # Keep comparisons stratified by instrument and timeframe; do not pool unlike datasets.
+    grouped = {}
+    for model_id, symbol, timeframe, label, count in rows:
+        group_key = (symbol, timeframe)
+        model_key = model_id or "unknown"
+        grouped.setdefault(group_key, {}).setdefault(model_key, {"TARGET_FIRST": 0, "STOP_FIRST": 0})[label] += int(count)
+
+    strata = []
+    for (symbol, timeframe), model_counts in sorted(grouped.items()):
+        models = {}
+        for model_id, counts in sorted(model_counts.items()):
+            target, stop = counts["TARGET_FIRST"], counts["STOP_FIRST"]
+            n = target + stop
+            if n:
+                alpha = (1 - credible_level) / 2
+                interval = [float(beta.ppf(alpha, target + 0.5, stop + 0.5)),
+                            float(beta.ppf(1 - alpha, target + 0.5, stop + 0.5))]
+                share = target / n
+            else:
+                interval, share = None, None
+            models[model_id] = {
+                "target_first": target, "stop_first": stop, "resolved_barrier_outcomes": n,
+                "target_first_share": share, "credible_interval": interval,
+                "eligible_for_inference": n >= minimum_resolved_samples,
+            }
+        eligible = [key for key, value in models.items() if value["eligible_for_inference"]]
+        comparisons = []
+        for i, model_a in enumerate(eligible):
+            for model_b in eligible[i + 1:]:
+                a, b = models[model_a], models[model_b]
+                odds, p_value = fisher_exact(
+                    [[a["target_first"], a["stop_first"]], [b["target_first"], b["stop_first"]]],
+                    alternative="two-sided",
+                )
+                comparisons.append({
+                    "model_a": model_a, "model_b": model_b, "odds_ratio": float(odds),
+                    "p_value": float(p_value), "p_value_holm_adjusted": None,
+                })
+        order = sorted(range(len(comparisons)), key=lambda index: comparisons[index]["p_value"])
+        adjusted_floor = 0.0
+        for rank, index in enumerate(order):
+            adjusted_floor = max(adjusted_floor, min(1.0, comparisons[index]["p_value"] * (len(order) - rank)))
+            comparisons[index]["p_value_holm_adjusted"] = adjusted_floor
+        strata.append({"symbol": symbol, "timeframe": timeframe, "models": models, "comparisons": comparisons})
+
+    return {
+        "schema_version": "1.0",
+        "minimum_resolved_samples": minimum_resolved_samples,
+        "credible_level": credible_level,
+        "strata": strata,
+        "accuracy_metrics_published": False,
+        "interpretation": "Descriptive TARGET_FIRST versus STOP_FIRST barrier outcomes only. Comparisons are stratified by symbol and timeframe. This is not prediction accuracy, calibrated probability, expected return, or profitability.",
+        "excluded_outcomes": ["AMBIGUOUS", "HORIZON_EXPIRED", "INSUFFICIENT_DATA", "INVALIDATED", "UNKNOWN"],
+    }
+
+
 @app.get("/api/v1/audit", dependencies=[Depends(require_api_key)])
 async def audit(limit: int = Query(default=100, ge=1, le=500), db: Session = Depends(get_db)):
     rows = db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(limit)).all()
