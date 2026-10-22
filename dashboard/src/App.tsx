@@ -75,6 +75,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Prediction | null>(null);
   const [activePanel, setActivePanel] = useState<"signals" | "audit" | "models" | "research" | null>(null);
+  const [selectedGraphNode, setSelectedGraphNode] = useState("core");
 
   const refresh = useCallback(async () => {
     if (refreshInFlight.current) return;
@@ -182,46 +183,55 @@ export default function App() {
       {probeState !== "not-run" && <div className={`probe-banner ${probeState}`}><span>{probeState === "passed" ? "✓" : probeState === "failed" ? "!" : "…"}</span><div><b>{probeState === "passed" ? "Actual model inference probe passed" : probeState === "failed" ? "Actual model inference probe failed" : "Running a real model completion…"}</b><p>{probeState === "passed" ? `Validated JSON completion from ${probeModel}. This confirms connectivity and response format only—not prediction quality.` : probeState === "failed" ? probeError : "Waiting for the inference endpoint to complete."}</p></div><button onClick={() => { setProbeState("not-run"); setProbeError(""); }}>DISMISS</button></div>}
       {error && <div className="error-banner" role="alert"><span>!</span><div><b>{state === "degraded" ? "Some research endpoints are unavailable" : "Research API unavailable"}</b><p>{error}</p><small>{state === "degraded" ? "Successful endpoints are refreshed independently. Failed sections may still show the last retrieved data." : "Check the API address, network access, and key. Existing signal data is not presented as live."}</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}{state === "offline" && lastSync && <div className="stale-banner" role="status"><Icon name="clock" /><div><b>Showing last successful snapshot</b><p>Live refresh failed. The records and counters below may be stale; last successful sync was {stamp(lastSync)}. Refresh or restore the API connection to update them.</p></div></div>}
 
-      <section className={`neural-stage ${busy || probeState === "running" ? "neural-stage-active" : ""}`} aria-label="AI research data flow">
-        <div className="neural-stage-head">
-          <div><div className="eyebrow"><span className="eyebrow-line" /> COGNITIVE PROCESSING FIELD</div><h2>From market data <span>to research intelligence</span></h2><p>Live system state visualized across the research pipeline. No synthetic market signals are generated.</p></div>
-          <div className="neural-stage-state"><i className={state === "connected" ? "state-on" : ""}/><span>{state === "connected" ? "API LINK ESTABLISHED" : state === "degraded" ? "PARTIAL API LINK" : state === "loading" ? "ESTABLISHING LINK" : "AWAITING API CONNECTION"}</span></div>
+      <section className={`immersive-stage ${busy || probeState === "running" ? "neural-stage-active" : ""}`} aria-label="Interactive neural intelligence graph">
+        <div className="immersive-topline"><div><span className="eyebrow"><span className="eyebrow-line"/> GOLDCREST / NEURAL KNOWLEDGE GRAPH</span><h2>Market intelligence <span>in motion</span></h2><p>Explore the research architecture. Select any node to inspect its role and current system state.</p></div><div className="graph-live-state"><i className={state === "connected" ? "state-on" : ""}/>{state === "connected" ? "CONNECTED" : state === "degraded" ? "PARTIAL CONNECTION" : "OFFLINE VIEW"}</div></div>
+        <div className="immersive-workspace">
+          <div className="graph-viewport">
+            <div className="graph-vignette"/><div className="graph-grid"/>
+            <svg className="knowledge-graph" viewBox="0 0 1000 650" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Interactive conceptual map of market research processing">
+              <defs>
+                <radialGradient id="nodeGlow"><stop offset="0" stopColor="#b9fff8" stopOpacity=".95"/><stop offset=".35" stopColor="#4de6ee" stopOpacity=".35"/><stop offset="1" stopColor="#4de6ee" stopOpacity="0"/></radialGradient>
+                <radialGradient id="coreAura"><stop offset="0" stopColor="#b7b2ff" stopOpacity=".42"/><stop offset=".55" stopColor="#3acbdc" stopOpacity=".12"/><stop offset="1" stopColor="#071321" stopOpacity="0"/></radialGradient>
+                <linearGradient id="linkFlow"><stop offset="0" stopColor="#44d9e8" stopOpacity=".08"/><stop offset=".5" stopColor="#8c83ff" stopOpacity=".88"/><stop offset="1" stopColor="#f0d49a" stopOpacity=".3"/></linearGradient>
+                <filter id="softGlow"><feGaussianBlur stdDeviation="5"/></filter>
+              </defs>
+              <circle cx="480" cy="324" r="270" fill="url(#coreAura)"/>
+              <g className="graph-links" fill="none" stroke="url(#linkFlow)" strokeWidth="1.2">
+                <path d="M480 324 Q360 250 270 150"/><path d="M480 324 Q330 300 180 310"/><path d="M480 324 Q345 390 250 500"/><path d="M480 324 Q480 190 500 95"/><path d="M480 324 Q610 210 700 150"/><path d="M480 324 Q660 290 820 280"/><path d="M480 324 Q640 420 740 500"/><path d="M480 324 Q490 470 500 570"/>
+                <path d="M270 150 Q210 220 180 310"/><path d="M180 310 Q210 420 250 500"/><path d="M270 150 Q380 120 500 95"/><path d="M500 95 Q625 90 700 150"/><path d="M700 150 Q780 195 820 280"/><path d="M820 280 Q820 390 740 500"/><path d="M740 500 Q630 560 500 570"/><path d="M250 500 Q380 560 500 570"/>
+                <path d="M270 150 Q390 245 480 324" strokeDasharray="3 8"/><path d="M700 150 Q585 250 480 324" strokeDasharray="3 8"/><path d="M740 500 Q610 410 480 324" strokeDasharray="3 8"/>
+              </g>
+              <g className="graph-particles" fill="#6cecf0">
+                <circle r="3"><animateMotion dur="5s" repeatCount="indefinite" path="M270 150 Q360 250 480 324"/></circle>
+                <circle r="2.5"><animateMotion dur="6.5s" repeatCount="indefinite" path="M180 310 Q330 300 480 324"/></circle>
+                <circle r="3"><animateMotion dur="5.8s" repeatCount="indefinite" path="M250 500 Q345 390 480 324"/></circle>
+                <circle r="2.5"><animateMotion dur="7s" repeatCount="indefinite" path="M700 150 Q610 210 480 324"/></circle>
+                <circle r="3"><animateMotion dur="6s" repeatCount="indefinite" path="M820 280 Q660 290 480 324"/></circle>
+                <circle r="2.5"><animateMotion dur="7.2s" repeatCount="indefinite" path="M740 500 Q640 420 480 324"/></circle>
+              </g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="Market history" onClick={() => setSelectedGraphNode("history")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("history")}><circle className="node-halo" cx="270" cy="150" r="36"/><circle cx="270" cy="150" r="16" fill="url(#nodeGlow)"/><circle cx="270" cy="150" r="7" fill="#8ff7f4"/><text x="270" y="115" textAnchor="middle">MARKET HISTORY</text><text x="270" y="185" textAnchor="middle" className="node-sub">{state === "connected" ? "API LINKED" : "AWAITING DATA"}</text></g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="Technical features" onClick={() => setSelectedGraphNode("features")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("features")}><circle className="node-halo" cx="180" cy="310" r="31"/><circle cx="180" cy="310" r="13" fill="url(#nodeGlow)"/><circle cx="180" cy="310" r="6" fill="#8ff7f4"/><text x="180" y="278" textAnchor="middle">FEATURES</text><text x="180" y="341" textAnchor="middle" className="node-sub">CAUSAL TA</text></g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="Historical research" onClick={() => setSelectedGraphNode("research")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("research")}><circle className="node-halo" cx="250" cy="500" r="32"/><circle cx="250" cy="500" r="14" fill="url(#nodeGlow)"/><circle cx="250" cy="500" r="6" fill="#9a8cff"/><text x="250" y="465" textAnchor="middle">HISTORICAL</text><text x="250" y="485" textAnchor="middle">RESEARCH</text></g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="Model inventory" onClick={() => setSelectedGraphNode("models")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("models")}><circle className="node-halo" cx="500" cy="95" r="32"/><circle cx="500" cy="95" r="14" fill="url(#nodeGlow)"/><circle cx="500" cy="95" r="6" fill="#a89aff"/><text x="500" y="60" textAnchor="middle">MODEL LAYER</text></g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="News context" onClick={() => setSelectedGraphNode("news")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("news")}><circle className="node-halo" cx="700" cy="150" r="34"/><circle cx="700" cy="150" r="15" fill="url(#nodeGlow)"/><circle cx="700" cy="150" r="6" fill="#f0d49a"/><text x="700" y="112" textAnchor="middle">NEWS CONTEXT</text><text x="700" y="184" textAnchor="middle" className="node-sub">OPTIONAL INPUT</text></g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="Validation" onClick={() => setSelectedGraphNode("validation")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("validation")}><circle className="node-halo" cx="820" cy="280" r="36"/><circle cx="820" cy="280" r="16" fill="url(#nodeGlow)"/><circle cx="820" cy="280" r="7" fill="#f0d49a"/><text x="820" y="242" textAnchor="middle">VALIDATION</text><text x="820" y="314" textAnchor="middle" className="node-sub">RESEARCH GATE</text></g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="Research outputs" onClick={() => setSelectedGraphNode("outputs")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("outputs")}><circle className="node-halo" cx="740" cy="500" r="34"/><circle cx="740" cy="500" r="15" fill="url(#nodeGlow)"/><circle cx="740" cy="500" r="6" fill="#68e8c0"/><text x="740" y="463" textAnchor="middle">RESEARCH OUTPUT</text><text x="740" y="533" textAnchor="middle" className="node-sub">{predictions.length} STORED</text></g>
+              <g className="graph-node" role="button" tabIndex="0" aria-label="Audit trace" onClick={() => setSelectedGraphNode("audit")} onKeyDown={e => e.key === "Enter" && setSelectedGraphNode("audit")}><circle className="node-halo" cx="500" cy="570" r="30"/><circle cx="500" cy="570" r="13" fill="url(#nodeGlow)"/><circle cx="500" cy="570" r="5" fill="#68e8c0"/><text x="500" y="610" textAnchor="middle">AUDIT TRACE</text></g>
+              <g className="central-core"><circle cx="480" cy="324" r="116" fill="none" stroke="#4edce6" strokeOpacity=".18"/><circle cx="480" cy="324" r="88" fill="none" stroke="#a395ff" strokeOpacity=".55" strokeDasharray="2 7"/><circle cx="480" cy="324" r="63" fill="#09172a" stroke="#56e7e8" strokeOpacity=".8"/><circle cx="480" cy="324" r="59" fill="url(#coreAura)"/><g transform="translate(480 324)" fill="#7ff8f0"><rect x="-20" y="-10" width="5" height="20" rx="2"/><rect x="-10" y="-22" width="5" height="44" rx="2"/><rect x="0" y="-31" width="5" height="62" rx="2"/><rect x="10" y="-17" width="5" height="34" rx="2"/><rect x="20" y="-8" width="5" height="16" rx="2"/></g><text x="480" y="420" textAnchor="middle" className="core-caption">GOLDCREST NEURAL CORE</text><text x="480" y="440" textAnchor="middle" className="node-sub">{probeState === "running" ? "INFERENCE IN FLIGHT" : probeState === "passed" ? "PROBE PASSED" : probeState === "failed" ? "PROBE FAILED" : "RESEARCH ARCHITECTURE"}</text></g>
+            </svg>
+            <div className="graph-bottom-legend"><span><i className="legend-cyan"/> DATA CONTEXT</span><span><i className="legend-violet"/> MODEL LAYER</span><span><i className="legend-green"/> RESEARCH RECORDS</span></div>
+          </div>
+          <aside className="graph-inspector">
+            <div className="inspector-kicker">NODE INSPECTOR / 0{["core","history","features","research","models","news","validation","outputs","audit"].indexOf(selectedGraphNode)+1}</div>
+            <h3>{({core:"Neural processing core",history:"Market history",features:"Feature extraction",research:"Historical research",models:"Model layer",news:"News context",validation:"Validation gate",outputs:"Research outputs",audit:"Audit trace"} as Record<string,string>)[selectedGraphNode]}</h3>
+            <p className="inspector-copy">{({core:"The central research architecture connects source data, causal features, model inference and validation. This conceptual map does not indicate active processing unless the API state confirms it.",history:"Historical OHLC data is the source layer for offline research. Live availability depends on the configured API and data-ingestion workflow.",features:"Causal technical features are derived from chronological bars. Feature availability and quality must be verified in the generated dataset report.",research:"Historical experiments use chronological validation and walk-forward evaluation. Reports are evidence for review, not live trading instructions.",models:"The model inventory is read from the configured API when available. A listed model is not evidence of predictive quality.",news:"News or sentiment is an optional research input only when a supported provider supplies data. Missing news is not fabricated.",validation:"Validation checks data provenance, fold consistency and out-of-sample evidence before research results are considered.",outputs:"Stored prediction records are retrieved from the API. The current count reflects records actually returned, not generated demo signals.",audit:"Audit events describe recorded system activity. No events are invented to fill this view."} as Record<string,string>)[selectedGraphNode]}</p>
+            <div className="inspector-divider"/>
+            <div className="inspector-metrics"><div><small>API LINK</small><b className={state === "connected" ? "metric-good" : "metric-muted"}>{state === "connected" ? "CONNECTED" : state === "degraded" ? "DEGRADED" : "OFFLINE"}</b></div><div><small>STORED SIGNALS</small><b>{performance?.predictions_total ?? "—"}</b></div><div><small>OBSERVED OUTCOMES</small><b>{performance?.outcomes_recorded ?? "—"}</b></div></div>
+            <div className="inspector-actions"><button onClick={() => setActivePanel("signals")}>OPEN SIGNAL LEDGER <span>↗</span></button><button onClick={() => setActivePanel("audit")}>VIEW AUDIT TRAIL <span>↗</span></button><button onClick={() => setActivePanel("models")}>INSPECT MODELS <span>↗</span></button></div>
+            <div className="inspector-status"><i className={probeState === "passed" ? "state-on" : ""}/><span>{probeState === "passed" ? "REAL INFERENCE PROBE PASSED" : probeState === "failed" ? "INFERENCE PROBE FAILED" : "NO ACTIVE INFERENCE CLAIMED"}</span></div>
+          </aside>
         </div>
-        <div className="neural-flow">
-          <div className="neural-column inputs-column">
-            <div className="neural-column-label"><span>01 / INPUT LAYER</span><b>Market context</b></div>
-            <div className="neural-module"><span className="module-symbol">⌁</span><div><b>Price & candles</b><small>OHLC history</small></div><em className={state === "connected" ? "module-ok" : ""}>{state === "connected" ? "LINKED" : "WAITING"}</em></div>
-            <div className="neural-module"><span className="module-symbol">∿</span><div><b>Technical features</b><small>Chronological features</small></div><em>RESEARCH</em></div>
-            <div className="neural-module"><span className="module-symbol">◌</span><div><b>News & sentiment</b><small>Only when provided</small></div><em>OPTIONAL</em></div>
-          </div>
-          <div className="neural-bridge bridge-in"><span/><span/><span/><span/><span/></div>
-          <div className="neural-core-column">
-            <div className="core-network-backdrop" aria-hidden="true">
-              <svg viewBox="0 0 520 350" preserveAspectRatio="xMidYMid meet">
-                <defs><linearGradient id="traceGradient"><stop offset="0" stopColor="#42d9ed" stopOpacity=".08"/><stop offset=".5" stopColor="#8c79ff" stopOpacity=".8"/><stop offset="1" stopColor="#49e3cb" stopOpacity=".12"/></linearGradient><radialGradient id="coreGlow"><stop offset="0" stopColor="#3addeb" stopOpacity=".2"/><stop offset="1" stopColor="#3addeb" stopOpacity="0"/></radialGradient></defs>
-                <ellipse cx="260" cy="166" rx="230" ry="142" fill="url(#coreGlow)"/>
-                <g className="network-traces" fill="none" stroke="url(#traceGradient)" strokeWidth="1">
-                  <path d="M18 60 L100 105 L164 78 L225 128 L260 166 L310 115 L370 80 L500 45"/><path d="M8 150 L75 150 L140 185 L210 168 L260 166 L326 200 L408 165 L510 180"/><path d="M38 280 L112 230 L168 256 L222 205 L260 166 L308 242 L375 260 L488 292"/><path d="M100 20 L130 92 L112 230"/><path d="M420 28 L370 80 L408 165 L375 260"/><path d="M75 150 L100 105 L164 78 L310 115 L370 80"/><path d="M140 185 L168 256 L308 242 L326 200 L408 165"/>
-                </g>
-                <g className="network-nodes" fill="#55e8ef">
-                  <circle cx="18" cy="60" r="3"/><circle cx="100" cy="105" r="4"/><circle cx="164" cy="78" r="3"/><circle cx="225" cy="128" r="4"/><circle cx="310" cy="115" r="4"/><circle cx="370" cy="80" r="3"/><circle cx="500" cy="45" r="3"/><circle cx="8" cy="150" r="3"/><circle cx="75" cy="150" r="4"/><circle cx="140" cy="185" r="3"/><circle cx="326" cy="200" r="4"/><circle cx="408" cy="165" r="3"/><circle cx="510" cy="180" r="3"/><circle cx="38" cy="280" r="3"/><circle cx="112" cy="230" r="4"/><circle cx="168" cy="256" r="3"/><circle cx="308" cy="242" r="4"/><circle cx="375" cy="260" r="3"/><circle cx="488" cy="292" r="3"/><circle cx="100" cy="20" r="3"/><circle cx="420" cy="28" r="3"/>
-                </g>
-              </svg>
-            </div>
-            <div className="core-orbit orbit-outer"><i/><i/><i/></div><div className="core-orbit orbit-middle"><i/><i/></div><div className="core-orbit orbit-inner"><div className="core-glyph"><span/><span/><span/><span/><span/></div></div>
-            <div className="core-label">GOLDCREST <b>NEURAL CORE</b></div>
-            <div className="core-status"><i className={busy || probeState === "running" ? "state-on" : ""}/>{probeState === "running" ? "INFERENCE REQUEST IN FLIGHT" : busy ? "POLLING LIVE API STATE" : probeState === "passed" ? "INFERENCE PROBE PASSED" : probeState === "failed" ? "INFERENCE PROBE FAILED" : "IDLE · AWAITING REAL INPUT"}</div>
-            <div className="core-subsystems"><span>FEATURE EXTRACTION</span><span>MODEL INFERENCE</span><span>VALIDATION</span></div>
-          </div>
-          <div className="neural-bridge bridge-out"><span/><span/><span/><span/><span/></div>
-          <div className="neural-column outputs-column">
-            <div className="neural-column-label"><span>03 / OUTPUT LAYER</span><b>Research intelligence</b></div>
-            <div className="output-summary"><small>STORED PREDICTIONS</small><strong>{performance?.predictions_total ?? "—"}</strong><span>Recorded by API</span></div>
-            <div className="output-summary"><small>OBSERVED OUTCOMES</small><strong>{performance?.outcomes_recorded ?? "—"}</strong><span>Labels received</span></div>
-            <div className="output-signal"><span className="output-pulse"/><div><b>{predictions.length ? "Signal ledger populated" : "No stored signals yet"}</b><small>{predictions.length ? `${predictions.length} records retrieved from API` : "Outputs appear after API records them"}</small></div></div>
-          </div>
-        </div>
-        <div className="neural-stage-foot"><span><i className="legend-cyan"/> INPUTS</span><span><i className="legend-violet"/> INFERENCE LAYER</span><span><i className="legend-green"/> STORED OUTPUTS</span><b>RESEARCH-ONLY · NO ORDER ROUTES</b></div>
+        <div className="immersive-footer"><span>GOLDCRESTAI / INTELLIGENCE MAP</span><span>READ-ONLY · RESEARCH ONLY · NO ORDER ROUTES</span></div>
       </section>
 
       <div className="hidden-detail-panels" aria-hidden="true">
