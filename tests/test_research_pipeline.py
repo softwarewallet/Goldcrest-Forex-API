@@ -121,24 +121,24 @@ def test_pipeline_manifest_hash_is_reproducible_and_covers_payload(tmp_path, mon
     # own digest is inserted; verify that exact contract without invoking model training.
     raw = tmp_path / "ohlc.csv"
     raw.write_text(
-        "symbol,timeframe,timestamp,open,high,low,close\\n"
-        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\\n",
+        "symbol,timeframe,timestamp,open,high,low,close\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
         encoding="utf-8",
     )
 
     def fake_prepare(input_csv, output_csv, manifest_path, **kwargs):
         Path(output_csv).write_text(
-            "symbol,timeframe,timestamp,open,high,low,close,label,label_available_at,ret_1\\n"
-            "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.1\\n",
+            "symbol,timeframe,timestamp,open,high,low,close,label,label_available_at,ret_1\n"
+            "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.1\n",
             encoding="utf-8",
         )
-        Path(manifest_path).write_text('{"actionable":false}\\n', encoding="utf-8")
+        Path(manifest_path).write_text('{"actionable":false}\n', encoding="utf-8")
         return {"actionable": False}
 
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
     monkeypatch.setattr(research_pipeline, "load_historical_dataset", lambda path, names: ([], [], "a" * 64))
     monkeypatch.setattr(research_pipeline, "run_experiment_matrix", lambda *args, **kwargs: SimpleNamespace(fold_count=0, experiments=[]))
-    monkeypatch.setattr(research_pipeline, "write_experiment_matrix_report", lambda report, path: (Path(path).write_text('{"actionable":false}\\n', encoding="utf-8") or str(path)))
+    monkeypatch.setattr(research_pipeline, "write_experiment_matrix_report", lambda report, path: (Path(path).write_text('{"actionable":false}\n', encoding="utf-8") or str(path)))
 
     result = research_pipeline.run_research_pipeline(
         symbol="EURUSD", timeframe="M15", horizon_bars=4, class_1_means="UP",
