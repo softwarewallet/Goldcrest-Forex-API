@@ -103,3 +103,24 @@ def test_audit_rejects_missing_fold_boundaries():
     payload["experiments"][0]["fold_results"][0]["test_start_utc"] = None
     result = audit_experiment_matrix(payload)
     assert "experiment_0_fold_0_missing_test_start_utc" in result["errors"]
+
+
+def test_audit_receipt_hash_changes_when_source_report_changes(tmp_path):
+    source = tmp_path / "matrix.json"
+    receipt = tmp_path / "audit.json"
+    source.write_text(json.dumps(sample_report(), sort_keys=True), encoding="utf-8")
+    first = audit_experiment_matrix_file(source, receipt)
+    payload = sample_report()
+    payload["run_id"] = "eurusd-m15-run-02"
+    source.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    second = audit_experiment_matrix_file(source, receipt)
+    assert first["source_report_sha256"] != second["source_report_sha256"]
+    assert json.loads(receipt.read_text(encoding="utf-8"))["run_id"] == "eurusd-m15-run-02"
+
+
+def test_audit_rejects_duplicate_declared_model_types():
+    payload = sample_report()
+    payload["model_types"] = ["xgboost", "xgboost", "lightgbm"]
+    result = audit_experiment_matrix(payload)
+    assert result["status"] == "FAIL"
+    assert "duplicate_declared_model_types" in result["errors"]
