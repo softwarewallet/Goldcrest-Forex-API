@@ -192,6 +192,36 @@ export default function App() {
       {probeState !== "not-run" && <div className={`probe-banner ${probeState}`}><span>{probeState === "passed" ? "✓" : probeState === "failed" ? "!" : "…"}</span><div><b>{probeState === "passed" ? "Actual model inference probe passed" : probeState === "failed" ? "Actual model inference probe failed" : "Running a real model completion…"}</b><p>{probeState === "passed" ? `Validated JSON completion from ${probeModel}. This confirms connectivity and response format only—not prediction quality.` : probeState === "failed" ? probeError : "Waiting for the inference endpoint to complete."}</p></div><button onClick={() => { setProbeState("not-run"); setProbeError(""); }}>DISMISS</button></div>}
       {error && <div className="error-banner" role="alert"><span>!</span><div><b>{state === "degraded" ? "Some research endpoints are unavailable" : "Research API unavailable"}</b><p>{error}</p><small>{state === "degraded" ? "Successful endpoints are refreshed independently. Failed sections may still show the last retrieved data." : "Check the API address, network access, and key. Existing signal data is not presented as live."}</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}{state === "offline" && lastSync && <div className="stale-banner" role="status"><Icon name="clock" /><div><b>Showing last successful snapshot</b><p>Live refresh failed. The records and counters below may be stale; last successful sync was {stamp(lastSync)}. Refresh or restore the API connection to update them.</p></div></div>}
 
+      <section className={`neural-stage ${busy || probeState === "running" ? "neural-stage-active" : ""}`} aria-label="AI research data flow">
+        <div className="neural-stage-head">
+          <div><div className="eyebrow"><span className="eyebrow-line" /> COGNITIVE PROCESSING FIELD</div><h2>From market data <span>to research intelligence</span></h2><p>Live system state visualized across the research pipeline. No synthetic market signals are generated.</p></div>
+          <div className="neural-stage-state"><i className={state === "connected" ? "state-on" : ""}/><span>{state === "connected" ? "API LINK ESTABLISHED" : state === "degraded" ? "PARTIAL API LINK" : state === "loading" ? "ESTABLISHING LINK" : "AWAITING API CONNECTION"}</span></div>
+        </div>
+        <div className="neural-flow">
+          <div className="neural-column inputs-column">
+            <div className="neural-column-label"><span>01 / INPUT LAYER</span><b>Market context</b></div>
+            <div className="neural-module"><span className="module-symbol">⌁</span><div><b>Price & candles</b><small>OHLC history</small></div><em className={state === "connected" ? "module-ok" : ""}>{state === "connected" ? "LINKED" : "WAITING"}</em></div>
+            <div className="neural-module"><span className="module-symbol">∿</span><div><b>Technical features</b><small>Chronological features</small></div><em>RESEARCH</em></div>
+            <div className="neural-module"><span className="module-symbol">◌</span><div><b>News & sentiment</b><small>Only when provided</small></div><em>OPTIONAL</em></div>
+          </div>
+          <div className="neural-bridge bridge-in"><span/><span/><span/><span/><span/></div>
+          <div className="neural-core-column">
+            <div className="core-orbit orbit-outer"><i/><i/><i/></div><div className="core-orbit orbit-middle"><i/><i/></div><div className="core-orbit orbit-inner"><div className="core-glyph"><span/><span/><span/><span/><span/></div></div>
+            <div className="core-label">GOLDCREST <b>NEURAL CORE</b></div>
+            <div className="core-status"><i className={busy || probeState === "running" ? "state-on" : ""}/>{probeState === "running" ? "INFERENCE REQUEST IN FLIGHT" : busy ? "POLLING LIVE API STATE" : probeState === "passed" ? "INFERENCE PROBE PASSED" : probeState === "failed" ? "INFERENCE PROBE FAILED" : "IDLE · NO ACTIVE INFERENCE"}</div>
+            <div className="core-subsystems"><span>FEATURES</span><span>MODEL</span><span>VALIDATION</span></div>
+          </div>
+          <div className="neural-bridge bridge-out"><span/><span/><span/><span/><span/></div>
+          <div className="neural-column outputs-column">
+            <div className="neural-column-label"><span>03 / OUTPUT LAYER</span><b>Research intelligence</b></div>
+            <div className="output-summary"><small>STORED PREDICTIONS</small><strong>{performance?.predictions_total ?? "—"}</strong><span>Recorded by API</span></div>
+            <div className="output-summary"><small>OBSERVED OUTCOMES</small><strong>{performance?.outcomes_recorded ?? "—"}</strong><span>Labels received</span></div>
+            <div className="output-signal"><span className="output-pulse"/><div><b>{predictions.length ? "Signal ledger populated" : "No stored signals yet"}</b><small>{predictions.length ? `${predictions.length} records retrieved from API` : "Outputs appear after API records them"}</small></div></div>
+          </div>
+        </div>
+        <div className="neural-stage-foot"><span><i className="legend-cyan"/> INPUTS</span><span><i className="legend-violet"/> INFERENCE LAYER</span><span><i className="legend-green"/> STORED OUTPUTS</span><b>RESEARCH-ONLY · NO ORDER ROUTES</b></div>
+      </section>
+
       <section className="endpoint-health-panel" aria-label="API endpoint status">
         <div className="endpoint-health-heading"><div><span className="eyebrow">CONNECTIVITY MATRIX</span><h2>Endpoint diagnostics</h2></div><span className="endpoint-health-note">Independent read checks · 15s polling</span></div>
         <div className="endpoint-health-grid">
