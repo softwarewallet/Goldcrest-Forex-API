@@ -1,8 +1,10 @@
 from contextlib import asynccontextmanager
+import hashlib
+import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -11,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db import Base, _engine, get_db
 from app.llama_client import InferenceUnavailable, LlamaClient
-from app.models import AuditEvent, OutcomeRecord, PredictionRecord
+from app.models import AuditEvent, OutcomeRecord, PredictionRecord, ResearchExperimentRun
 from app.prediction_service import _parse_model_output, create_prediction, request_fingerprint
 from app.schemas import HealthResponse, OutcomeRequest, PredictionRequest, PredictionResponse
 from app.security import require_api_key
@@ -241,6 +243,131 @@ async def research_statistics(db: Session = Depends(get_db)):
         "excluded_outcomes": ["AMBIGUOUS", "HORIZON_EXPIRED", "INSUFFICIENT_DATA", "INVALIDATED", "UNKNOWN"],
         "interpretation": "Descriptive target-hit share among recorded TARGET_FIRST/STOP_FIRST outcomes only. This is not prediction accuracy, calibrated probability, expected return, or profitability.",
     }
+
+
+
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in value)
+
+
+def _experiment_response(run: ResearchExperimentRun) -> dict:
+    return {
+        "run_id": run.run_id,
+        "fingerprint_sha256": run.fingerprint_sha256,
+        "dataset_sha256": run.dataset_sha256,
+        "symbol": run.symbol,
+        "timeframe": run.timeframe,
+        "protocol_version": run.protocol_version,
+        "manifest": run.manifest,
+        "fold_results": run.fold_results,
+        "created_at": _as_utc(run.created_at),
+        "actionable": False,
+        "automatic_winner_selection": False,
+    }
+
+
+@app.post("/api/v1/research/experiments", dependencies=[Depends(require_api_key)])
+async def register_research_experiment(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Persist an immutable manifest from an offline research run; never promotes a model."""
+    required = {"run_id", "dataset_sha256", "symbol", "timeframe", "protocol_version", "manifest"}
+    missing = required - set(payload)
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Missing required fields: {sorted(missing)}")
+    run_id, dataset_hash = payload["run_id"], payload["dataset_sha256"]
+    symbol, timeframe, protocol = payload["symbol"], payload["timeframe"], payload["protocol_version"]
+    manifest = payload["manifest"]
+    if not isinstance(run_id, str) or not run_id.strip() or len(run_id) > 128:
+        raise HTTPException(status_code=422, detail="run_id must be a non-empty string of at most 128 characters")
+    if not _is_sha256(dataset_hash):
+        raise HTTPException(status_code=422, detail="dataset_sha256 must be a 64-character SHA-256 hex digest")
+    if not isinstance(symbol, str) or not symbol.strip() or len(symbol) > 32:
+        raise HTTPException(status_code=422, detail="symbol must be a non-empty string of at most 32 characters")
+    if not isinstance(timeframe, str) or not timeframe.strip() or len(timeframe) > 8:
+        raise HTTPException(status_code=422, detail="timeframe must be a non-empty string of at most 8 characters")
+    if not isinstance(protocol, str) or not protocol.strip() or len(protocol) > 64:
+        raise HTTPException(status_code=422, detail="protocol_version must be a non-empty string of at most 64 characters")
+    if not isinstance(manifest, dict):
+        raise HTTPException(status_code=422, detail="manifest must be a JSON object")
+    if manifest.get("actionable") is True or manifest.get("automatic_winner_selection") is True or manifest.get("test_metrics_used_for_selection") is True:
+        raise HTTPException(status_code=422, detail="Research registry rejects actionable or test-selected manifests")
+    if manifest.get("dataset_sha256") not in (None, dataset_hash):
+        raise HTTPException(status_code=422, detail="manifest dataset hash does not match dataset_sha256")
+    experiments = manifest.get("experiments", [])
+    if not isinstance(experiments, list):
+        raise HTTPException(status_code=422, detail="manifest.experiments must be a list")
+    fold_results = []
+    for experiment in experiments:
+        if not isinstance(experiment, dict):
+            raise HTTPException(status_code=422, detail="Each experiment must be a JSON object")
+        if experiment.get("actionable") is True or experiment.get("test_metrics_used_for_tuning") is True:
+            raise HTTPException(status_code=422, detail="Experiment entries must be offline and must not tune on test metrics")
+        folds = experiment.get("fold_results", [])
+        if not isinstance(folds, list):
+            raise HTTPException(status_code=422, detail="experiment.fold_results must be a list")
+        fold_results.append({
+            "experiment_id": str(experiment.get("experiment_id", "")),
+            "model_type": str(experiment.get("model_type", "")),
+            "feature_variant": str(experiment.get("feature_variant", "")),
+            "fold_results": folds,
+        })
+    canonical = json.dumps({
+        "dataset_sha256": dataset_hash.lower(), "symbol": symbol.strip().upper(),
+        "timeframe": timeframe.strip().upper(), "protocol_version": protocol.strip(),
+        "manifest": manifest,
+    }, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    existing = db.scalar(select(ResearchExperimentRun).where(ResearchExperimentRun.run_id == run_id))
+    if existing:
+        if existing.fingerprint_sha256 == fingerprint:
+            return _experiment_response(existing)
+        raise HTTPException(status_code=409, detail="run_id already exists with different experiment content")
+    by_fingerprint = db.scalar(select(ResearchExperimentRun).where(ResearchExperimentRun.fingerprint_sha256 == fingerprint))
+    if by_fingerprint:
+        return _experiment_response(by_fingerprint)
+    record = ResearchExperimentRun(
+        run_id=run_id, fingerprint_sha256=fingerprint, dataset_sha256=dataset_hash.lower(),
+        symbol=symbol.strip().upper(), timeframe=timeframe.strip().upper(),
+        protocol_version=protocol.strip(), manifest=manifest, fold_results=fold_results,
+    )
+    db.add(record)
+    db.add(AuditEvent(event_type="research_experiment_registered", symbol=symbol.strip().upper(),
+                      outcome="RECORDED", details={"run_id": run_id, "fingerprint_sha256": fingerprint,
+                      "dataset_sha256": dataset_hash.lower(), "experiment_count": len(experiments)}))
+    try:
+        db.commit()
+        db.refresh(record)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Concurrent experiment registration conflict; query the registry") from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Research experiment persistence failed") from exc
+    return _experiment_response(record)
+
+
+@app.get("/api/v1/research/experiments", dependencies=[Depends(require_api_key)])
+async def list_research_experiments(
+    limit: int = Query(default=50, ge=1, le=200),
+    symbol: str | None = Query(default=None, min_length=1, max_length=32),
+    timeframe: str | None = Query(default=None, min_length=1, max_length=8),
+    db: Session = Depends(get_db),
+):
+    query = select(ResearchExperimentRun).order_by(ResearchExperimentRun.created_at.desc(), ResearchExperimentRun.run_id).limit(limit)
+    if symbol:
+        query = query.where(ResearchExperimentRun.symbol == symbol.strip().upper())
+    if timeframe:
+        query = query.where(ResearchExperimentRun.timeframe == timeframe.strip().upper())
+    rows = db.scalars(query).all()
+    return {"schema_version": "1.0", "count": len(rows), "runs": [_experiment_response(row) for row in rows],
+            "actionable": False, "note": "Immutable offline research records only; no model promotion or execution."}
+
+
+@app.get("/api/v1/research/experiments/{run_id}", dependencies=[Depends(require_api_key)])
+async def get_research_experiment(run_id: str, db: Session = Depends(get_db)):
+    run = db.scalar(select(ResearchExperimentRun).where(ResearchExperimentRun.run_id == run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Research experiment not found")
+    return _experiment_response(run)
 
 
 @app.get("/api/v1/audit", dependencies=[Depends(require_api_key)])
