@@ -50,9 +50,10 @@ def test_health_route_does_not_depend_on_external_model_server(monkeypatch):
 
     assert response.status_code == 200
     body = response.json()
-    assert {"status", "inference_status", "database_status"} <= body.keys()
+    assert {"status", "inference_status", "database_status", "api_key_configured"} <= body.keys()
     assert body["database_status"] == "ok"
     assert body["inference_status"] == "ok"
+    assert body["api_key_configured"] is get_settings().api_key_configured
 
 
 def test_protected_route_without_key():
