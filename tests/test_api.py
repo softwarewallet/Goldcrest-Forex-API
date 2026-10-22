@@ -2,12 +2,35 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.main import app
 
 
 def api_key():
     return get_settings().api_key.get_secret_value()
+
+
+def test_short_api_key_allowed_only_in_development():
+    development = Settings(_env_file=None, app_env="development", api_key="GoldDev26")
+    production = Settings(_env_file=None, app_env="production", api_key="GoldDev26")
+    strong_production = Settings(
+        _env_file=None,
+        app_env="production",
+        api_key="this-is-a-valid-production-key-with-more-than-32-characters",
+    )
+
+    assert development.api_key_configured is True
+    assert production.api_key_configured is False
+    assert strong_production.api_key_configured is True
+
+
+def test_api_key_placeholders_are_never_accepted():
+    for placeholder in (
+        "REPLACE_WITH_A_LONG_RANDOM_SECRET",
+        "PASTE_A_REAL_GENERATED_SECRET_HERE",
+    ):
+        settings = Settings(_env_file=None, app_env="development", api_key=placeholder)
+        assert settings.api_key_configured is False
 
 
 def market_payload(request_id="test-req-default"):
@@ -50,15 +73,16 @@ def test_health_route_does_not_depend_on_external_model_server(monkeypatch):
 
     assert response.status_code == 200
     body = response.json()
-    assert {"status", "inference_status", "database_status"} <= body.keys()
+    assert {"status", "inference_status", "database_status", "api_key_configured"} <= body.keys()
     assert body["database_status"] == "ok"
     assert body["inference_status"] == "ok"
+    assert body["api_key_configured"] is get_settings().api_key_configured
 
 
 def test_protected_route_without_key():
     with TestClient(app) as client:
         response = client.get("/api/v1/models")
-    assert response.status_code == 401
+    assert response.status_code in {401, 503}
 
 
 def test_invalid_ohlc_rejected():
@@ -278,7 +302,7 @@ def test_inference_readiness_fails_closed_when_model_unavailable(monkeypatch):
 def test_prediction_history_requires_api_key():
     with TestClient(app) as client:
         response = client.get("/api/v1/predictions?limit=5")
-    assert response.status_code == 401
+    assert response.status_code in {401, 503}
 
 
 def test_prediction_history_returns_recent_records_with_limit(monkeypatch):

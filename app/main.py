@@ -64,9 +64,11 @@ async def health(settings: Settings = Depends(get_settings), db: Session = Depen
         inference_status = "ok" if models else "no_models"
     except InferenceUnavailable:
         inference_status = "unavailable"
-    overall = "ok" if db_status == "ok" and inference_status == "ok" else "degraded"
+    api_key_configured = settings.api_key_configured
+    overall = "ok" if db_status == "ok" and inference_status == "ok" and api_key_configured else "degraded"
     return HealthResponse(status=overall, application=settings.app_name,
-                          inference_status=inference_status, database_status=db_status)
+                          inference_status=inference_status, database_status=db_status,
+                          api_key_configured=api_key_configured)
 
 
 @app.get("/api/v1/readiness/inference", dependencies=[Depends(require_api_key)])

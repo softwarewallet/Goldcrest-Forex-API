@@ -109,6 +109,7 @@ class HealthResponse(BaseModel):
     application: str
     inference_status: str
     database_status: str
+    api_key_configured: bool
 
 
 class OutcomeRequest(BaseModel):

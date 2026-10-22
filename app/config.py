@@ -38,9 +38,20 @@ class Settings(BaseSettings):
         return Path(self.database_path)
 
     @property
+    def api_key_min_length(self) -> int:
+        """Short keys are permitted only in development; production always requires 32+ chars."""
+        return 8 if self.app_env.strip().lower() in {"development", "dev", "test"} else 32
+
+    @property
     def api_key_configured(self) -> bool:
         value = self.api_key.get_secret_value()
-        return len(value) >= 32 and value != "REPLACE_WITH_A_LONG_RANDOM_SECRET"
+        if value in {
+            "",
+            "REPLACE_WITH_A_LONG_RANDOM_SECRET",
+            "PASTE_A_REAL_GENERATED_SECRET_HERE",
+        }:
+            return False
+        return len(value) >= self.api_key_min_length
 
 
 @lru_cache
