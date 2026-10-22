@@ -364,3 +364,17 @@ html,body,#root{width:100%;height:100%;min-height:0;overflow:hidden}
 @media(max-width:1050px){.ops-scene{grid-template-columns:minmax(160px,190px) minmax(0,1fr) minmax(180px,205px);gap:7px}.ops-left,.ops-right{padding:9px}.ops-agent{gap:6px}.ops-agent em{font-size:5px}.rail-safety{display:none}.rail-metric{padding:8px}.ops-state{padding:7px}}
 @media(max-width:760px){html,body,#root{overflow:auto}.app-shell,.main{height:auto;min-height:100%;overflow:visible}.ops-universe{min-height:1150px;overflow:visible}.ops-heading{align-items:flex-start;flex-direction:column}.ops-scene{grid-template-columns:1fr;grid-template-rows:auto minmax(380px,55vh) auto}.ops-left{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px}.ops-panel-title,.ops-mini-health,.ops-left-divider{grid-column:1/-1}.ops-agent{min-width:0}.ops-right{overflow:visible}.ops-bottom-rail{flex-wrap:wrap}.rail-metric{flex:1 1 30%}.ops-safety{display:flex}}
 @media(prefers-reduced-motion:reduce){.ops-scanline,.reactor-orbit,.campus-links{animation:none!important}.scene-particles{display:none}}
+
+
+/* Data-motion feedback is tied to real API polling / inference request state. */
+.ops-universe .ops-state small{min-width:125px}
+.ops-processing .campus-links{animation-duration:1.4s;stroke-width:2.8;filter:drop-shadow(0 0 4px currentColor)}
+.ops-processing .central-reactor{filter:drop-shadow(0 0 30px #21baff77)}
+.ops-processing .reactor-orbit{animation-duration:4s}
+.ops-processing .ops-city-art .scene-particles{filter:drop-shadow(0 0 12px #9cfbff)}
+.ops-processing .ops-state>span{animation:telemetryBlink .75s ease-in-out infinite alternate}
+.ops-processing .ops-bottom-rail{border-color:#3984a5;box-shadow:0 0 20px #1da9d01a,inset 0 0 25px #1676a511}
+.ops-processing .rail-metric:first-child .rail-icon{animation:telemetryBlink .75s ease-in-out infinite alternate}
+.ops-has-records .campus-building:last-of-type{filter:drop-shadow(0 0 8px #54e8bd44)}
+.ops-has-records .ops-stat:nth-of-type(2) b,.ops-has-records .rail-metric:nth-child(2) b{color:#70e9c6}
+@keyframes telemetryBlink{from{opacity:.55}to{opacity:1;box-shadow:0 0 13px #53dff4}}
