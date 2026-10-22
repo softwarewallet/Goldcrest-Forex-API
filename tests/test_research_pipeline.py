@@ -186,3 +186,33 @@ def test_strict_cli_returns_three_when_audit_fails(monkeypatch, capsys):
     assert code == 3
     assert "strict provenance audit failed" in captured.err
     assert '"execution_connected": false' in captured.out
+
+
+def test_pipeline_stops_before_dataset_build_when_raw_quality_fails(tmp_path, monkeypatch):
+    raw = tmp_path / "bad_ohlc.csv"
+    raw.write_text(
+        "symbol,timeframe,timestamp,open,high,low,close\\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,0.8,0.9,1.1\\n",
+        encoding="utf-8",
+    )
+    called = {"prepare": False}
+
+    def should_not_prepare(*args, **kwargs):
+        called["prepare"] = True
+        raise AssertionError("dataset preparation must not run after a failed OHLC audit")
+
+    monkeypatch.setattr(research_pipeline, "prepare_research_dataset", should_not_prepare)
+    with pytest.raises(ValueError, match="historical OHLC quality audit failed"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD", timeframe="M15", horizon_bars=4, class_1_means="UP",
+            terms_reference="actual provider terms", source_version="test-export-v1",
+            output_dir=tmp_path / "run", run_id="bad-data-run",
+            retrieved_at_utc="2026-10-21T00:00:00Z", ohlc_csv=raw,
+            initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
+        )
+    assert called["prepare"] is False
+    receipt = tmp_path / "run" / "bad-data-run_data_quality_audit.json"
+    assert receipt.exists()
+    stored = json.loads(receipt.read_text(encoding="utf-8"))
+    assert stored["status"] == "FAIL"
+    assert stored["actionable"] is False
