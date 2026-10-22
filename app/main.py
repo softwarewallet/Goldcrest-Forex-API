@@ -52,6 +52,10 @@ def _prediction_response(item: PredictionRecord) -> PredictionResponse:
     )
 
 
+def _count_rows(db: Session, model) -> int:
+    return int(db.scalar(select(func.count()).select_from(model)) or 0)
+
+
 @app.get("/api/v1/health", response_model=HealthResponse)
 async def health(settings: Settings = Depends(get_settings), db: Session = Depends(get_db)):
     try:
@@ -172,10 +176,47 @@ async def record_outcome(payload: OutcomeRequest, db: Session = Depends(get_db))
 
 @app.get("/api/v1/performance", dependencies=[Depends(require_api_key)])
 async def performance(db: Session = Depends(get_db)):
+    # Use database-side counts rather than materializing all records as the research store grows.
     return {
-        "predictions_total": db.scalar(select(func.count()).select_from(PredictionRecord)) or 0,
-        "outcomes_recorded": db.scalar(select(func.count()).select_from(OutcomeRecord)) or 0,
+        "predictions_total": _count_rows(db, PredictionRecord),
+        "outcomes_recorded": _count_rows(db, OutcomeRecord),
         "note": "Directional metrics are not published until outcome definitions and scoring are finalized.",
+    }
+
+
+@app.get("/api/v1/research/summary", dependencies=[Depends(require_api_key)])
+async def research_summary(db: Session = Depends(get_db)):
+    """Read-only aggregate research telemetry; intentionally does not claim prediction accuracy."""
+    predictions_total = _count_rows(db, PredictionRecord)
+    outcomes_recorded = _count_rows(db, OutcomeRecord)
+
+    decision_rows = db.execute(
+        select(PredictionRecord.decision, func.count())
+        .group_by(PredictionRecord.decision)
+        .order_by(PredictionRecord.decision)
+    ).all()
+    outcome_rows = db.execute(
+        select(OutcomeRecord.outcome_label, func.count())
+        .group_by(OutcomeRecord.outcome_label)
+        .order_by(OutcomeRecord.outcome_label)
+    ).all()
+    model_rows = db.execute(
+        select(PredictionRecord.model_id, func.count())
+        .group_by(PredictionRecord.model_id)
+        .order_by(PredictionRecord.model_id)
+    ).all()
+
+    return {
+        "schema_version": "1.0",
+        "predictions_total": predictions_total,
+        "outcomes_recorded": outcomes_recorded,
+        "pending_outcomes": max(predictions_total - outcomes_recorded, 0),
+        "outcome_coverage": round(outcomes_recorded / predictions_total, 4) if predictions_total else None,
+        "decisions": [{"decision": key, "count": int(count)} for key, count in decision_rows],
+        "outcomes": [{"label": key, "count": int(count)} for key, count in outcome_rows],
+        "models": [{"model_id": key or "unknown", "count": int(count)} for key, count in model_rows],
+        "accuracy_metrics_published": False,
+        "note": "Counts describe stored research records only. They are not directional accuracy, calibrated probabilities, or profitability metrics.",
     }
 
 
