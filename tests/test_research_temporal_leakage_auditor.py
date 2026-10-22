@@ -5,6 +5,8 @@ from app.research_temporal_leakage_auditor import audit_temporal_integrity
 
 
 def _seal(payload):
+    # Recompute over the payload excluding any previous digest, matching the auditor contract.
+    payload.pop("report_payload_sha256", None)
     payload["report_payload_sha256"] = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     ).hexdigest()
