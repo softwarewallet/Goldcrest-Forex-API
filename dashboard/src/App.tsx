@@ -183,11 +183,11 @@ export default function App() {
       {probeState !== "not-run" && <div className={`probe-banner ${probeState}`}><span>{probeState === "passed" ? "✓" : probeState === "failed" ? "!" : "…"}</span><div><b>{probeState === "passed" ? "Actual model inference probe passed" : probeState === "failed" ? "Actual model inference probe failed" : "Running a real model completion…"}</b><p>{probeState === "passed" ? `Validated JSON completion from ${probeModel}. This confirms connectivity and response format only—not prediction quality.` : probeState === "failed" ? probeError : "Waiting for the inference endpoint to complete."}</p></div><button onClick={() => { setProbeState("not-run"); setProbeError(""); }}>DISMISS</button></div>}
       {error && <div className="error-banner" role="alert"><span>!</span><div><b>{state === "degraded" ? "Some research endpoints are unavailable" : "Research API unavailable"}</b><p>{error}</p><small>{state === "degraded" ? "Successful endpoints are refreshed independently. Failed sections may still show the last retrieved data." : "Check the API address, network access, and key. Existing signal data is not presented as live."}</small></div><button onClick={() => setShowSettings(true)}>CONNECTION SETTINGS</button></div>}{state === "offline" && lastSync && <div className="stale-banner" role="status"><Icon name="clock" /><div><b>Showing last successful snapshot</b><p>Live refresh failed. The records and counters below may be stale; last successful sync was {stamp(lastSync)}. Refresh or restore the API connection to update them.</p></div></div>}
 
-      <section className={`ops-universe ${busy || probeState === "running" ? "ops-processing" : ""}`} aria-label="Goldcrest AI operations universe">
+      <section className={`ops-universe ${busy || probeState === "running" ? "ops-processing" : ""} ${predictions.length ? "ops-has-records" : ""}`} aria-label="Goldcrest AI operations universe">
   <div className="ops-atmosphere"/><div className="ops-scanline"/>
   <header className="ops-heading">
     <div><span className="ops-kicker"><i/> GOLDCREST INTELLIGENCE SYSTEMS <b>/</b> OPERATIONS UNIVERSE</span><h2>One intelligence. <span>Connected systems.</span></h2><p>Research architecture, model services and evidence in one operational view.</p></div>
-    <div className="ops-state"><span className={state === "connected" ? "live-dot" : ""}/><div><b>{state === "connected" ? "SYSTEM LINKED" : state === "degraded" ? "PARTIAL LINK" : "LOCAL VISUALIZATION"}</b><small>{lastSync ? `LAST SYNC ${new Date(lastSync).toLocaleTimeString()}` : "WAITING FOR API TELEMETRY"}</small></div></div>
+    <div className="ops-state"><span className={state === "connected" ? "live-dot" : ""}/><div><b>{state === "connected" ? "SYSTEM LINKED" : state === "degraded" ? "PARTIAL LINK" : "LOCAL VISUALIZATION"}</b><small>{lastSync ? `LAST SYNC ${new Date(lastSync).toLocaleTimeString()}` : "{busy ? "API REQUESTS IN FLIGHT" : lastSync ? "LATEST API POLL COMPLETE" : "WAITING FOR API TELEMETRY"}"}</small></div></div>
   </header>
   <div className="ops-scene">
     <aside className="ops-glass ops-left">
@@ -245,7 +245,7 @@ export default function App() {
           <circle cx="500" cy="320" r="5" fill="#fff" filter="url(#neonBlur)"/>
         </g>
         <g className="scene-labels" fontFamily="monospace" textAnchor="middle"><text x="205" y="125" fill="#8beaff">RESEARCH LAB</text><text x="785" y="91" fill="#d7b2ff">MODEL INTELLIGENCE</text><text x="200" y="300" fill="#8affd9">FEATURE SYSTEMS</text><text x="800" y="298" fill="#ffd293">VALIDATION HUB</text><text x="500" y="415" fill="#a9f7ff" className="reactor-label">GOLDCREST NEURAL CORE</text><text x="500" y="434" fill="#72a7ca" className="reactor-sub">{probeState === "running" ? "INFERENCE REQUEST IN PROGRESS" : probeState === "passed" ? "INFERENCE PROBE PASSED" : probeState === "failed" ? "PROBE FAILED · CHECK API" : "RESEARCH ARCHITECTURE"}</text></g>
-        <g className="scene-particles" fill="#8df7ff">{[0,1,2,3,4,5].map(i=><circle key={i} r={i%2?2:3}><animateMotion dur={4+i*.7+"s"} repeatCount="indefinite" path={["M205 260 L350 285 L500 320","M785 233 L640 282 L500 320","M200 423 L350 360 L500 320","M800 423 L650 360 L500 320","M500 470 L500 400 L500 320","M315 205 L400 260 L500 320"][i]}/></circle>)}</g>
+        <g className="scene-particles" fill="#8df7ff">{[0,1,2,3,4,5].map(i=><circle key={i} r={i%2?2:3}><animateMotion dur={4+i*.7+"s"} repeatCount={busy || probeState === "running" ? "indefinite" : "0"} path={["M205 260 L350 285 L500 320","M785 233 L640 282 L500 320","M200 423 L350 360 L500 320","M800 423 L650 360 L500 320","M500 470 L500 400 L500 320","M315 205 L400 260 L500 320"][i]}/></circle>)}</g>
       </svg>
       <div className="world-caption"><span><i/> INTERACTIVE SYSTEM MAP</span><span>SELECT A MODULE TO INSPECT</span></div>
     </div>
@@ -265,8 +265,8 @@ export default function App() {
     </aside>
   </div>
   <div className="ops-bottom-rail">
-    <div className="rail-metric"><i className="rail-icon blue">◉</i><span><small>API LINK</small><b>{state === "connected" ? "CONNECTED" : state === "degraded" ? "DEGRADED" : "OFFLINE"}</b></span></div>
-    <div className="rail-metric"><i className="rail-icon green">✓</i><span><small>STORED SIGNALS</small><b>{performance?.predictions_total ?? "—"}</b></span></div>
+    <div className="rail-metric"><i className="rail-icon blue">◉</i><span><small>{busy ? "DATA EXCHANGE" : "API LINK"}</small><b>{busy ? "POLLING…" : state === "connected" ? "CONNECTED" : state === "degraded" ? "DEGRADED" : "OFFLINE"}</b></span></div>
+    <div className="rail-metric"><i className="rail-icon green">✓</i><span><small>{busy ? "SYNCING RECORDS" : "STORED SIGNALS"}</small><b>{performance?.predictions_total ?? "—"}</b></span></div>
     <div className="rail-metric"><i className="rail-icon violet">◌</i><span><small>OUTCOMES</small><b>{performance?.outcomes_recorded ?? "—"}</b></span></div>
     <div className="rail-metric"><i className="rail-icon gold">◇</i><span><small>MODEL INVENTORY</small><b>{modelInventory?.models.length ?? "—"}</b></span></div>
     <div className="rail-metric"><i className="rail-icon blue">⌁</i><span><small>AUDIT EVENTS</small><b>{events.length}</b></span></div>
