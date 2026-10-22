@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import ResearchReportPanel from "./ResearchReportPanel";
+import ResearchComparisonPanel from "./ResearchComparisonPanel";
 
 type Health = { status: string; application: string; inference_status: string; database_status: string };
 type Performance = { predictions_total: number; outcomes_recorded: number; note?: string };
@@ -325,6 +326,8 @@ export default function App() {
           <div className="activity-foot"><span className="live-dot" /> AUDIT READ-ONLY VIEW</div>
         </div>
       </section>
+
+      <ResearchComparisonPanel base={base} apiKey={key} />
 
       <ResearchReportPanel />
 
