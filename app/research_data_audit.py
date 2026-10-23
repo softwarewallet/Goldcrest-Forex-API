@@ -83,24 +83,29 @@ def audit_raw_ohlc_file(
             errors.append("snapshot_manifest_unreadable")
 
     if manifest:
-        if manifest.get("scope") != "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION":
-            errors.append("unexpected_manifest_scope")
-        if manifest.get("host") != "demo":
-            errors.append("snapshot_host_is_not_demo")
-        if manifest.get("actionable") is not False:
-            errors.append("snapshot_not_explicitly_non_actionable")
-        manifest_digest = manifest.get("snapshot_sha256")
-        if not isinstance(manifest_digest, str) or manifest_digest != raw_digest:
-            errors.append("snapshot_sha256_mismatch")
-        page_info = manifest.get("pagination")
-        if not isinstance(page_info, dict):
-            warnings.append("pagination_metadata_missing_legacy_snapshot")
-        elif page_info.get("complete") is not True:
-            errors.append("pagination_not_marked_complete")
-        if expected_symbol and str(manifest.get("symbol", "")).upper() != expected_symbol.strip().upper():
-            errors.append("manifest_symbol_mismatch")
-        if expected_timeframe and str(manifest.get("timeframe", "")).upper() != expected_timeframe.strip().upper():
-            errors.append("manifest_timeframe_mismatch")
+        is_ctrader_manifest = manifest.get("scope") == "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION"
+        if not is_ctrader_manifest:
+            if require_manifest:
+                errors.append("unexpected_manifest_scope")
+            else:
+                warnings.append("non_ctrader_manifest_metadata_unverified")
+        else:
+            if manifest.get("host") != "demo":
+                errors.append("snapshot_host_is_not_demo")
+            if manifest.get("actionable") is not False:
+                errors.append("snapshot_not_explicitly_non_actionable")
+            manifest_digest = manifest.get("snapshot_sha256")
+            if not isinstance(manifest_digest, str) or manifest_digest != raw_digest:
+                errors.append("snapshot_sha256_mismatch")
+            page_info = manifest.get("pagination")
+            if not isinstance(page_info, dict):
+                warnings.append("pagination_metadata_missing_legacy_snapshot")
+            elif page_info.get("complete") is not True:
+                errors.append("pagination_not_marked_complete")
+            if expected_symbol and str(manifest.get("symbol", "")).upper() != expected_symbol.strip().upper():
+                errors.append("manifest_symbol_mismatch")
+            if expected_timeframe and str(manifest.get("timeframe", "")).upper() != expected_timeframe.strip().upper():
+                errors.append("manifest_timeframe_mismatch")
 
     rows_count = 0
     timestamps: list[datetime] = []
