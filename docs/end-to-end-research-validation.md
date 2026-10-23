@@ -369,3 +369,58 @@ long-duration buckets may be small and may differ in market regime and label pre
 semantics are to change, create a distinct versioned dataset and a new pipeline run so the old run
 remains auditable; do not silently overwrite historical artifacts.
 
+## 7. Run a separately versioned elapsed-time label-eligibility experiment
+
+The elapsed-time audit can reveal that a row-based forward target is more than the nominal
+horizon away because of timestamp gaps. For example, an M15 target four rows ahead has a
+nominal one-hour horizon, but a row sequence may cross a weekend closure. Preserve the original
+run and use a new run ID for a capped eligibility experiment.
+
+Use the same raw OHLC snapshot, model/feature settings, walk-forward sizes, random seed, and
+trial count as the baseline. The optional `--max-label-elapsed-hours 1.0` cap marks labels
+ineligible when the existing row-index target is more than one elapsed UTC hour from the
+prediction timestamp:
+
+```bash
+python -m app.research_pipeline \
+  --ohlc-csv data/research/EURUSD_M365_demo.csv \
+  --symbol EURUSD \
+  --timeframe M15 \
+  --horizon-bars 4 \
+  --class-1-means UP \
+  --terms-reference "<the same actual provider terms reference as the baseline>" \
+  --source-version "<the same source version as the baseline>" \
+  --output-dir data/research/runs \
+  --run-id eurusd-m15-demo-m365-baseline-validation-20261023-elapsed-cap-1h \
+  --initial-train-bars <same baseline value> \
+  --validation-bars <same baseline value> \
+  --test-bars <same baseline value> \
+  --step-bars <same baseline value> \
+  --trials-per-fold <same baseline value> \
+  --random-seed <same baseline value> \
+  --bootstrap-resamples <same baseline value> \
+  --max-experiments 2 \
+  --no-ablation \
+  --max-label-elapsed-hours 1.0
+```
+
+Replace every angle-bracket value with the exact setting used for the completed baseline run.
+Use a unique run ID, and do not overwrite its baseline artifacts. Keep `--no-ablation` and
+`--max-experiments` consistent with the baseline matrix configuration.
+
+The cap is applied to actual UTC elapsed time between the prediction timestamp and existing
+forward target timestamp. The builder retains every output row and the original forward label,
+writing `label_elapsed_hours` and `label_eligible` metadata for the capped run. This preserves
+the underlying timestamp timeline, so the chronological fold boundaries remain comparable.
+Ineligible rows are excluded from model fitting, validation-based tuning, final refitting, and
+held-out scoring. Reports separately count excluded rows for each partition and the dataset
+manifest records the cap and eligibility counts. With no cap specified, the builder retains its
+legacy CSV schema and all labels remain eligible.
+
+After the variant completes, compare its experiment matrix and validation report with the
+baseline. Review held-out sample counts, label prevalence, fold-by-fold log loss/Brier score,
+eligibility exclusions, and whether the test windows still match. A one-hour cap is an
+eligibility sensitivity test, not a claim that the target semantics are now correct. The
+remaining predictions may still have other data-quality or leakage limitations; no model is
+selected automatically and no execution path is connected.
+
