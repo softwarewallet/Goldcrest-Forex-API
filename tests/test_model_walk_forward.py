@@ -141,3 +141,34 @@ def test_rejects_float_labels_instead_of_silently_accepting_them():
         evaluate_binary_walk_forward(
             plan, rows, feature_names=("close_delta", "hour_bucket"), model_factory=FakeModel,
         )
+
+def test_walk_forward_excludes_ineligible_rows_from_fit_and_scoring():
+    bars = make_bars()
+    plan = generate_walk_forward_folds(
+        bars, initial_train_bars=60, validation_bars=20,
+        test_bars=20, step_bars=10, horizon_bars=2,
+    )
+    first_fold = plan.folds[0]
+    excluded_timestamps = {
+        first_fold.train[len(first_fold.train) // 2].timestamp,
+        first_fold.validation[len(first_fold.validation) // 2].timestamp,
+        first_fold.test[len(first_fold.test) // 2].timestamp,
+    }
+    examples = [
+        replace(row, label_eligible=False)
+        if row.timestamp in excluded_timestamps else row
+        for row in examples_for(bars)
+    ]
+
+    results = evaluate_binary_walk_forward(
+        plan, examples, feature_names=("close_delta", "hour_bucket"),
+        model_factory=FakeModel,
+    )
+
+    first = results[0]
+    assert first.train_rows_excluded_ineligible == 1
+    assert first.validation_rows_excluded_ineligible == 1
+    assert first.test_rows_excluded_ineligible == 1
+    assert first.validation.sample_count == len(first_fold.validation) - 1
+    assert first.test.sample_count == len(first_fold.test) - 1
+
