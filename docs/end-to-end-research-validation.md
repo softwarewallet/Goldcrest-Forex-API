@@ -108,6 +108,30 @@ or connectivity succeeds. Use the reported error code to distinguish application
 errors, account/token authorization errors, request timeouts, and disconnects. Never disable
 TLS certificate verification to work around a connection problem.
 
+## 0. Audit a downloaded raw OHLC snapshot before preparing features
+
+After a cTrader historical download completes, run the local integrity audit against its CSV
+and companion manifest. This audit does not connect to cTrader, modify the input, or train a model.
+
+```bash
+python -m app.research_data_audit \
+  --csv data/research/EURUSD_M365_demo.csv \
+  --symbol EURUSD --timeframe M15 \
+  --output data/research/EURUSD_M365_demo.audit.json --json
+```
+
+The audit verifies that the raw file matches the manifest SHA-256, checks the manifest's DEMO
+and non-actionable flags, confirms the recorded row count and timestamp bounds, and inspects
+chronology, duplicate timestamps, timeframe alignment, and OHLC constraints. It reports the
+observed time span, interval statistics, pagination metadata, and large time gaps. Gap warnings
+are intentionally not treated as corruption automatically because FX weekends, holidays,
+instrument inactivity, and provider behavior can create legitimate gaps. Inspect any reported
+large gaps before model evaluation.
+
+A `PASS` or `PASS_WITH_WARNINGS` means the structural audit completed without a hard error;
+it does not prove that every expected market candle exists or that a dataset is suitable for
+training. The input CSV and manifest are kept unchanged, and the output report is non-actionable.
+
 ## 1. Preflight the Ubuntu runtime
 
 From the repository root with the project virtual environment active:
