@@ -11,6 +11,7 @@ import csv
 import hashlib
 import json
 import math
+import random
 import statistics
 import sys
 from datetime import datetime, timezone
@@ -18,7 +19,6 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.research_baseline_analysis import (
-    _block_bootstrap,
     _brier,
     _log_loss,
     _metric_summary,
@@ -118,6 +118,93 @@ def _regime(value: float, low_threshold: float, high_threshold: float) -> str:
     if value > high_threshold:
         return "high_volatility"
     return "mid_volatility"
+
+
+def _conditional_block_bootstrap(
+    fold_rows: Sequence[Sequence[Mapping[str, Any]]],
+    *,
+    target_regime: str,
+    baseline_field: str,
+    metric_name: str,
+    block_length: int,
+    resamples: int,
+    seed: int,
+) -> dict[str, Any]:
+    """Resample full chronological fold rows, then score only rows in the target regime.
+
+    Resampling an already-filtered regime sequence would incorrectly treat distant
+    same-regime observations as adjacent. This function keeps original chronology by
+    drawing blocks from each complete held-out fold and conditions each draw on rows
+    belonging to the requested regime.
+    """
+    folds = [list(rows) for rows in fold_rows if rows]
+    if not folds:
+        raise ValueError("conditional bootstrap requires non-empty fold rows")
+    if target_regime not in _REGIMES:
+        raise ValueError("unknown volatility regime")
+    if metric_name not in {"log_loss", "brier_score"}:
+        raise ValueError("unsupported loss metric")
+    if block_length < 1 or resamples < 100:
+        raise ValueError("invalid conditional bootstrap parameters")
+
+    def improvement(row: Mapping[str, Any]) -> float:
+        label = int(row["label"])
+        model_probability = float(row["model_probability"])
+        baseline_probability = float(row["baseline_probabilities"][baseline_field])
+        if metric_name == "log_loss":
+            return _log_loss(label, baseline_probability) - _log_loss(label, model_probability)
+        return _brier(label, baseline_probability) - _brier(label, model_probability)
+
+    observed_values = [
+        improvement(row)
+        for fold in folds
+        for row in fold
+        if row.get("regime") == target_regime
+    ]
+    if not observed_values:
+        raise ValueError("conditional bootstrap has no observations in the requested regime")
+
+    observed = sum(observed_values) / len(observed_values)
+    rng = random.Random(seed)
+    distribution: list[float] = []
+    attempts = 0
+    max_attempts = resamples * 20
+    while len(distribution) < resamples and attempts < max_attempts:
+        attempts += 1
+        total = 0.0
+        count = 0
+        for rows in folds:
+            n = len(rows)
+            length = min(block_length, n)
+            sample_indices: list[int] = []
+            while len(sample_indices) < n:
+                start = rng.randrange(n)
+                sample_indices.extend((start + offset) % n for offset in range(length))
+            for index in sample_indices[:n]:
+                row = rows[index]
+                if row.get("regime") == target_regime:
+                    total += improvement(row)
+                    count += 1
+        # A draw with zero target-regime observations has no conditional metric.
+        if count:
+            distribution.append(total / count)
+    if len(distribution) != resamples:
+        raise ValueError("could_not_generate_enough_nonempty_conditional_bootstrap_draws")
+    distribution.sort()
+    low = _quantile(distribution, 0.025)
+    high = _quantile(distribution, 0.975)
+    return {
+        "observed_mean_improvement": observed,
+        "confidence_level": 0.95,
+        "confidence_interval_95": [low, high],
+        "bootstrap_probability_improvement_positive": sum(value > 0 for value in distribution) / len(distribution),
+        "bootstrap_resamples": len(distribution),
+        "requested_bootstrap_resamples": resamples,
+        "block_length_observations": block_length,
+        "method": "paired_circular_moving_block_bootstrap_stratified_by_walk_forward_fold_conditioned_on_regime",
+        "regime_sample_count": len(observed_values),
+        "interpretation": "Conditional descriptive uncertainty; positive values favor the model, not proof of significance or profitability.",
+    }
 
 
 def analyze_prediction_regimes(
@@ -262,6 +349,7 @@ def analyze_prediction_regimes(
             }
             for regime in _REGIMES
         }
+        full_fold_rows: dict[int, list[dict[str, Any]]] = {}
         for fold in experiment.get("fold_results", []):
             fold_index = fold.get("fold_index")
             if fold_index not in fold_assignments:
@@ -277,9 +365,7 @@ def analyze_prediction_regimes(
                     if regime is None:
                         if record_fold_counts:
                             skipped_without_volatility += 1
-                        if record_fold_counts:
                             threshold_by_fold[fold_index]["predictions_without_warmup_volatility"] += 1
-                        continue
                     label = prediction["label"]
                     probability = float(prediction["model_probability_class_1"])
                     if label not in (0, 1) or isinstance(label, bool) or not 0 <= probability <= 1 or not math.isfinite(probability):
@@ -296,19 +382,24 @@ def analyze_prediction_regimes(
                         baseline_probabilities[baseline_name] = baseline_probability
                     if not valid_baselines:
                         continue
-                    bucket = buckets[regime]
-                    bucket["labels"].append(int(label))
-                    bucket["model"].append(probability)
-                    bucket["fold_indices"].append(fold_index)
-                    bucket["rows_by_fold"].setdefault(fold_index, []).append({
+                    full_row = {
+                        "timestamp": timestamp,
+                        "regime": regime,
                         "label": int(label),
                         "model_probability": probability,
                         "baseline_probabilities": baseline_probabilities,
-                    })
-                    for baseline_name, baseline_probability in baseline_probabilities.items():
-                        bucket[baseline_name].append(baseline_probability)
-                    if record_fold_counts:
-                        threshold_by_fold[fold_index]["regime_counts"][regime] += 1
+                    }
+                    full_fold_rows.setdefault(fold_index, []).append(full_row)
+                    if regime is not None:
+                        bucket = buckets[regime]
+                        bucket["labels"].append(int(label))
+                        bucket["model"].append(probability)
+                        bucket["fold_indices"].append(fold_index)
+                        bucket["rows_by_fold"].setdefault(fold_index, []).append(full_row)
+                        for baseline_name, baseline_probability in baseline_probabilities.items():
+                            bucket[baseline_name].append(baseline_probability)
+                        if record_fold_counts:
+                            threshold_by_fold[fold_index]["regime_counts"][regime] += 1
                 except (KeyError, TypeError, ValueError):
                     errors.append(f"experiment_{experiment.get('experiment_id')}_malformed_prediction_row")
 
@@ -352,26 +443,16 @@ def analyze_prediction_regimes(
 
                 metric_uncertainty: dict[str, Any] = {}
                 for metric_index, metric_name in enumerate(("log_loss", "brier_score")):
-                    fold_differences: list[list[float]] = []
-                    for fold_index, fold_rows in sorted(bucket["rows_by_fold"].items()):
-                        differences: list[float] = []
-                        for row in fold_rows:
-                            baseline_probability = row["baseline_probabilities"][baseline_field]
-                            if metric_name == "log_loss":
-                                improvement = _log_loss(row["label"], baseline_probability) - _log_loss(
-                                    row["label"], row["model_probability"]
-                                )
-                            else:
-                                improvement = _brier(row["label"], baseline_probability) - _brier(
-                                    row["label"], row["model_probability"]
-                                )
-                            differences.append(improvement)
-                        if differences:
-                            fold_differences.append(differences)
-
+                    selected_folds = [
+                        rows for _, rows in sorted(full_fold_rows.items())
+                        if any(row.get("regime") == regime for row in rows)
+                    ]
                     seed = random_seed + experiment_index * 10000 + _REGIMES.index(regime) * 1000 + baseline_index * 10 + metric_index
-                    bootstrap = _block_bootstrap(
-                        fold_differences,
+                    bootstrap = _conditional_block_bootstrap(
+                        selected_folds,
+                        target_regime=regime,
+                        baseline_field=baseline_field,
+                        metric_name=metric_name,
                         block_length=chosen_block_length,
                         resamples=bootstrap_resamples,
                         seed=seed,
@@ -385,7 +466,10 @@ def analyze_prediction_regimes(
                     metric_uncertainty[metric_name] = {
                         **bootstrap,
                         "interval_evidence": interval_evidence,
-                        "folds_compared": len(fold_differences),
+                        "folds_compared": sum(
+                            any(row.get("regime") == regime for row in rows)
+                            for rows in selected_folds
+                        ),
                     }
                 paired_uncertainty[display_names[baseline_display]] = metric_uncertainty
 
