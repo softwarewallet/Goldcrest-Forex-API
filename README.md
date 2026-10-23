@@ -71,3 +71,8 @@ python -m app.research_run_audit data/research/runs/<run-id>_pipeline_manifest.j
 ```
 
 Exit code 0 indicates integrity checks passed (possibly with warnings); exit code 3 indicates failure. This audit checks recorded hashes and safeguards but does not certify model quality, absence of leakage, data rights, or profitability. See `docs/research-run-integrity-audit.md`.
+
+
+## End-to-end research validation
+
+Run a no-network environment preflight with `python -m app.research_validation --json`; add `--check-ctrader-config` to verify cTrader DEMO environment-variable presence without printing secret values or connecting to cTrader. Each completed research pipeline run now writes a consolidated `<run-id>_validation_report.json` containing artifact integrity checks, dataset quality checks, walk-forward metric summaries, and runtime diagnostics. Use `--strict-validation` to return a nonzero exit code when consolidated validation fails. See `docs/end-to-end-research-validation.md` for the end-to-end workflow and status semantics.

@@ -67,6 +67,7 @@ The output directory defaults to `data/research/runs`. It contains:
 - causal-feature and mature-label dataset CSV plus its provenance manifest;
 - fixed-fold experiment matrix JSON report;
 - a pipeline manifest binding the input, dataset, and report hashes.
+- a consolidated `<run-id>_validation_report.json` with integrity, dataset-quality, fold-metric, and runtime findings.
 
 The experiment matrix compares XGBoost and LightGBM on shared purged chronological folds.
 Feature-family ablations are enabled by default; use `--no-ablation` to run only the full
@@ -80,5 +81,5 @@ and bootstrap resamples are explicit resource controls.
 - No Auto Live, broker execution, or risk-control code is imported for writes or modified.
 - Test metrics are descriptive; no automatic winner selection occurs.
 - Reports are non-actionable and are not evidence of profitability.
-- The research command does not use news, PyTorch, Llama/Qwen, Vega, Nova, or Titan yet.
-- Run tests with `python -m pytest -q tests/test_research_pipeline.py tests/test_research_orchestrator.py`.
+- The research command does not use news, PyTorch, Llama/Qwen, Vega, Nova, or Titan yet. The completed-run validator records package discovery but does not automatically add those systems to model training. Use `python -m app.research_validation --json` for a no-network runtime preflight and add `--strict-validation` to make the research CLI fail when consolidated validation fails.
+- Run tests with `python -m pytest -q`; this includes ingestion, dataset preparation, experiment, provenance, run-integrity, and consolidated-validation tests.

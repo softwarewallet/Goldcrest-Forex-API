@@ -17,14 +17,17 @@ from app.resource_profile import build_resource_profile
 
 
 _PYTHON_MODULES = {
-    "numpy": "numpy",
+    "NumPy": "numpy",
     "pandas": "pandas",
+    "SciPy": "scipy",
     "PyTorch": "torch",
     "TA-Lib": "talib",
     "scikit-learn": "sklearn",
     "XGBoost": "xgboost",
     "LightGBM": "lightgbm",
     "Optuna": "optuna",
+    "cTrader Open API": "ctrader_open_api",
+    "Twisted": "twisted",
 }
 
 
