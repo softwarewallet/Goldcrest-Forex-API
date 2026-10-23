@@ -22,6 +22,7 @@ from app.research_provenance_auditor import audit_experiment_matrix_file
 from app.research_data_quality import audit_ohlc_csv_file
 from app.research_temporal_leakage_auditor import audit_temporal_integrity_file
 from app.research_feature_provenance_auditor import audit_feature_provenance_file
+from app.research_experiment_fingerprint import build_experiment_fingerprint
 
 
 def _sha256(path: str | Path) -> str:
@@ -166,6 +167,33 @@ def run_research_pipeline(
     feature_provenance_path = destination / f"{run_id}_feature_provenance_audit.json"
     feature_provenance_audit = audit_feature_provenance_file(dataset_csv, dataset_manifest_path, feature_provenance_path)
     feature_provenance_sha256 = _sha256(feature_provenance_path)
+    fingerprint_config = {
+        "symbol": instrument,
+        "timeframe": period,
+        "horizon_bars": horizon_bars,
+        "class_1_means": class_1_means,
+        "terms_reference": terms_reference,
+        "source_version": actual_source_version,
+        "initial_train_bars": initial_train_bars,
+        "validation_bars": validation_bars,
+        "test_bars": test_bars,
+        "step_bars": step_bars,
+        "trials_per_fold": trials_per_fold,
+        "random_seed": random_seed,
+        "bootstrap_resamples": bootstrap_resamples,
+        "max_experiments": max_experiments,
+        "include_ablation": include_ablation,
+        "model_types": ["xgboost", "lightgbm"],
+    }
+    experiment_fingerprint = build_experiment_fingerprint(
+        configuration=fingerprint_config,
+        raw_ohlc_sha256=raw_sha256,
+        dataset_sha256=_sha256(dataset_csv),
+        dataset_manifest=dataset_manifest,
+    )
+    fingerprint_path = destination / f"{run_id}_experiment_fingerprint.json"
+    fingerprint_path.write_text(json.dumps(experiment_fingerprint, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    fingerprint_file_sha256 = _sha256(fingerprint_path)
 
     payload: dict[str, Any] = {
         "schema_version": 1,
@@ -203,6 +231,9 @@ def run_research_pipeline(
         "feature_provenance_audit_path": str(feature_provenance_path),
         "feature_provenance_audit_sha256": feature_provenance_sha256,
         "feature_provenance_audit_status": feature_provenance_audit["status"],
+        "experiment_fingerprint_path": str(fingerprint_path),
+        "experiment_fingerprint_file_sha256": fingerprint_file_sha256,
+        "experiment_fingerprint_sha256": experiment_fingerprint["experiment_fingerprint_sha256"],
         "strict_feature_provenance_audit": strict_feature_provenance_audit,
         "strict_provenance_audit": strict_provenance_audit,
         "ingestion": ingestion,
