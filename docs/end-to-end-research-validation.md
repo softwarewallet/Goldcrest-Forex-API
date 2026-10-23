@@ -239,6 +239,25 @@ observations and must not be pooled as if they were. No candidate is ranked or s
 report. The validator also records package discovery and resource profile details. The optional
 cTrader config check only inspects environment configuration; it is not a broker/network test.
 
+## 4. Produce a compact model-results summary
+
+To avoid copying the entire pipeline JSON, create a short summary from the completed pipeline
+manifest and its experiment-matrix report:
+
+```bash
+python -m app.research_results_summary \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json \
+  --output data/research/runs/<run-id>_results_summary.json
+```
+
+The command verifies the pipeline-manifest fingerprint and the experiment-matrix file hash,
+then prints per-experiment fold-level means and ranges for log loss, Brier score, fixed-threshold
+accuracy, expected calibration error, label prevalence, and mean predicted probability. It also
+compares average log loss and Brier score to a constant 0.5-probability reference (log loss
+`ln(2)`, Brier score `0.25`). Positive improvements mean the average metric is lower than that
+reference. This is a descriptive reference, not a trading strategy or a profitability benchmark.
+The command never ranks or automatically selects a model.
+
 ## Status semantics
 
 - `PASS`: all structural and data checks passed with no warnings.
