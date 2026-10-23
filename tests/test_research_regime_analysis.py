@@ -123,7 +123,7 @@ def test_regime_analysis_is_non_actionable_and_uses_prior_only_thresholds():
             assert uncertainty["interval_evidence"] in {
                 "positive_interval_excludes_zero", "negative_interval_excludes_zero", "interval_includes_zero"
             }
-            assert uncertainty["method"] == "paired_circular_moving_block_bootstrap_stratified_by_walk_forward_fold"
+            assert uncertainty["method"] == "paired_circular_moving_block_bootstrap_stratified_by_walk_forward_fold_conditioned_on_regime"
 
 
 def test_regime_thresholds_do_not_use_test_period_volatility():
