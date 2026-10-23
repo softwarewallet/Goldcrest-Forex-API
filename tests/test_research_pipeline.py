@@ -93,6 +93,13 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     stored = json.loads(manifest.read_text(encoding="utf-8"))
     assert stored["actionable"] is False
     assert stored["raw_ohlc_sha256"]
+    assert stored["raw_ohlc_audit_status"] == "PASS_WITH_WARNINGS"
+    raw_audit_path = Path(stored["raw_ohlc_audit_path"])
+    assert raw_audit_path.is_file()
+    raw_audit = json.loads(raw_audit_path.read_text(encoding="utf-8"))
+    assert raw_audit["errors"] == []
+    assert "snapshot_manifest_missing_provenance_hash_unverified" in raw_audit["warnings"]
+    assert stored["raw_ohlc_audit_sha256"]
     assert stored["dataset_sha256"]
     audit_path = tmp_path / "run" / "unit-test_provenance_audit.json"
     assert audit_path.exists()
@@ -134,3 +141,33 @@ def test_pipeline_rejects_unsafe_run_id_before_writing_files(tmp_path):
             ohlc_csv=source, initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
         )
     assert not (tmp_path / "run").exists()
+
+
+
+def test_pipeline_stops_before_dataset_preparation_when_raw_audit_fails(tmp_path, monkeypatch):
+    raw = tmp_path / "bad_ohlc.csv"
+    raw.write_text(
+        "symbol,timeframe,timestamp,open,high,low,close\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,0.9,0.8,0.95\n",
+        encoding="utf-8",
+    )
+
+    def should_not_prepare(*args, **kwargs):
+        pytest.fail("dataset preparation must not run when raw OHLC audit fails")
+
+    monkeypatch.setattr(research_pipeline, "prepare_research_dataset", should_not_prepare)
+
+    with pytest.raises(ValueError, match="raw OHLC audit failed before feature preparation"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD", timeframe="M15", horizon_bars=4, class_1_means="UP",
+            terms_reference="actual provider terms", source_version="test-export-v1",
+            output_dir=tmp_path / "run", run_id="raw-audit-gate",
+            retrieved_at_utc="2026-10-23T00:00:00Z", ohlc_csv=raw,
+            initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
+        )
+
+    report_path = tmp_path / "run" / "raw-audit-gate_raw_ohlc_audit.json"
+    assert report_path.is_file()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["status"] == "FAIL"
+    assert any(error.startswith("invalid_ohlc_rows:") for error in report["errors"])

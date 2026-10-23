@@ -40,6 +40,7 @@ def audit_raw_ohlc_file(
     manifest_path: str | Path | None = None,
     expected_symbol: str | None = None,
     expected_timeframe: str | None = None,
+    require_manifest: bool = True,
 ) -> dict[str, Any]:
     """Validate snapshot integrity, OHLC relationships, chronology, and coverage metadata."""
     path = Path(csv_path)
@@ -67,7 +68,10 @@ def audit_raw_ohlc_file(
         }
 
     if not manifest_file.is_file():
-        errors.append("snapshot_manifest_not_found")
+        if require_manifest:
+            errors.append("snapshot_manifest_not_found")
+        else:
+            warnings.append("snapshot_manifest_missing_provenance_hash_unverified")
     else:
         try:
             loaded = json.loads(manifest_file.read_text(encoding="utf-8"))
@@ -78,25 +82,30 @@ def audit_raw_ohlc_file(
         except (OSError, json.JSONDecodeError):
             errors.append("snapshot_manifest_unreadable")
 
+    is_ctrader_manifest = bool(manifest) and manifest.get("scope") == "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION"
     if manifest:
-        if manifest.get("scope") != "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION":
-            errors.append("unexpected_manifest_scope")
-        if manifest.get("host") != "demo":
-            errors.append("snapshot_host_is_not_demo")
-        if manifest.get("actionable") is not False:
-            errors.append("snapshot_not_explicitly_non_actionable")
-        manifest_digest = manifest.get("snapshot_sha256")
-        if not isinstance(manifest_digest, str) or manifest_digest != raw_digest:
-            errors.append("snapshot_sha256_mismatch")
-        page_info = manifest.get("pagination")
-        if not isinstance(page_info, dict):
-            warnings.append("pagination_metadata_missing_legacy_snapshot")
-        elif page_info.get("complete") is not True:
-            errors.append("pagination_not_marked_complete")
-        if expected_symbol and str(manifest.get("symbol", "")).upper() != expected_symbol.strip().upper():
-            errors.append("manifest_symbol_mismatch")
-        if expected_timeframe and str(manifest.get("timeframe", "")).upper() != expected_timeframe.strip().upper():
-            errors.append("manifest_timeframe_mismatch")
+        if not is_ctrader_manifest:
+            if require_manifest:
+                errors.append("unexpected_manifest_scope")
+            else:
+                warnings.append("non_ctrader_manifest_metadata_unverified")
+        else:
+            if manifest.get("host") != "demo":
+                errors.append("snapshot_host_is_not_demo")
+            if manifest.get("actionable") is not False:
+                errors.append("snapshot_not_explicitly_non_actionable")
+            manifest_digest = manifest.get("snapshot_sha256")
+            if not isinstance(manifest_digest, str) or manifest_digest != raw_digest:
+                errors.append("snapshot_sha256_mismatch")
+            page_info = manifest.get("pagination")
+            if not isinstance(page_info, dict):
+                warnings.append("pagination_metadata_missing_legacy_snapshot")
+            elif page_info.get("complete") is not True:
+                errors.append("pagination_not_marked_complete")
+            if expected_symbol and str(manifest.get("symbol", "")).upper() != expected_symbol.strip().upper():
+                errors.append("manifest_symbol_mismatch")
+            if expected_timeframe and str(manifest.get("timeframe", "")).upper() != expected_timeframe.strip().upper():
+                errors.append("manifest_timeframe_mismatch")
 
     rows_count = 0
     timestamps: list[datetime] = []
@@ -168,9 +177,9 @@ def audit_raw_ohlc_file(
         errors.append("csv_symbol_mismatch")
     if expected_timeframe and timeframes and timeframes != {expected_timeframe.strip().upper()}:
         errors.append("csv_timeframe_mismatch")
-    if manifest and len(symbols) == 1 and str(manifest.get("symbol", "")).upper() != next(iter(symbols)):
+    if is_ctrader_manifest and len(symbols) == 1 and str(manifest.get("symbol", "")).upper() != next(iter(symbols)):
         errors.append("manifest_csv_symbol_mismatch")
-    if manifest and len(timeframes) == 1 and str(manifest.get("timeframe", "")).upper() != next(iter(timeframes)):
+    if is_ctrader_manifest and len(timeframes) == 1 and str(manifest.get("timeframe", "")).upper() != next(iter(timeframes)):
         errors.append("manifest_csv_timeframe_mismatch")
     if first_bad_timestamp_line is not None:
         errors.append(f"timestamps_not_strictly_increasing_line_{first_bad_timestamp_line}")
@@ -182,13 +191,11 @@ def audit_raw_ohlc_file(
         errors.append(f"timestamps_not_aligned_to_timeframe:{unaligned_rows}")
 
     if timestamps and len(timestamps) == rows_count:
-        if timestamps[0].isoformat().replace("+00:00", "Z") != manifest.get("first_timestamp_utc"):
-            if manifest:
-                errors.append("manifest_first_timestamp_mismatch")
-        if timestamps[-1].isoformat().replace("+00:00", "Z") != manifest.get("last_timestamp_utc"):
-            if manifest:
-                errors.append("manifest_last_timestamp_mismatch")
-        if manifest and manifest.get("rows") != rows_count:
+        if is_ctrader_manifest and timestamps[0].isoformat().replace("+00:00", "Z") != manifest.get("first_timestamp_utc"):
+            errors.append("manifest_first_timestamp_mismatch")
+        if is_ctrader_manifest and timestamps[-1].isoformat().replace("+00:00", "Z") != manifest.get("last_timestamp_utc"):
+            errors.append("manifest_last_timestamp_mismatch")
+        if is_ctrader_manifest and manifest.get("rows") != rows_count:
             errors.append("manifest_row_count_mismatch")
         intervals_seconds = [
             (right - left).total_seconds() for left, right in zip(timestamps, timestamps[1:])
@@ -261,7 +268,7 @@ def audit_raw_ohlc_file(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Audit a local cTrader DEMO OHLC CSV and its integrity manifest.")
+    parser = argparse.ArgumentParser(description="Audit a local OHLC CSV and, when required, its cTrader DEMO integrity manifest.")
     parser.add_argument("--csv", required=True, help="Downloaded CSV to audit")
     parser.add_argument("--manifest", help="Manifest path; defaults to <csv>.manifest.json")
     parser.add_argument("--symbol", help="Optional expected symbol, e.g. EURUSD")

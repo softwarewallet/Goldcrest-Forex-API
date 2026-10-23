@@ -18,6 +18,7 @@ from typing import Any, Sequence
 from app.ctrader_history_ingest import download_ctrader_history
 from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
+from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
 from app.research_validation import validate_completed_run
@@ -113,6 +114,26 @@ def run_research_pipeline(
             "actionable": False,
         }
 
+    # Audit the immutable raw input before feature/label generation.
+    # cTrader ingestion must have its DEMO pagination/hash manifest; an operator-supplied
+    # CSV may be manifest-less, but receives an explicit provenance warning in that case.
+    raw_audit_path = destination / f"{run_id}_raw_ohlc_audit.json"
+    raw_audit = audit_raw_ohlc_file(
+        raw_csv,
+        expected_symbol=instrument,
+        expected_timeframe=period,
+        require_manifest=fetch_ctrader,
+    )
+    raw_audit_path.write_text(
+        json.dumps(raw_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    if raw_audit["status"] == "FAIL":
+        raise ValueError(
+            "raw OHLC audit failed before feature preparation: "
+            + ", ".join(raw_audit["errors"])
+        )
+
     dataset_csv = destination / f"{file_instrument}_{period}_research_dataset.csv"
     dataset_manifest_path = destination / f"{file_instrument}_{period}_research_dataset.manifest.json"
     dataset_manifest = prepare_research_dataset(
@@ -165,6 +186,10 @@ def run_research_pipeline(
         "retrieved_at_utc": retrieved_at_utc,
         "raw_ohlc_path": str(raw_csv),
         "raw_ohlc_sha256": raw_sha256,
+        "raw_ohlc_audit_path": str(raw_audit_path),
+        "raw_ohlc_audit_sha256": _sha256(raw_audit_path),
+        "raw_ohlc_audit_status": raw_audit["status"],
+        "raw_ohlc_audit_warnings": raw_audit["warnings"],
         "dataset_path": str(dataset_csv),
         "dataset_sha256": _sha256(dataset_csv),
         "dataset_manifest_path": str(dataset_manifest_path),

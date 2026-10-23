@@ -186,7 +186,16 @@ actual values. Do not invent data provenance. Fold sizes describe pre-purge bars
 the sample after horizon-based purging. For a resource-constrained laptop, begin with fewer
 trials and smaller experiments; do not start several model jobs in parallel.
 
+Before any feature or label generation, the pipeline now runs the raw OHLC integrity audit and
+writes `<run-id>_raw_ohlc_audit.json`. A `FAIL` stops the pipeline before dataset preparation or
+model experiments. Large time gaps remain warnings (not automatic failures), because FX weekends
+and market closures are expected. cTrader downloads must have a matching DEMO pagination/hash
+manifest. An operator-supplied local CSV can be audited without a companion manifest, but it is
+explicitly marked with a provenance warning because its input hash cannot be independently
+verified against a retrieval receipt.
+
 Every successful pipeline run now emits:
+- raw OHLC audit receipt with status, warnings, and a SHA-256 stored in the pipeline manifest;
 - canonical raw OHLC snapshot (when fetching from cTrader);
 - prepared feature/label dataset and its manifest;
 - experiment matrix with XGBoost and LightGBM fold results;
