@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
+import pandas as pd
 import lightgbm as lgb
 import xgboost as xgb
 
@@ -134,7 +135,8 @@ class LightGBMResearchModel:
         if params:
             options.update(dict(params))
         classifier = lgb.LGBMClassifier(**options)
-        classifier.fit(matrix, target, feature_name=list(self.feature_names))
+        named_matrix = pd.DataFrame(matrix, columns=list(self.feature_names))
+        classifier.fit(named_matrix, target, feature_name=list(self.feature_names))
         self._classifier, self._booster = classifier, None
         return self
 
@@ -144,7 +146,8 @@ class LightGBMResearchModel:
             classes = list(self._classifier.classes_)
             if 1 not in classes:
                 raise ValueError("trained model has no class 1")
-            probability = float(self._classifier.predict_proba(matrix)[0][classes.index(1)])
+            named_row = pd.DataFrame(matrix, columns=list(self.feature_names))
+            probability = float(self._classifier.predict_proba(named_row)[0][classes.index(1)])
         elif self._booster is not None:
             probability = float(np.asarray(self._booster.predict(matrix)).reshape(-1)[0])
         else:
