@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timezone
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Sequence
@@ -17,6 +18,17 @@ from app.evaluation import ForexBar
 from app.model_walk_forward import TimedBinaryExample
 from app.optuna_walk_forward import run_optuna_walk_forward
 from app.walk_forward import WalkForwardPlan, generate_walk_forward_folds
+
+
+def _canonical_utc_z(value: str) -> str:
+    """Normalize an ISO-8601 timestamp to the same UTC-Z form used by fold metrics."""
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(raw)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("walk-forward test boundaries must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -148,8 +160,8 @@ def run_experiment_matrix(
 
     common_windows = tuple({
         "fold_index": fold.fold_index,
-        "test_start_utc": fold.test_start,
-        "test_end_utc": fold.test_end,
+        "test_start_utc": _canonical_utc_z(fold.test_start),
+        "test_end_utc": _canonical_utc_z(fold.test_end),
         "test_rows": len(fold.test),
     } for fold in plan.folds)
     return ExperimentMatrixReport(

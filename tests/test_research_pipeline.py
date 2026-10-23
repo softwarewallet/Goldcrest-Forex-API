@@ -107,6 +107,8 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert audit["source_report_sha256"] == stored["experiment_matrix_report_sha256"]
     assert stored["provenance_audit_sha256"]
     assert stored["provenance_audit_status"] == audit["status"] == "FAIL"
+    assert stored["provenance_audit_errors"] == audit["errors"]
+    assert stored["provenance_audit_warnings"] == audit["warnings"]
     assert stored["strict_provenance_audit"] is False
     assert result["validation_status"] == "FAIL"  # deliberately incomplete mocked experiment report
     assert Path(result["validation_report_path"]).is_file()
