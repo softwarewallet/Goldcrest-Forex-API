@@ -18,6 +18,15 @@ def _write_json(path: Path, value: dict) -> None:
 def _build_valid_run(tmp_path: Path) -> Path:
     raw = tmp_path / "raw.csv"
     raw.write_text("timestamp,open,high,low,close\n2026-01-01T00:00:00Z,1,1,1,1\n", encoding="utf-8")
+    raw_audit = tmp_path / "raw.audit.json"
+    _write_json(raw_audit, {
+        "status": "PASS",
+        "snapshot_sha256": _sha(raw),
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+        "execution_connected": False,
+    })
     dataset = tmp_path / "dataset.csv"
     dataset.write_text("symbol,timeframe,timestamp,open,high,low,close,label,label_available_at,rsi_14\nEURUSD,M15,2026-01-01T00:00:00Z,1,1,1,1,1,2026-01-01T01:00:00Z,50\n", encoding="utf-8")
     dataset_manifest = tmp_path / "dataset.manifest.json"
@@ -47,6 +56,9 @@ def _build_valid_run(tmp_path: Path) -> Path:
         "run_id": "run-001",
         "raw_ohlc_path": str(raw),
         "raw_ohlc_sha256": _sha(raw),
+        "raw_ohlc_audit_path": str(raw_audit),
+        "raw_ohlc_audit_sha256": _sha(raw_audit),
+        "raw_ohlc_audit_status": "PASS",
         "dataset_path": str(dataset),
         "dataset_sha256": _sha(dataset),
         "dataset_manifest_path": str(dataset_manifest),
@@ -71,7 +83,7 @@ def _build_valid_run(tmp_path: Path) -> Path:
 def test_audit_accepts_consistent_research_run(tmp_path):
     result = audit_research_run_manifest(_build_valid_run(tmp_path))
     assert result["status"] == "PASS"
-    assert result["checked_artifact_count"] == 5
+    assert result["checked_artifact_count"] == 6
     assert result["errors"] == []
     assert result["actionable"] is False
     assert result["execution_connected"] is False
@@ -109,3 +121,16 @@ def test_audit_reports_unreadable_manifest_without_traceback(tmp_path):
     result = audit_research_run_manifest(missing)
     assert result["status"] == "FAIL"
     assert result["errors"] == ["manifest_unreadable:FileNotFoundError"]
+
+
+
+def test_audit_detects_tampered_raw_ohlc_audit_receipt(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    audit_path = Path(manifest["raw_ohlc_audit_path"])
+    audit_path.write_text(audit_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "raw_ohlc_audit_path_sha256_mismatch" in result["errors"]
