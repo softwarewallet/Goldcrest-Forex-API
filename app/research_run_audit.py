@@ -109,6 +109,44 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"{path_field}_invalid_json:{type(exc).__name__}")
 
+    # Newer pipeline runs include a raw-data audit receipt. Keep old schema-v1
+    # manifests readable, but fully verify the receipt whenever it is present.
+    if manifest.get("raw_ohlc_audit_path") or manifest.get("raw_ohlc_audit_sha256"):
+        resolved = _resolve_artifact_path(manifest.get("raw_ohlc_audit_path"), manifest_path)
+        expected_hash = manifest.get("raw_ohlc_audit_sha256")
+        if resolved is None:
+            errors.append("raw_ohlc_audit_path_missing")
+        elif not resolved.is_file():
+            errors.append("raw_ohlc_audit_path_not_found")
+        else:
+            actual_hash = _sha256(resolved)
+            checked_artifacts["raw_ohlc_audit_path"] = {
+                "path": str(resolved),
+                "sha256": actual_hash,
+            }
+            if not isinstance(expected_hash, str) or actual_hash != expected_hash:
+                errors.append("raw_ohlc_audit_path_sha256_mismatch")
+            try:
+                related["raw_ohlc_audit_path"] = _read_json(resolved)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"raw_ohlc_audit_path_invalid_json:{type(exc).__name__}")
+
+    raw_audit = related.get("raw_ohlc_audit_path", {})
+    raw_hash = checked_artifacts.get("raw_ohlc_path", {}).get("sha256")
+    if raw_audit:
+        if raw_audit.get("snapshot_sha256") != raw_hash:
+            errors.append("raw_ohlc_audit_snapshot_sha256_mismatch")
+        if raw_audit.get("status") != manifest.get("raw_ohlc_audit_status"):
+            errors.append("raw_ohlc_audit_status_mismatch")
+        if raw_audit.get("errors") != []:
+            errors.append("raw_ohlc_audit_contains_errors")
+        if raw_audit.get("actionable") is not False or raw_audit.get("execution_connected") is not False:
+            errors.append("raw_ohlc_audit_safety_flags_invalid")
+        if raw_audit.get("status") == "PASS_WITH_WARNINGS":
+            warnings.append("raw_ohlc_audit_passed_with_warnings")
+        elif raw_audit.get("status") != "PASS":
+            errors.append("raw_ohlc_audit_not_pass")
+
     dataset_hash = checked_artifacts.get("dataset_path", {}).get("sha256")
     dataset_manifest = related.get("dataset_manifest_path", {})
     if dataset_hash and dataset_manifest.get("output_dataset_sha256") != dataset_hash:
