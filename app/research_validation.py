@@ -11,7 +11,6 @@ import json
 import math
 import os
 import statistics
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -586,7 +585,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.output:
             target = Path(args.output)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\\n", encoding="utf-8")
+            target.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
             report["report_path"] = str(target.resolve())
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
