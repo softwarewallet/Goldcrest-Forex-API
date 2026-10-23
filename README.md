@@ -99,6 +99,25 @@ Each fold's low/mid/high thresholds use volatility observations strictly before 
 Results are descriptive and non-actionable; the tool neither ranks models nor connects to
 execution. See [volatility-regime diagnostics](docs/research-regime-analysis.md).
 
+## Temporal stability and label-gap sensitivity
+
+After baseline and volatility-regime analysis, inspect per-fold metric consistency and whether a
+forward label horizon crosses an unusually long interval in the raw OHLC timestamps:
+
+```bash
+python -m app.research_temporal_stability \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json \
+  --ohlc-csv data/research/<exact-raw-ohlc-file>.csv \
+  --output data/research/runs/<run-id>_temporal_stability.json \
+  --gap-threshold-hours 8
+```
+
+The report shows each model's fold-level log loss/Brier score and consistency of improvement over
+fixed baselines, plus separate descriptive metrics for labels whose forward horizon does or does
+not cross a long timestamp gap. A positive loss improvement favors the model over that baseline.
+This is not a significance test, a causal estimate of gap effects, or a model-selection mechanism.
+Outputs remain non-actionable and disconnected from execution.
+
 ## Time-series baseline and uncertainty analysis
 
 New offline research runs store observation-level held-out predictions so model forecasts can be compared on identical timestamps with constant-probability, matured-refit prevalence, matured-refit majority-class, and lagged-bar-direction baselines. Analyze a completed run with:
