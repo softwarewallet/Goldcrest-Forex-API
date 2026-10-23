@@ -41,8 +41,10 @@ history size so results can be audited.
 
 For each model, regime, baseline, and probability-loss metric, the report now includes a paired
 circular moving-block bootstrap interval. Improvements are defined as baseline loss minus model
-loss, so positive values favor the model. Resampling is stratified by walk-forward fold to preserve
-local sequence structure within each fold. The block length defaults to the prediction-label
+loss, so positive values favor the model. Resampling draws blocks from the full chronological
+held-out fold, then computes the conditional metric using only sampled rows in the requested
+regime. This avoids treating non-adjacent observations from a filtered regime subset as consecutive.
+Resampling is stratified by walk-forward fold. The block length defaults to the prediction-label
 horizon and can be changed with `--block-length` only when there is a defensible dependence
 assumption. `--bootstrap-resamples` accepts 100 to 20,000 draws, and `--seed` makes the draws
 repeatable.
