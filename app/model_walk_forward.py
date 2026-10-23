@@ -33,6 +33,7 @@ class TimedBinaryExample:
     features: Mapping[str, float]
     label: int
     label_available_at: datetime
+    label_eligible: bool = True
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,9 @@ class ModelFoldResult:
     test: BinaryMetrics
     probability_semantics: str
     actionable: bool = False
+    train_rows_excluded_ineligible: int = 0
+    validation_rows_excluded_ineligible: int = 0
+    test_rows_excluded_ineligible: int = 0
 
 
 def _utc(value: datetime, name: str) -> datetime:
@@ -87,6 +91,8 @@ def _validate_examples(examples: Sequence[TimedBinaryExample], feature_names: Se
             raise ValueError("label cannot be available before its feature timestamp")
         if isinstance(example.label, bool) or not isinstance(example.label, int) or example.label not in (0, 1):
             raise ValueError("labels must be explicitly supplied as integer 0 or 1")
+        if not isinstance(example.label_eligible, bool):
+            raise ValueError("label_eligible must be a boolean")
         if set(example.features) != set(names):
             raise ValueError("feature schema mismatch")
         for name in names:
@@ -194,12 +200,18 @@ def evaluate_binary_walk_forward(
             raise ValueError(f"fold references {len(missing_times)} timestamps missing from examples")
         train_end = max(train_times)
         train_all = [by_time[t] for t in sorted(train_times)]
-        train = [row for row in train_all if _utc(row.label_available_at, "label availability") <= train_end]
-        unmatured = len(train_all) - len(train)
-        validation = [by_time[t] for t in sorted(validation_times)]
-        test = [by_time[t] for t in sorted(test_times)]
+        train_eligible = [row for row in train_all if row.label_eligible]
+        train = [
+            row for row in train_eligible
+            if _utc(row.label_available_at, "label availability") <= train_end
+        ]
+        unmatured = len(train_eligible) - len(train)
+        validation_all = [by_time[t] for t in sorted(validation_times)]
+        validation = [row for row in validation_all if row.label_eligible]
+        test_all = [by_time[t] for t in sorted(test_times)]
+        test = [row for row in test_all if row.label_eligible]
         if not train or not validation or not test:
-            raise ValueError("each fold requires feature/label records in train, validation, and test")
+            raise ValueError("each fold requires eligible feature/label records in train, validation, and test")
         if len({row.label for row in train}) != 2:
             raise ValueError("matured training labels must contain both classes")
         model = model_factory()
@@ -235,6 +247,9 @@ def evaluate_binary_walk_forward(
             test=predict(test, "test"),
             probability_semantics="uncalibrated research probability; metrics are not trading performance",
             actionable=False,
+            train_rows_excluded_ineligible=len(train_all) - len(train_eligible),
+            validation_rows_excluded_ineligible=len(validation_all) - len(validation),
+            test_rows_excluded_ineligible=len(test_all) - len(test),
         ))
     if not results:
         raise ValueError("walk-forward plan contains no folds")
