@@ -101,6 +101,47 @@ def test_empty_process_environment_values_do_not_shadow_dotenv(tmp_path, monkeyp
     assert config.account_id == 123456789
 
 
+def test_api_error_diagnostic_exposes_error_code_but_not_description():
+    response = type("ProtoOAErrorRes", (), {
+        "errorCode": "OA_AUTH_TOKEN_EXPIRED",
+        "description": "do-not-log-token-or-other-sensitive-description",
+    })()
+
+    diagnostic = ctrader_history_ingest._safe_api_error_diagnostic(response)
+
+    assert diagnostic == "ProtoOAErrorRes code=OA_AUTH_TOKEN_EXPIRED"
+    assert "do-not-log" not in diagnostic
+
+
+def test_cli_prints_safe_download_diagnostic_and_hides_arbitrary_exception_text(monkeypatch, capsys):
+    def fail_with_safe_diagnostic(**_kwargs):
+        raise RuntimeError(
+            "cTrader research history download failed "
+            "(diagnostic type: ProtoOAErrorRes code=OA_AUTH_TOKEN_EXPIRED)"
+        )
+
+    monkeypatch.setattr(ctrader_history_ingest, "download_ctrader_history", fail_with_safe_diagnostic)
+    exit_code = ctrader_history_ingest.main([
+        "--symbol", "EURUSD", "--timeframe", "M15", "--lookback-days", "7",
+        "--output-csv", "unused.csv",
+    ])
+    assert exit_code == 2
+    assert "ProtoOAErrorRes code=OA_AUTH_TOKEN_EXPIRED" in capsys.readouterr().err
+
+    def fail_with_untrusted_message(**_kwargs):
+        raise RuntimeError("secret-token-must-not-be-shown")
+
+    monkeypatch.setattr(ctrader_history_ingest, "download_ctrader_history", fail_with_untrusted_message)
+    exit_code = ctrader_history_ingest.main([
+        "--symbol", "EURUSD", "--timeframe", "M15", "--lookback-days", "7",
+        "--output-csv", "unused.csv",
+    ])
+    assert exit_code == 2
+    output = capsys.readouterr().err
+    assert "RuntimeError" in output
+    assert "secret-token-must-not-be-shown" not in output
+
+
 def test_config_fails_closed_for_live_host_or_missing_credentials():
     with pytest.raises(ValueError, match="Missing required"):
         load_config({})
