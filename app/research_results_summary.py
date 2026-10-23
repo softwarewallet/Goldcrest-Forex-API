@@ -9,7 +9,6 @@ import argparse
 import hashlib
 import json
 import math
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -152,6 +151,10 @@ def summarize_research_run(
         errors.append("pipeline_safety_flags_invalid")
     if manifest.get("automatic_winner_selection") is not False or manifest.get("test_metrics_used_for_selection") is not False:
         errors.append("pipeline_model_selection_safety_flags_invalid")
+    if manifest.get("provenance_audit_status") != "PASS":
+        errors.append("pipeline_provenance_audit_not_pass")
+    if manifest.get("raw_ohlc_audit_status") not in {"PASS", "PASS_WITH_WARNINGS"}:
+        errors.append("pipeline_raw_ohlc_audit_not_pass")
 
     models: list[dict[str, Any]] = []
     for experiment in matrix_summary.get("experiment_summaries", []):
