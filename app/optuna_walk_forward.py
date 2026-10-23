@@ -131,6 +131,8 @@ def run_optuna_walk_forward(
         raise ValueError("one run must contain exactly one symbol and timeframe")
     if any(set(row.features) != set(names) for row in examples):
         raise ValueError("feature schema mismatch")
+    if any(not isinstance(row.label_eligible, bool) for row in examples):
+        raise ValueError("label_eligible must be a boolean")
     if any(row.label_available_at.tzinfo is None or row.label_available_at.utcoffset() is None for row in examples):
         raise ValueError("label availability timestamps must be timezone-aware")
 
