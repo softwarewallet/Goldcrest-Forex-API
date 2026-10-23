@@ -328,3 +328,44 @@ confirm that the provider returned every expected candle. The two holiday-contex
 substitute for a broker/instrument-specific session calendar. Non-weekend long gaps still produce a
 warning for review. Do not treat a warning-free weekend classification as proof of complete data
 coverage; verify the provider's history and the applicable market calendar.
+
+## 6. Audit actual elapsed time of row-based forward labels
+
+The temporal stability report revealed that the existing four-row M15 horizon has a nominal
+duration of one hour, but some targets can be almost 50 hours after the prediction timestamp
+when the forward row sequence spans a weekend closure. This is a property of row-index labels;
+it does not by itself mean that the label builder is wrong. The following audit measures that
+duration without rewriting the dataset, labels, historical manifest, predictions, or scores.
+
+After pulling the latest code, run:
+
+```bash
+python -m app.research_label_horizon_audit \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json \
+  --ohlc-csv data/research/<exact-raw-ohlc-file>.csv \
+  --output data/research/runs/<run-id>_label_horizon_elapsed_audit.json \
+  --extended-time-threshold-hours 8 \
+  --longest-examples-limit 25
+```
+
+The command verifies the research manifest, raw OHLC SHA-256, experiment-matrix SHA-256, and
+run identity. It maps each prediction timestamp to its source OHLC row, then audits the target at
+`prediction_row_index + horizon_bars`, exactly matching the existing row-based horizon semantics.
+The nominal elapsed duration is derived from `horizon_bars` and the declared timeframe. It reports
+elapsed-time quantiles, the fraction of labels exceeding nominal duration, counts and descriptive
+probability metrics for elapsed-time buckets, per-fold summaries, and examples of the longest
+horizons.
+
+Elapsed-time buckets are `nominal_or_within_tolerance`, `extended_up_to_threshold`, and
+`long_extension_over_threshold`. The threshold is diagnostic only; the default is eight hours.
+The report separately counts model prediction rows and unique timestamps because multiple models
+score the same held-out windows. Repeated timestamps within an experiment are surfaced as a warning
+for possible fold overlap. A prediction whose target row cannot be resolved is an error, not silently
+discarded.
+
+This report is offline, descriptive, non-actionable, and disconnected from execution. It does not
+change the label-generation rule or automatically select a model. The bucket metrics are exploratory:
+long-duration buckets may be small and may differ in market regime and label prevalence. If timing
+semantics are to change, create a distinct versioned dataset and a new pipeline run so the old run
+remains auditable; do not silently overwrite historical artifacts.
+
