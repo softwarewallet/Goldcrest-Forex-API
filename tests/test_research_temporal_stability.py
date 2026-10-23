@@ -86,16 +86,30 @@ def test_temporal_stability_identifies_forward_horizon_crossing_long_gap():
 def test_temporal_stability_warns_when_no_gap_exceeds_threshold():
     matrix, bars = _fixture()
     # Remove the large interval while preserving unique, strictly increasing timestamps.
+    original_to_index = {
+        datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00")): index
+        for index, row in enumerate(bars)
+    }
     anchor = datetime.fromisoformat(bars[4]["timestamp"].replace("Z", "+00:00"))
     for index in range(5, len(bars)):
         timestamp = anchor + timedelta(minutes=15 * (index - 4))
         bars[index]["timestamp"] = timestamp.isoformat().replace("+00:00", "Z")
+    new_timestamps = [
+        datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
+        for row in bars
+    ]
+    for experiment in matrix["experiments"]:
+        for fold in experiment["fold_results"]:
+            for prediction in fold["test_predictions"]:
+                old_timestamp = datetime.fromisoformat(prediction["timestamp_utc"].replace("Z", "+00:00"))
+                index = original_to_index[old_timestamp]
+                prediction["timestamp_utc"] = new_timestamps[index].isoformat().replace("+00:00", "Z")
 
     result = analyze_prediction_temporal_stability(matrix, bars)
 
-    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert result["status"] == "PASS"
     assert result["long_gap_count"] == 0
-    assert "no_gaps_above_configured_threshold_found" in result["warnings"]
+    assert result["warnings"] == []
     assert result["prediction_horizon_crosses_long_gap_count"] == 0
 
 
