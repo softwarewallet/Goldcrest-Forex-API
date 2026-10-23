@@ -260,7 +260,7 @@ def run_research_pipeline(
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
         payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         manifest_path.write_text(
-            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\\n",
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n",
             encoding="utf-8",
         )
         reproducibility_audit = audit_experiment_reproducibility(fingerprint_path, manifest_path)
@@ -277,12 +277,12 @@ def run_research_pipeline(
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     manifest_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\\n",
+        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     reproducibility_audit = audit_experiment_reproducibility(fingerprint_path, manifest_path)
     reproducibility_path.write_text(
-        json.dumps(reproducibility_audit, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\\n",
+        json.dumps(reproducibility_audit, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     return payload
