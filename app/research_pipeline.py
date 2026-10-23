@@ -247,23 +247,44 @@ def run_research_pipeline(
         "execution_connected": False,
         "warning": "Offline research only. No model is promoted to live trading and no execution API is called.",
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     manifest_path = destination / f"{run_id}_pipeline_manifest.json"
-    manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     reproducibility_path = destination / f"{run_id}_reproducibility_audit.json"
-    reproducibility_audit = audit_experiment_reproducibility(fingerprint_path, manifest_path)
-    payload["reproducibility_audit_status"] = reproducibility_audit["status"]
-    payload["reproducibility_audit_errors"] = reproducibility_audit["errors"]
-    # The audit receipt hash is not embedded in the manifest, avoiding a hash cycle.
+    payload["reproducibility_audit_status"] = "PENDING"
+    payload["reproducibility_audit_errors"] = []
+    reproducibility_audit: dict[str, Any] = {"status": "FAIL", "errors": ["audit_not_run"]}
+
+    # Iterate until the audit result stored in the manifest matches an audit of
+    # that exact manifest. The receipt is external to avoid a hash cycle.
+    for _ in range(4):
+        payload.pop("pipeline_manifest_sha256", None)
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        manifest_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\\n",
+            encoding="utf-8",
+        )
+        reproducibility_audit = audit_experiment_reproducibility(fingerprint_path, manifest_path)
+        if (
+            payload["reproducibility_audit_status"] == reproducibility_audit["status"]
+            and payload["reproducibility_audit_errors"] == reproducibility_audit["errors"]
+        ):
+            break
+        payload["reproducibility_audit_status"] = reproducibility_audit["status"]
+        payload["reproducibility_audit_errors"] = reproducibility_audit["errors"]
+
+    # Finalize the self-hash and verify the persisted bytes one last time.
     payload.pop("pipeline_manifest_sha256", None)
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\\n",
+        encoding="utf-8",
+    )
     reproducibility_audit = audit_experiment_reproducibility(fingerprint_path, manifest_path)
-    reproducibility_path.write_text(json.dumps(reproducibility_audit, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
-    payload["reproducibility_audit_status"] = reproducibility_audit["status"]
-    payload["reproducibility_audit_errors"] = reproducibility_audit["errors"]
+    reproducibility_path.write_text(
+        json.dumps(reproducibility_audit, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\\n",
+        encoding="utf-8",
+    )
     return payload
 
 
