@@ -60,6 +60,24 @@ configuration passes, check token expiry/permissions, the account ID, the exact 
 name in the DEMO account, and network access to the cTrader DEMO endpoint. The error output
 is deliberately sanitized; never print or share token/secret values when debugging.
 
+## cTrader TLS and connection failures
+
+The CLI includes the sanitized cTrader error class and, for recognized API error responses,
+the error code. API-provided descriptions are deliberately omitted from diagnostics so that
+messages cannot accidentally expose sensitive fields. If the Twisted TLS warning mentions a
+missing `service_identity` module, pull the latest requirements and reinstall dependencies:
+
+```bash
+git pull origin main
+python -m pip install -r requirements.txt
+python -m pip show service-identity
+```
+
+The package improves hostname verification; it does not by itself prove that authentication
+or connectivity succeeds. Use the reported error code to distinguish application-credential
+errors, account/token authorization errors, request timeouts, and disconnects. Never disable
+TLS certificate verification to work around a connection problem.
+
 ## 1. Preflight the Ubuntu runtime
 
 From the repository root with the project virtual environment active:

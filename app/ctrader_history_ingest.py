@@ -99,6 +99,18 @@ def _safe_failure(failure: Any) -> str:
     return type(value).__name__
 
 
+def _safe_api_error_diagnostic(response: Any) -> str | None:
+    """Expose only a recognized cTrader error type and bounded error code, never descriptions."""
+    response_type = type(response).__name__
+    if response_type not in {"ProtoOAErrorRes", "ProtoErrorRes"}:
+        return None
+    raw_code = getattr(response, "errorCode", None) or getattr(response, "error_code", None) or "UNKNOWN"
+    code = str(raw_code)
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", code):
+        code = "UNRECOGNIZED"
+    return f"{response_type} code={code}"
+
+
 def download_ctrader_history(
     *,
     symbol: str,
@@ -153,6 +165,15 @@ def download_ctrader_history(
         if getattr(loop, "running", False):
             loop.stop()
 
+    def extract_response(message: Any) -> Any | None:
+        response = sdk["Protobuf"].extract(message)
+        diagnostic = _safe_api_error_diagnostic(response)
+        if diagnostic:
+            failure_state["error_type"] = diagnostic
+            stop_loop()
+            return None
+        return response
+
     def fail(failure: Any) -> Any:
         failure_state["error_type"] = _safe_failure(failure)
         stop_loop()
@@ -171,8 +192,12 @@ def download_ctrader_history(
         deferred.addCallbacks(on_bars, fail)
 
     def on_bars(message: Any) -> Any:
+        if failure_state:
+            return message
         try:
-            response = sdk["Protobuf"].extract(message)
+            response = extract_response(message)
+            if response is None:
+                return message
             trendbars = list(response.trendbar)
             if not trendbars:
                 raise ValueError("cTrader returned no trendbars for this symbol/timeframe/window")
@@ -199,8 +224,12 @@ def download_ctrader_history(
         return message
 
     def on_symbols(message: Any) -> Any:
+        if failure_state:
+            return message
         try:
-            response = sdk["Protobuf"].extract(message)
+            response = extract_response(message)
+            if response is None:
+                return message
             matches = [
                 item for item in response.symbol
                 if str(getattr(item, "symbolName", "")).strip().upper() == instrument
@@ -216,6 +245,11 @@ def download_ctrader_history(
         return message
 
     def on_account_auth(message: Any) -> Any:
+        if failure_state:
+            return message
+        response = extract_response(message)
+        if response is None:
+            return message
         request = sdk["ProtoOASymbolsListReq"]()
         request.ctidTraderAccountId = selected_config.account_id
         request.includeArchivedSymbols = False
@@ -223,6 +257,11 @@ def download_ctrader_history(
         return message
 
     def on_application_auth(message: Any) -> Any:
+        if failure_state:
+            return message
+        response = extract_response(message)
+        if response is None:
+            return message
         request = sdk["ProtoOAAccountAuthReq"]()
         request.ctidTraderAccountId = selected_config.account_id
         request.accessToken = selected_config.access_token
@@ -241,7 +280,16 @@ def download_ctrader_history(
         stop_loop()
 
     def on_message(_client: Any, message: Any) -> None:
-        # Deferred callbacks own expected responses. Ignore unsolicited messages and heartbeats.
+        # The SDK also surfaces proxy-level ProtoErrorRes messages here; those may not
+        # correlate to a request Deferred, so capture their safe code before a timeout hides it.
+        try:
+            response = sdk["Protobuf"].extract(message)
+        except Exception:
+            return None
+        diagnostic = _safe_api_error_diagnostic(response)
+        if diagnostic and not failure_state:
+            failure_state["error_type"] = diagnostic
+            stop_loop()
         return None
 
     client.setConnectedCallback(connected)
@@ -279,7 +327,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_csv=args.output_csv,
         )
     except Exception as exc:
-        print(f"cTrader research ingestion failed: {type(exc).__name__}", file=sys.stderr)
+        message = str(exc)
+        # This prefix is constructed internally from a sanitized class/code diagnostic.
+        # Do not print arbitrary exception text, which could contain credential-bearing state.
+        safe_runtime_prefix = "cTrader research history download failed (diagnostic type: "
+        if isinstance(exc, RuntimeError) and (
+            message.startswith(safe_runtime_prefix)
+            or message == "cTrader research history download ended without a result"
+        ):
+            diagnostic = message
+        else:
+            diagnostic = type(exc).__name__
+        print(f"cTrader research ingestion failed: {diagnostic}", file=sys.stderr)
         return 2
     print(json.dumps({
         "scope": result["scope"],
