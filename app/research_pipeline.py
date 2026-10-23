@@ -9,6 +9,7 @@ import argparse
 import csv
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,7 @@ from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
+from app.research_validation import validate_completed_run
 
 
 def _sha256(path: str | Path) -> str:
@@ -63,21 +65,27 @@ def run_research_pipeline(
     max_experiments: int = 20,
     include_ablation: bool = True,
     strict_provenance_audit: bool = False,
+    strict_validation: bool = False,
 ) -> dict[str, Any]:
     """Run ingestion (optional), dataset preparation, and fixed-fold model comparison."""
     if fetch_ctrader == (ohlc_csv is not None):
         raise ValueError("provide exactly one of ohlc_csv or fetch_ctrader=True")
-    if not run_id.strip():
-        raise ValueError("run_id must not be empty")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", run_id) or ".." in run_id:
+        raise ValueError("run_id must be a safe filename token of 1-128 letters, digits, dots, underscores, or hyphens")
     if not terms_reference.strip():
         raise ValueError("terms_reference must be the actual applicable provider terms")
     instrument = symbol.strip().upper()
+    if not re.fullmatch(r"[A-Z0-9._/-]{3,32}", instrument):
+        raise ValueError("symbol must contain 3-32 uppercase letters, digits, dots, underscores, slashes, or hyphens")
     period = timeframe.strip().upper()
-    destination = Path(output_dir)
+    if period not in {"M1", "M5", "M15", "M30", "H1", "H4", "D1"}:
+        raise ValueError("unsupported timeframe")
+    file_instrument = re.sub(r"[^A-Z0-9_-]+", "_", instrument).strip("_")
+    destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=True)
 
     if fetch_ctrader:
-        raw_csv = destination / f"{instrument}_{period}_ctrader_ohlc.csv"
+        raw_csv = destination / f"{file_instrument}_{period}_ctrader_ohlc.csv"
         ingestion = download_ctrader_history(
             symbol=instrument,
             timeframe=period,
@@ -89,7 +97,7 @@ def run_research_pipeline(
         actual_source_version = source_version or "ctrader-open-api==0.9.2"
         raw_sha256 = _sha256(raw_csv)
     else:
-        raw_csv = Path(ohlc_csv)  # type: ignore[arg-type]
+        raw_csv = Path(ohlc_csv).resolve()  # type: ignore[arg-type]
         if not raw_csv.is_file():
             raise ValueError(f"OHLC CSV does not exist: {raw_csv}")
         if not retrieved_at_utc:
@@ -105,8 +113,8 @@ def run_research_pipeline(
             "actionable": False,
         }
 
-    dataset_csv = destination / f"{instrument}_{period}_research_dataset.csv"
-    dataset_manifest_path = destination / f"{instrument}_{period}_research_dataset.manifest.json"
+    dataset_csv = destination / f"{file_instrument}_{period}_research_dataset.csv"
+    dataset_manifest_path = destination / f"{file_instrument}_{period}_research_dataset.manifest.json"
     dataset_manifest = prepare_research_dataset(
         raw_csv,
         dataset_csv,
@@ -184,7 +192,18 @@ def run_research_pipeline(
     payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     manifest_path = destination / f"{run_id}_pipeline_manifest.json"
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
-    return payload
+
+    # Keep the validation report separate so the manifest hash remains stable.
+    # Non-strict mode records validation findings; strict mode controls only the CLI exit code.
+    validation_path = destination / f"{run_id}_validation_report.json"
+    validation = validate_completed_run(manifest_path, output_path=validation_path)
+    result = dict(payload)
+    result["validation_report_path"] = str(validation_path)
+    result["validation_status"] = validation["status"]
+    result["validation_errors"] = validation["errors"]
+    result["validation_warnings"] = validation["warnings"]
+    result["strict_validation"] = strict_validation
+    return result
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -212,6 +231,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-experiments", type=int, default=20)
     parser.add_argument("--no-ablation", action="store_true", help="Compare only the full causal feature set")
     parser.add_argument("--strict-provenance-audit", action="store_true", help="Return a nonzero exit code if the structural provenance audit fails")
+    parser.add_argument("--strict-validation", action="store_true", help="Return a nonzero exit code if the consolidated research validation fails")
     return parser
 
 
@@ -241,6 +261,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_experiments=args.max_experiments,
             include_ablation=not args.no_ablation,
             strict_provenance_audit=args.strict_provenance_audit,
+            strict_validation=args.strict_validation,
         )
     except Exception as exc:
         # Errors are concise and do not print credential-bearing objects.
@@ -250,6 +271,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.strict_provenance_audit and result.get("provenance_audit_status") == "FAIL":
         print("research pipeline completed, but strict provenance audit failed; inspect the audit receipt", file=sys.stderr)
         return 3
+    if args.strict_validation and result.get("validation_status") == "FAIL":
+        print("research pipeline completed, but consolidated validation failed; inspect validation_errors", file=sys.stderr)
+        return 4
     return 0
 
 
