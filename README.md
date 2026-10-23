@@ -80,6 +80,25 @@ Exit code 0 indicates integrity checks passed (possibly with warnings); exit cod
 Run a no-network environment preflight with `python -m app.research_validation --json`; add `--check-ctrader-config` to verify cTrader DEMO environment-variable presence without printing secret values or connecting to cTrader. Each completed research pipeline run now writes a consolidated `<run-id>_validation_report.json` containing artifact integrity checks, dataset quality checks, walk-forward metric summaries, and runtime diagnostics. Use `--strict-validation` to return a nonzero exit code when consolidated validation fails. See `docs/end-to-end-research-validation.md` for the end-to-end workflow and status semantics.
 
 
+
+## Volatility-regime diagnostics
+
+After reviewing baseline and fold stability, inspect conditional performance by past-only
+historical-volatility regime without retraining:
+
+```bash
+python -m app.research_regime_analysis \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json \
+  --ohlc-csv data/research/<exact-raw-ohlc-file>.csv \
+  --output data/research/runs/<run-id>_regime_analysis.json \
+  --volatility-window 20
+```
+
+The command requires the exact OHLC CSV whose SHA-256 is recorded by that run's manifest.
+Each fold's low/mid/high thresholds use volatility observations strictly before the test start.
+Results are descriptive and non-actionable; the tool neither ranks models nor connects to
+execution. See [volatility-regime diagnostics](docs/research-regime-analysis.md).
+
 ## Time-series baseline and uncertainty analysis
 
 New offline research runs store observation-level held-out predictions so model forecasts can be compared on identical timestamps with constant-probability, matured-refit prevalence, matured-refit majority-class, and lagged-bar-direction baselines. Analyze a completed run with:
