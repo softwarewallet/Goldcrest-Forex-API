@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from app.research_artifact_certification import certify_pipeline_manifest
+from app.research_experiment_fingerprint import build_experiment_fingerprint
 
 
 def _digest(path):
@@ -34,9 +35,20 @@ def _fixture(tmp_path, *, immature_label=False):
         "actionable": False,
         "input_snapshot_sha256": _digest(raw),
         "output_dataset_sha256": _digest(dataset),
+        "feature_implementation_sha256": "a" * 64,
+        "feature_schema_sha256": "b" * 64,
+        "feature_backend": "numpy_fallback",
     }
     _canonical_hash(data_manifest, "manifest_sha256")
     (tmp_path / "dataset-manifest.json").write_text(json.dumps(data_manifest), encoding="utf-8")
+    fingerprint = build_experiment_fingerprint(
+        configuration={"symbol": "EURUSD", "timeframe": "M15", "seed": 1},
+        raw_ohlc_sha256=_digest(raw),
+        dataset_sha256=_digest(dataset),
+        dataset_manifest=data_manifest,
+    )
+    fingerprint_path = tmp_path / "fingerprint.json"
+    fingerprint_path.write_text(json.dumps(fingerprint, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     quality = {"status": "PASS", "source_sha256": _digest(raw), "actionable": False}
     (tmp_path / "quality.json").write_text(json.dumps(quality), encoding="utf-8")
@@ -64,6 +76,9 @@ def _fixture(tmp_path, *, immature_label=False):
         "provenance_audit_path": "provenance.json",
         "provenance_audit_sha256": _digest(tmp_path / "provenance.json"),
         "provenance_audit_status": "PASS",
+        "experiment_fingerprint_path": "fingerprint.json",
+        "experiment_fingerprint_file_sha256": _digest(fingerprint_path),
+        "experiment_fingerprint_sha256": fingerprint["experiment_fingerprint_sha256"],
         "actionable": False,
         "execution_connected": False,
         "automatic_winner_selection": False,
