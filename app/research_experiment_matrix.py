@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from datetime import datetime, timezone
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
@@ -45,6 +46,8 @@ class ExperimentMatrixReport:
     common_fold_test_windows: tuple[dict[str, Any], ...]
     horizon_bars: int = 1
     class_1_means: str = "UP"
+    max_label_elapsed_hours: float | None = None
+    label_eligibility_mode: str = "all_labels_included"
     test_metrics_used_for_selection: bool = False
     automatic_winner_selection: bool = False
     actionable: bool = False
@@ -81,6 +84,7 @@ def run_experiment_matrix(
     include_ablation: bool = True,
     max_experiments: int = 10,
     class_1_means: str = "UP",
+    max_label_elapsed_hours: float | None = None,
 ) -> ExperimentMatrixReport:
     """Run each model/feature variant on one shared, immutable purged fold plan."""
     names = tuple(feature_names)
@@ -97,10 +101,19 @@ def run_experiment_matrix(
         raise ValueError(f"unsupported model types: {sorted(unsupported)}")
     if class_1_means not in {"UP", "DOWN"}:
         raise ValueError("class_1_means must be 'UP' or 'DOWN'")
+    if max_label_elapsed_hours is not None and (
+        isinstance(max_label_elapsed_hours, bool)
+        or not isinstance(max_label_elapsed_hours, (int, float))
+        or not math.isfinite(float(max_label_elapsed_hours))
+        or max_label_elapsed_hours <= 0
+    ):
+        raise ValueError("max_label_elapsed_hours must be finite and positive when provided")
     if isinstance(max_experiments, bool) or not isinstance(max_experiments, int) or max_experiments < 1:
         raise ValueError("max_experiments must be a positive integer")
     if any(set(row.features) != set(names) for row in examples):
         raise ValueError("each example must contain exactly the declared full feature schema")
+    if any(not isinstance(row.label_eligible, bool) for row in examples):
+        raise ValueError("label_eligible must be a boolean")
 
     variants = feature_ablation_sets(names) if include_ablation else {"all_features": names}
     experiment_count = len(variants) * len(model_types)
@@ -178,6 +191,12 @@ def run_experiment_matrix(
         timeframe=bars[0].timeframe,
         horizon_bars=horizon_bars,
         class_1_means=class_1_means,
+        max_label_elapsed_hours=(
+            float(max_label_elapsed_hours) if max_label_elapsed_hours is not None else None
+        ),
+        label_eligibility_mode=(
+            "elapsed_time_cap" if max_label_elapsed_hours is not None else "all_labels_included"
+        ),
         feature_names=names,
         model_types=tuple(model_types),
         fold_count=len(plan.folds),

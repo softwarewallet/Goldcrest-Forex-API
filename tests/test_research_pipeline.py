@@ -91,6 +91,10 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     manifest = tmp_path / "run" / "unit-test_pipeline_manifest.json"
     assert manifest.exists()
     stored = json.loads(manifest.read_text(encoding="utf-8"))
+    assert Path(stored["dataset_path"]).name.startswith("unit-test_")
+    assert Path(stored["dataset_manifest_path"]).name.startswith("unit-test_")
+    assert stored["max_label_elapsed_hours"] is None
+    assert stored["label_eligibility_mode"] == "all_labels_included"
     assert stored["actionable"] is False
     assert stored["raw_ohlc_sha256"]
     assert stored["raw_ohlc_audit_status"] == "PASS_WITH_WARNINGS"

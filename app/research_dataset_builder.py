@@ -52,8 +52,14 @@ def prepare_research_dataset(
     source_version: str,
     retrieved_at_utc: str,
     terms_reference: str,
+    max_label_elapsed_hours: float | None = None,
 ) -> dict[str, Any]:
-    """Create a causal, explicitly labelled dataset accepted by the walk-forward CLI."""
+    """Create a causal dataset with an optional elapsed-time label-eligibility mask.
+
+    The optional cap never deletes rows or changes the forward-close label. Rows whose
+    future target is too far away in elapsed UTC time remain in the CSV and are marked
+    ineligible so temporal folds retain their original timestamps.
+    """
     if not symbol.strip() or symbol.strip() != symbol.strip().upper():
         raise ValueError("symbol must be non-empty and uppercase")
     symbol = symbol.strip().upper()
@@ -62,6 +68,15 @@ def prepare_research_dataset(
         raise ValueError("unsupported timeframe")
     if isinstance(horizon_bars, bool) or not isinstance(horizon_bars, int) or horizon_bars < 1:
         raise ValueError("horizon_bars must be a positive integer")
+    if max_label_elapsed_hours is not None:
+        if (
+            isinstance(max_label_elapsed_hours, bool)
+            or not isinstance(max_label_elapsed_hours, (int, float))
+            or not math.isfinite(float(max_label_elapsed_hours))
+            or max_label_elapsed_hours <= 0
+        ):
+            raise ValueError("max_label_elapsed_hours must be finite and positive when provided")
+        max_label_elapsed_hours = float(max_label_elapsed_hours)
     class_1_means = class_1_means.strip().upper()
     if class_1_means not in _LABEL_MEANINGS:
         raise ValueError("class_1_means must be UP or DOWN")
@@ -125,10 +140,17 @@ def prepare_research_dataset(
     feature_names = list(feature_batch.feature_names)
     output_fields = [
         "symbol", "timeframe", "timestamp", "open", "high", "low", "close",
-        "label", "label_available_at", *feature_names,
+        "label", "label_available_at",
     ]
+    # These are contract metadata, never model features. Omit them in the unchanged
+    # baseline mode to preserve the legacy dataset CSV schema exactly.
+    if max_label_elapsed_hours is not None:
+        output_fields.extend(["label_elapsed_hours", "label_eligible"])
+    output_fields.extend(feature_names)
     emitted: list[dict[str, Any]] = []
     skipped_warmup = 0
+    eligible_label_rows = 0
+    ineligible_label_rows = 0
     for index in range(0, len(bars) - horizon_bars):
         feature_row = feature_batch.rows[index]
         if any(feature_row[name] is None for name in feature_names):
@@ -139,6 +161,8 @@ def prepare_research_dataset(
         is_up = future_close > current_close
         is_down = future_close < current_close
         label = int(is_up if class_1_means == "UP" else is_down)
+        target_timestamp = timestamps[index + horizon_bars]
+        elapsed_hours = (target_timestamp - timestamps[index]).total_seconds() / 3600.0
         row: dict[str, Any] = {
             "symbol": symbol,
             "timeframe": timeframe,
@@ -148,8 +172,14 @@ def prepare_research_dataset(
             "low": bars[index].low,
             "close": bars[index].close,
             "label": label,
-            "label_available_at": timestamps[index + horizon_bars].isoformat().replace("+00:00", "Z"),
+            "label_available_at": target_timestamp.isoformat().replace("+00:00", "Z"),
         }
+        if max_label_elapsed_hours is not None:
+            is_eligible = elapsed_hours <= max_label_elapsed_hours + 1e-9
+            row["label_elapsed_hours"] = round(elapsed_hours, 6)
+            row["label_eligible"] = "1" if is_eligible else "0"
+            eligible_label_rows += int(is_eligible)
+            ineligible_label_rows += int(not is_eligible)
         row.update({name: feature_row[name] for name in feature_names})
         emitted.append(row)
 
@@ -187,6 +217,18 @@ def prepare_research_dataset(
         "automatic_imputation": False,
         "automatic_model_selection": False,
     }
+    if max_label_elapsed_hours is not None:
+        manifest["label_eligibility"] = {
+            "mode": "elapsed_time_cap",
+            "max_label_elapsed_hours": max_label_elapsed_hours,
+            "elapsed_time_source": "UTC difference between prediction timestamp and row-index forward target timestamp",
+            "eligible_rows": eligible_label_rows,
+            "ineligible_rows": ineligible_label_rows,
+            "all_rows_preserved_for_fixed_temporal_folds": True,
+            "labels_rewritten": False,
+            "features_changed": False,
+            "automatic_model_selection": False,
+        }
     manifest["manifest_sha256"] = hashlib.sha256(_canonical_json(manifest)).hexdigest()
     manifest_output.write_text(json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return manifest
@@ -205,6 +247,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-version", required=True, help="Provider/API or export version")
     parser.add_argument("--retrieved-at-utc", required=True, help="ISO-8601 UTC retrieval time ending in Z")
     parser.add_argument("--terms-reference", required=True, help="Actual applicable provider terms/license reference; do not guess")
+    parser.add_argument(
+        "--max-label-elapsed-hours",
+        type=float,
+        help="Optional eligibility cap on actual UTC time to the existing forward target; retains all rows and labels",
+    )
     return parser
 
 
@@ -216,6 +263,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         horizon_bars=args.horizon_bars, class_1_means=args.class_1_means,
         data_source=args.data_source, source_version=args.source_version,
         retrieved_at_utc=args.retrieved_at_utc, terms_reference=args.terms_reference,
+        max_label_elapsed_hours=args.max_label_elapsed_hours,
     )
     print(json.dumps({
         "output_dataset_sha256": manifest["output_dataset_sha256"],

@@ -44,6 +44,11 @@ class TunedFoldResult:
     test_predictions: tuple[dict[str, Any], ...]
     baseline_diagnostics: Mapping[str, Any]
     actionable: bool = False
+    train_rows_excluded_ineligible_for_tuning: int = 0
+    validation_rows_excluded_ineligible: int = 0
+    refit_rows_excluded_ineligible: int = 0
+    test_rows_available_before_eligibility: int = 0
+    test_rows_excluded_ineligible: int = 0
 
 
 @dataclass(frozen=True)
@@ -126,6 +131,8 @@ def run_optuna_walk_forward(
         raise ValueError("one run must contain exactly one symbol and timeframe")
     if any(set(row.features) != set(names) for row in examples):
         raise ValueError("feature schema mismatch")
+    if any(not isinstance(row.label_eligible, bool) for row in examples):
+        raise ValueError("label_eligible must be a boolean")
     if any(row.label_available_at.tzinfo is None or row.label_available_at.utcoffset() is None for row in examples):
         raise ValueError("label availability timestamps must be timezone-aware")
 
@@ -136,6 +143,8 @@ def run_optuna_walk_forward(
         digest.update(str(row.label).encode("ascii"))
         digest.update(b"\0")
         digest.update(_iso(row.label_available_at).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(b"eligible" if row.label_eligible else b"ineligible")
         for name in names:
             digest.update(b"\0")
             digest.update(name.encode("utf-8"))
@@ -171,16 +180,23 @@ def run_optuna_walk_forward(
         try:
             train = [by_time[t] for t in train_times]
             validation = [by_time[t] for t in validation_times]
-            test = [by_time[t] for t in test_times]
+            test_all = [by_time[t] for t in test_times]
         except KeyError as exc:
             raise ValueError("fold references timestamps missing from examples") from exc
 
-        # All validation labels must have matured before the test begins; otherwise
-        # this fold cannot faithfully simulate validation-time model selection.
         test_start = min(test_times)
+        eligible_validation = [row for row in validation if row.label_eligible]
+        # Eligibility filtering is applied after the chronological fold plan is built,
+        # preserving the exact same test windows and timestamp index for baseline/variant runs.
         immature_validation = [
-            row for row in validation if _utc(row.label_available_at, "label availability") > test_start
+            row for row in eligible_validation
+            if _utc(row.label_available_at, "label availability") > test_start
         ]
+        test = [row for row in test_all if row.label_eligible]
+        if not test:
+            raise ValueError(
+                f"fold {fold.fold_index} has no eligible test rows after elapsed-time filtering"
+            )
         if immature_validation:
             raise ValueError(
                 f"fold {fold.fold_index} has validation labels not matured by test start; "
@@ -198,14 +214,15 @@ def run_optuna_walk_forward(
             study_name=f"{run_id}-{model_type}-fold-{fold.fold_index}",
         )
 
-        refit_candidates = train + validation
+        refit_candidates_all = train + validation
+        refit_candidates = [row for row in refit_candidates_all if row.label_eligible]
         refit_cutoff = test_start
         refit_rows = [
             row for row in refit_candidates
             if _utc(row.label_available_at, "label availability") <= refit_cutoff
         ]
         if len(refit_rows) < 4 or len({row.label for row in refit_rows}) != 2:
-            raise ValueError(f"fold {fold.fold_index} has insufficient matured refit labels")
+            raise ValueError(f"fold {fold.fold_index} has insufficient matured eligible refit labels")
 
         if model_type == "xgboost":
             model = XGBoostResearchModel(names, model_version="optuna-walk-forward-v1")
@@ -310,6 +327,11 @@ def run_optuna_walk_forward(
             test_predictions=tuple(test_predictions),
             baseline_diagnostics=baseline_diagnostics,
             actionable=False,
+            train_rows_excluded_ineligible_for_tuning=tuning.train_rows_excluded_ineligible,
+            validation_rows_excluded_ineligible=tuning.validation_rows_excluded_ineligible,
+            refit_rows_excluded_ineligible=len(refit_candidates_all) - len(refit_candidates),
+            test_rows_available_before_eligibility=len(test_all),
+            test_rows_excluded_ineligible=len(test_all) - len(test),
         ))
 
     if not results:

@@ -82,6 +82,21 @@ def load_historical_dataset(
             if label_text not in {"0", "1"}:
                 raise ValueError("label must be exactly 0 or 1")
             label = int(label_text)
+            eligibility_text = row.get("label_eligible")
+            if eligibility_text is None or not eligibility_text.strip():
+                label_eligible = True
+            elif eligibility_text.strip() in {"0", "1"}:
+                label_eligible = eligibility_text.strip() == "1"
+            else:
+                raise ValueError("label_eligible must be exactly 0 or 1 when present")
+            elapsed_text = row.get("label_elapsed_hours")
+            if elapsed_text is not None and elapsed_text.strip():
+                elapsed_hours = float(elapsed_text)
+                if not math.isfinite(elapsed_hours) or elapsed_hours <= 0:
+                    raise ValueError("label_elapsed_hours must be finite and positive")
+                actual_elapsed_hours = (label_available_at - timestamp).total_seconds() / 3600.0
+                if abs(actual_elapsed_hours - elapsed_hours) > 1e-5:
+                    raise ValueError("label_elapsed_hours does not match timestamp and label_available_at")
 
             numeric = {}
             for field in ("open", "high", "low", "close"):
@@ -105,7 +120,7 @@ def load_historical_dataset(
         ))
         examples.append(TimedBinaryExample(
             timestamp=timestamp, features=features, label=label,
-            label_available_at=label_available_at,
+            label_available_at=label_available_at, label_eligible=label_eligible,
         ))
 
     quality = validate_bars(bars)

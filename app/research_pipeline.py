@@ -36,7 +36,8 @@ def _feature_names_from_dataset(path: str | Path) -> list[str]:
     missing = required - set(columns)
     if missing:
         raise ValueError(f"prepared dataset is missing required columns: {sorted(missing)}")
-    features = [name for name in columns if name not in required]
+    metadata_fields = required | {"label_elapsed_hours", "label_eligible"}
+    features = [name for name in columns if name not in metadata_fields]
     if not features:
         raise ValueError("prepared dataset contains no feature columns")
     return features
@@ -67,6 +68,7 @@ def run_research_pipeline(
     include_ablation: bool = True,
     strict_provenance_audit: bool = False,
     strict_validation: bool = False,
+    max_label_elapsed_hours: float | None = None,
 ) -> dict[str, Any]:
     """Run ingestion (optional), dataset preparation, and fixed-fold model comparison."""
     if fetch_ctrader == (ohlc_csv is not None):
@@ -86,7 +88,7 @@ def run_research_pipeline(
     destination.mkdir(parents=True, exist_ok=True)
 
     if fetch_ctrader:
-        raw_csv = destination / f"{file_instrument}_{period}_ctrader_ohlc.csv"
+        raw_csv = destination / f"{run_id}_{file_instrument}_{period}_ctrader_ohlc.csv"
         ingestion = download_ctrader_history(
             symbol=instrument,
             timeframe=period,
@@ -166,8 +168,10 @@ def run_research_pipeline(
             + ", ".join(raw_audit["errors"])
         )
 
-    dataset_csv = destination / f"{file_instrument}_{period}_research_dataset.csv"
-    dataset_manifest_path = destination / f"{file_instrument}_{period}_research_dataset.manifest.json"
+    # Dataset artifacts are run-scoped: generating a new comparison run must never
+    # overwrite the dataset referenced by an older manifest.
+    dataset_csv = destination / f"{run_id}_{file_instrument}_{period}_research_dataset.csv"
+    dataset_manifest_path = destination / f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json"
     dataset_manifest = prepare_research_dataset(
         raw_csv,
         dataset_csv,
@@ -180,6 +184,7 @@ def run_research_pipeline(
         source_version=actual_source_version,
         retrieved_at_utc=retrieved_at_utc,
         terms_reference=terms_reference,
+        max_label_elapsed_hours=max_label_elapsed_hours,
     )
     feature_names = _feature_names_from_dataset(dataset_csv)
     bars, examples, dataset_sha256 = load_historical_dataset(dataset_csv, feature_names)
@@ -201,6 +206,7 @@ def run_research_pipeline(
         include_ablation=include_ablation,
         max_experiments=max_experiments,
         class_1_means=class_1_means,
+        max_label_elapsed_hours=max_label_elapsed_hours,
     )
     matrix_report_path = destination / f"{run_id}_experiment_matrix.json"
     write_experiment_matrix_report(report, matrix_report_path)
@@ -242,6 +248,11 @@ def run_research_pipeline(
         "ingestion": ingestion,
         "label_horizon_bars": horizon_bars,
         "class_1_means": class_1_means,
+        "max_label_elapsed_hours": max_label_elapsed_hours,
+        "label_eligibility_mode": (
+            "elapsed_time_cap" if max_label_elapsed_hours is not None else "all_labels_included"
+        ),
+        "label_eligibility_metadata": dataset_manifest.get("label_eligibility"),
         "test_metrics_used_for_selection": False,
         "automatic_winner_selection": False,
         "actionable": False,
@@ -275,6 +286,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeframe", required=True, choices=("M1", "M5", "M15", "M30", "H1", "H4", "D1"))
     parser.add_argument("--horizon-bars", type=int, required=True)
     parser.add_argument("--class-1-means", choices=("UP", "DOWN"), required=True)
+    parser.add_argument(
+        "--max-label-elapsed-hours",
+        type=float,
+        help="Optional eligibility cap; keeps the original bar timeline but excludes longer-duration labels from fitting and scoring",
+    )
     parser.add_argument("--retrieved-at-utc", help="Required for --ohlc-csv; ISO-8601 timestamp")
     parser.add_argument("--terms-reference", required=True, help="Actual applicable data-provider terms reference")
     parser.add_argument("--source-version", required=True, help="Provider/export version; never invent provenance")
@@ -322,6 +338,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_ablation=not args.no_ablation,
             strict_provenance_audit=args.strict_provenance_audit,
             strict_validation=args.strict_validation,
+            max_label_elapsed_hours=args.max_label_elapsed_hours,
         )
     except Exception as exc:
         # Errors are concise and do not print credential-bearing objects.

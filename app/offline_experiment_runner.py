@@ -98,6 +98,7 @@ def run_offline_experiment(
             "features": {name: float(row.features[name]) for name in feature_names},
             "label": row.label,
             "label_available_at": _utc(row.label_available_at, "label availability").isoformat(),
+            "label_eligible": row.label_eligible,
         })
     canonical_folds = []
     for fold in plan.folds:
@@ -154,7 +155,9 @@ def run_offline_experiment(
         },
     }
     expected_prediction_rows = sum(
-        len(fold.validation) + len(fold.test) for fold in plan.folds
+        sum(by_time[_utc(bar.timestamp, "validation")].label_eligible for bar in fold.validation)
+        + sum(by_time[_utc(bar.timestamp, "test")].label_eligible for bar in fold.test)
+        for fold in plan.folds
     ) * len(factories)
     ledger.start_run(run_id, run_contract, expected_prediction_rows=expected_prediction_rows)
 
@@ -176,11 +179,17 @@ def run_offline_experiment(
                 raise ValueError(f"fold references {len(missing_times)} timestamps missing from examples")
             train_end = max(train_times)
             train_all = [by_time[t] for t in sorted(train_times)]
-            train = [row for row in train_all if _utc(row.label_available_at, "label availability") <= train_end]
-            validation = [by_time[t] for t in sorted(validation_times)]
-            test = [by_time[t] for t in sorted(test_times)]
+            train_eligible = [row for row in train_all if row.label_eligible]
+            train = [
+                row for row in train_eligible
+                if _utc(row.label_available_at, "label availability") <= train_end
+            ]
+            validation_all = [by_time[t] for t in sorted(validation_times)]
+            validation = [row for row in validation_all if row.label_eligible]
+            test_all = [by_time[t] for t in sorted(test_times)]
+            test = [row for row in test_all if row.label_eligible]
             if not train or not validation or not test:
-                raise ValueError("every fold needs labeled examples in train, validation, and test")
+                raise ValueError("every fold needs eligible labeled examples in train, validation, and test")
             if len({row.label for row in train}) != 2:
                 raise ValueError("matured training labels must contain both classes")
 
@@ -236,11 +245,14 @@ def run_offline_experiment(
                     model_type=str(getattr(model, "model_type", type(model).__name__)),
                     model_version=model_version,
                     train_rows_available=len(train),
-                    train_rows_excluded_unmatured=len(train_all) - len(train),
+                    train_rows_excluded_unmatured=len(train_eligible) - len(train),
                     validation=score(validation, "validation"),
                     test=score(test, "test"),
                     probability_semantics="uncalibrated research probability; not trading performance",
                     actionable=False,
+                    train_rows_excluded_ineligible=len(train_all) - len(train_eligible),
+                    validation_rows_excluded_ineligible=len(validation_all) - len(validation),
+                    test_rows_excluded_ineligible=len(test_all) - len(test),
                 ))
 
         inserted = ledger.record_many(prediction_records)

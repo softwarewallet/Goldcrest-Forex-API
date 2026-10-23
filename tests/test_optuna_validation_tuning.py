@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from dataclasses import replace
 
 import pytest
 
@@ -92,3 +93,45 @@ def test_tuner_rejects_validation_without_both_classes():
             feature_names=("momentum", "volatility"),
             model_type="lightgbm", n_trials=1,
         )
+
+
+def test_tuner_excludes_elapsed_time_ineligible_train_and_validation_rows():
+    train = make_rows(0, 20, delayed_last_label=True)
+    train = [
+        replace(row, label_eligible=False) if index == 4 else row
+        for index, row in enumerate(train)
+    ]
+    validation = make_rows(25, 8)
+    validation = [
+        replace(row, label_eligible=False) if index in {0, 1} else row
+        for index, row in enumerate(validation)
+    ]
+
+    result = tune_on_validation(
+        train, validation,
+        feature_names=("momentum", "volatility"),
+        model_type="xgboost",
+        n_trials=1,
+        seed=19,
+        study_name="test-elapsed-time-eligibility",
+    )
+
+    assert result.train_rows_available == 18
+    assert result.train_rows_excluded_unmatured == 1
+    assert result.train_rows_excluded_ineligible == 1
+    assert result.validation_rows == 6
+    assert result.validation_rows_excluded_ineligible == 2
+    assert result.actionable is False
+
+
+def test_tuner_rejects_non_boolean_label_eligibility():
+    train = make_rows(0, 12)
+    train[3] = replace(train[3], label_eligible="no")
+
+    with pytest.raises(ValueError, match="label_eligible must be a boolean"):
+        tune_on_validation(
+            train, make_rows(15, 6),
+            feature_names=("momentum", "volatility"),
+            model_type="xgboost", n_trials=1,
+        )
+
