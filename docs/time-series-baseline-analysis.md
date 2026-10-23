@@ -60,3 +60,18 @@ All output flags remain non-actionable and execution-disconnected. The analyzer 
 experiment's results independently and deliberately does not rank models or automatically
 select a candidate. Do not use these same held-out test periods to choose a production model;
 reserve a later, untouched evaluation period for any future confirmation.
+
+
+## Fold-level stability and evidence interpretation
+
+The analyzer reports each fold's model and baseline metrics, mean paired log-loss/Brier-score
+improvements, and whether each fold favors the model or baseline. Aggregated comparisons also
+include the count of positive, negative, and zero-improvement folds, plus the minimum, maximum,
+and mean fold improvement.
+
+Each 95% interval is labelled `positive_interval_excludes_zero`,
+`negative_interval_excludes_zero`, or `interval_includes_zero`. If the interval includes zero,
+the result is inconclusive under this descriptive bootstrap. These labels are diagnostics only;
+they are not automatic model-selection gates or proof of statistical significance. Review
+performance consistency across time windows alongside baseline comparisons and the known caveats
+around temporal dependence and model-search bias.

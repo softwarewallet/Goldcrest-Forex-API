@@ -81,6 +81,12 @@ def test_analyzer_compares_models_to_causal_baselines_and_emits_uncertainty():
     assert constant["baseline"] == "constant_probability_0_5"
     assert constant["metrics"]["log_loss"]["improvement_baseline_minus_model"] > 0
     assert len(constant["metrics"]["log_loss"]["confidence_interval_95"]) == 2
+    assert constant["metrics"]["log_loss"]["interval_evidence"] == "positive_interval_excludes_zero"
+    assert constant["metrics"]["log_loss"]["folds_with_positive_mean_improvement"] == 2
+    assert constant["metrics"]["log_loss"]["folds_compared"] == 2
+    assert len(experiment["fold_stability"]) == 2
+    assert experiment["fold_stability"][0]["sample_count"] == 8
+    assert experiment["fold_stability"][0]["probability_loss_improvements"]["constant_probability_0_5"]["log_loss_improvement"] > 0
     assert result["automatic_model_selection"] is False
     assert result["test_metrics_used_for_selection"] is False
 
@@ -115,3 +121,19 @@ def test_block_bootstrap_is_deterministic_and_detects_positive_paired_improvemen
     assert first["observed_mean_improvement"] > 0
     assert first["confidence_interval_95"][0] > 0
     assert first["bootstrap_probability_improvement_positive"] == 1.0
+
+
+
+def test_analyzer_marks_overlapping_zero_improvement_interval_as_inconclusive():
+    matrix = _matrix()
+    for fold in matrix["experiments"][0]["fold_results"]:
+        for row in fold["test_predictions"]:
+            row["model_probability_class_1"] = 0.5
+
+    result = analyze_prediction_matrix(matrix, bootstrap_resamples=100, random_seed=7)
+
+    constant = result["experiments"][0]["probability_loss_comparisons"][0]["metrics"]["log_loss"]
+    assert constant["improvement_baseline_minus_model"] == 0
+    assert constant["interval_evidence"] == "interval_includes_zero"
+    assert constant["folds_with_positive_mean_improvement"] == 0
+    assert constant["folds_with_zero_mean_improvement"] == 2

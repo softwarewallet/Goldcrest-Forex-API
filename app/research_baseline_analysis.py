@@ -297,6 +297,7 @@ def analyze_prediction_matrix(
             for name in _BASELINES
         }
         ordered_folds = sorted(parsed_folds, key=lambda f: f["fold_index"])
+        fold_indices = [fold["fold_index"] for fold in ordered_folds]
         majority_predictions_by_fold = [[row["majority"] for row in fold["rows"]] for fold in ordered_folds]
         lagged_predictions_by_fold = [[row["lagged_class"] for row in fold["rows"]] for fold in ordered_folds]
         majority_accuracy = sum(
@@ -309,6 +310,57 @@ def analyze_prediction_matrix(
             for label_fold, pred_fold in zip(labels_by_fold, lagged_predictions_by_fold)
             for label, pred in zip(label_fold, pred_fold)
         ) / len(labels)
+
+        # Keep fold-level diagnostics: aggregate metrics can hide regime-dependent failures.
+        fold_stability: list[dict[str, Any]] = []
+        for fold in ordered_folds:
+            fold_index = fold["fold_index"]
+            fold_rows = fold["rows"]
+            fold_labels = [row["label"] for row in fold_rows]
+            fold_model_p = [row["model_p"] for row in fold_rows]
+            fold_model_metrics = _metric_summary(fold_labels, fold_model_p)
+            fold_baseline_metrics = {
+                name: _metric_summary(
+                    fold_labels, [row["baseline_p"][name] for row in fold_rows]
+                )
+                for name in _BASELINES
+            }
+            fold_accuracy_comparisons = {
+                "matured_refit_majority_class": sum(
+                    int(row["majority"] == row["label"]) for row in fold_rows
+                ) / len(fold_rows),
+                "lagged_bar_direction": sum(
+                    int(row["lagged_class"] == row["label"]) for row in fold_rows
+                ) / len(fold_rows),
+            }
+            fold_improvements: dict[str, Any] = {}
+            for name in _BASELINES:
+                baseline_probs = [row["baseline_p"][name] for row in fold_rows]
+                fold_improvements[name] = {
+                    "log_loss_improvement": sum(
+                        _log_loss(y, p0) - _log_loss(y, p1)
+                        for y, p0, p1 in zip(fold_labels, baseline_probs, fold_model_p)
+                    ) / len(fold_rows),
+                    "brier_improvement": sum(
+                        _brier(y, p0) - _brier(y, p1)
+                        for y, p0, p1 in zip(fold_labels, baseline_probs, fold_model_p)
+                    ) / len(fold_rows),
+                }
+            test_window = windows_by_fold[fold_index]
+            fold_stability.append({
+                "fold_index": fold_index,
+                "test_start_utc": test_window["start"].isoformat().replace("+00:00", "Z"),
+                "test_end_utc": test_window["end"].isoformat().replace("+00:00", "Z"),
+                "sample_count": len(fold_rows),
+                "model_metrics": fold_model_metrics,
+                "baseline_metrics": fold_baseline_metrics,
+                "probability_loss_improvements": fold_improvements,
+                "accuracy_by_baseline": {
+                    "model": fold_model_metrics["accuracy_at_fixed_half"],
+                    **fold_accuracy_comparisons,
+                },
+                "actionable": False,
+            })
 
         comparisons: list[dict[str, Any]] = []
         baseline_index = 0
@@ -338,14 +390,36 @@ def analyze_prediction_matrix(
                         seed=random_seed + exp_position * 1009 + baseline_index * 97 + metric_offset,
                     )
                     mean_improvement = sum(sum(fold_values) for fold_values in paired_by_fold) / sum(len(fold_values) for fold_values in paired_by_fold)
+                    fold_means = [
+                        sum(values) / len(values)
+                        for values in paired_by_fold if values
+                    ]
+                    interval_low, interval_high = boot["confidence_interval_95"]
+                    interval_evidence = (
+                        "positive_interval_excludes_zero" if interval_low > 0
+                        else "negative_interval_excludes_zero" if interval_high < 0
+                        else "interval_includes_zero"
+                    )
                     metric_comparisons[metric_name] = {
                         "model_mean": sum(flat_model_losses) / len(flat_model_losses),
                         "baseline_mean": sum(flat_baseline_losses) / len(flat_baseline_losses),
                         "improvement_baseline_minus_model": mean_improvement,
                         "confidence_interval_95": boot["confidence_interval_95"],
+                        "interval_evidence": interval_evidence,
                         "bootstrap_probability_improvement_positive": boot["bootstrap_probability_improvement_positive"],
                         "bootstrap_resamples": boot["bootstrap_resamples"],
                         "block_length_observations": boot["block_length_observations"],
+                        "folds_with_positive_mean_improvement": sum(value > 0 for value in fold_means),
+                        "folds_with_negative_mean_improvement": sum(value < 0 for value in fold_means),
+                        "folds_with_zero_mean_improvement": sum(value == 0 for value in fold_means),
+                        "folds_compared": len(fold_means),
+                        "mean_fold_improvement": sum(fold_means) / len(fold_means) if fold_means else None,
+                        "min_fold_improvement": min(fold_means) if fold_means else None,
+                        "max_fold_improvement": max(fold_means) if fold_means else None,
+                        "per_fold_improvements": [
+                            {"fold_index": fold_indices[index], "improvement_baseline_minus_model": value}
+                            for index, value in enumerate(fold_means)
+                        ],
                     }
                 except (TypeError, ValueError) as exc:
                     errors.append(prefix + f"{baseline_name}_{metric_name}_bootstrap_failed:{type(exc).__name__}")
@@ -360,6 +434,7 @@ def analyze_prediction_matrix(
             "test_prediction_count_counted_by_fold": len(labels),
             "model_metrics": model_metrics,
             "baseline_metrics": baseline_metrics,
+            "fold_stability": fold_stability,
             "probability_loss_comparisons": comparisons,
             "accuracy_comparisons": [
                 {
