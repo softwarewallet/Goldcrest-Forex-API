@@ -18,8 +18,6 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.research_baseline_analysis import (
-    _brier,
-    _log_loss,
     _metric_summary,
     _parse_utc,
     analyze_prediction_matrix,
