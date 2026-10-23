@@ -80,5 +80,5 @@ and bootstrap resamples are explicit resource controls.
 - No Auto Live, broker execution, or risk-control code is imported for writes or modified.
 - Test metrics are descriptive; no automatic winner selection occurs.
 - Reports are non-actionable and are not evidence of profitability.
-- The research command does not use news, PyTorch, Llama/Qwen, Vega, Nova, or Titan yet.
+- The research command does not use news, PyTorch, Llama/Qwen, Vega, Nova, or Titan yet. The completed-run validator records package discovery but does not automatically add those systems to model training. Use `python -m app.research_validation --json` for a no-network runtime preflight and add `--strict-validation` to make the research CLI fail when consolidated validation fails.
 - Run tests with `python -m pytest -q tests/test_research_pipeline.py tests/test_research_orchestrator.py`.
