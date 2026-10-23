@@ -283,6 +283,12 @@ Friday start, a Sunday-evening or early-Monday resumption, and a duration of 24-
 an authoritative trading-session calendar and does not prove that a missing interval was expected.
 
 The audit reports `weekend_closure_like_gap_count_over_8_hours`,
-`non_weekend_long_gap_count_over_8_hours`, and examples for both categories. Non-weekend long gaps
-still produce a warning for review. Do not treat a warning-free weekend classification as proof of
-complete data coverage; verify the provider's history and the applicable market calendar.
+`non_weekend_long_gap_count_over_8_hours`, and examples for both categories. It additionally tags
+gaps that include the UTC calendar date of Christmas Day or New Year's Day with
+`calendar_context`, summarized by `holiday_context_gap_count_over_8_hours` and
+`holiday_context_gap_examples`. These are informational fixed-date annotations only: they do not
+change `gap_category`, suppress the non-weekend warning, prove that the market was closed, or
+confirm that the provider returned every expected candle. The two holiday-context dates are not a
+substitute for a broker/instrument-specific session calendar. Non-weekend long gaps still produce a
+warning for review. Do not treat a warning-free weekend classification as proof of complete data
+coverage; verify the provider's history and the applicable market calendar.
