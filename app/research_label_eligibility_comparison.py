@@ -326,7 +326,7 @@ def compare_label_eligibility_runs(
                 raise ValueError(f"runs differ in required baseline metadata: {field}")
         if _sha256_file(baseline["artifacts"]["raw_ohlc_path"]) != _sha256_file(variant["artifacts"]["raw_ohlc_path"]):
             raise ValueError("runs do not use identical raw OHLC snapshots")
-        for field in ("symbol", "timeframe", "label_horizon_bars", "class_1_means",
+        for field in ("symbol", "timeframe", "label_horizon_bars", "label_definition",
                       "data_source", "source_version", "retrieved_at_utc", "terms_reference"):
             base_value = baseline["dataset_manifest"].get(field)
             variant_value = variant["dataset_manifest"].get(field)
