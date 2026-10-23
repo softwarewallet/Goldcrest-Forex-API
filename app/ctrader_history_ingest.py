@@ -616,15 +616,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             diagnostic = type(exc).__name__
         print(f"cTrader research ingestion failed: {diagnostic}", file=sys.stderr)
         return 2
+    pagination = result.get("pagination")
     print(json.dumps({
         "scope": result["scope"],
         "symbol": result["symbol"],
         "timeframe": result["timeframe"],
         "rows": result["rows"],
+        "first_timestamp_utc": result.get("first_timestamp_utc"),
+        "last_timestamp_utc": result.get("last_timestamp_utc"),
+        "requested_start_utc": result.get("requested_start_utc"),
+        "requested_end_utc": result.get("requested_end_utc"),
         "snapshot_sha256": result["snapshot_sha256"],
         "host": result["host"],
+        "pagination": pagination,
         "actionable": False,
         "output_csv": args.output_csv,
+        "manifest_path": str(Path(args.output_csv).with_suffix(Path(args.output_csv).suffix + ".manifest.json")),
     }, indent=2))
     return 0
 
