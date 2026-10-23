@@ -204,6 +204,7 @@ def run_research_pipeline(
         include_ablation=include_ablation,
         max_experiments=max_experiments,
         class_1_means=class_1_means,
+        max_label_elapsed_hours=max_label_elapsed_hours,
     )
     matrix_report_path = destination / f"{run_id}_experiment_matrix.json"
     write_experiment_matrix_report(report, matrix_report_path)
