@@ -517,7 +517,7 @@ def analyze_prediction_regimes(
         ),
         "volatility_window_bars": volatility_window,
         "bootstrap": {
-            "method": "paired_circular_moving_block_bootstrap_stratified_by_walk_forward_fold",
+            "method": "paired_circular_moving_block_bootstrap_stratified_by_walk_forward_fold_conditioned_on_regime",
             "resamples": bootstrap_resamples,
             "block_length_observations": chosen_block_length,
             "block_length_note": "Defaults to label horizon; descriptive dependence adjustment, not proof of independence.",
