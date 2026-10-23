@@ -34,3 +34,21 @@ def test_labels_must_be_explicit_binary_with_both_classes():
 def test_untrained_model_fails_closed():
     with pytest.raises(RuntimeError, match="not trained or loaded"):
         XGBoostResearchModel(FEATURES).predict(ROWS[0])
+
+
+
+def test_lightgbm_prediction_preserves_fitted_feature_names():
+    import warnings
+
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        model = LightGBMResearchModel(FEATURES, model_version="named-features-test").fit(
+            ROWS, LABELS, params={"n_estimators": 12}
+        )
+        output = model.predict(ROWS[0])
+
+    assert 0.0 <= output.probability_class_1 <= 1.0
+    assert not any(
+        "does not have valid feature names" in str(warning.message)
+        for warning in captured
+    )
