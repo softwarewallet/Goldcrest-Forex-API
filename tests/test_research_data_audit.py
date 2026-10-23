@@ -113,6 +113,8 @@ def test_raw_ohlc_audit_warns_on_non_weekend_long_gaps_without_calling_them_corr
     assert result["non_weekend_long_gap_count_over_8_hours"] == 1
     assert result["weekend_closure_like_gap_count_over_8_hours"] == 0
     assert result["large_gap_examples"][0]["gap_category"] == "non_weekend_long_gap"
+    assert result["large_gap_examples"][0]["calendar_context"] == []
+    assert result["holiday_context_gap_count_over_8_hours"] == 0
     assert "non_weekend_long_gaps_detected_review_data_coverage" in result["warnings"]
 
 
@@ -134,6 +136,37 @@ def test_raw_ohlc_audit_classifies_late_friday_to_sunday_gap_as_weekend_like(tmp
     assert result["non_weekend_long_gap_count_over_8_hours"] == 0
     assert result["large_gap_examples"][0]["gap_category"] == "weekend_closure_like"
     assert result["gap_classification"]["method"] == "conservative_utc_weekend_window_heuristic"
+
+
+def test_raw_ohlc_audit_adds_christmas_context_without_suppressing_warning(tmp_path):
+    before = datetime(2025, 12, 24, 21, 15, tzinfo=timezone.utc)
+    after = datetime(2025, 12, 25, 22, 0, tzinfo=timezone.utc)
+    path, manifest = _write_snapshot(tmp_path, [before, after])
+
+    result = audit_raw_ohlc_file(path, manifest_path=manifest)
+
+    gap = result["large_gap_examples"][0]
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert gap["gap_category"] == "non_weekend_long_gap"
+    assert gap["calendar_context"] == ["christmas_day"]
+    assert result["holiday_context_gap_count_over_8_hours"] == 1
+    assert result["holiday_context_gap_examples"][0]["calendar_context"] == ["christmas_day"]
+    assert "non_weekend_long_gaps_detected_review_data_coverage" in result["warnings"]
+
+
+def test_raw_ohlc_audit_adds_new_year_context_without_suppressing_warning(tmp_path):
+    before = datetime(2025, 12, 31, 21, 15, tzinfo=timezone.utc)
+    after = datetime(2026, 1, 1, 22, 0, tzinfo=timezone.utc)
+    path, manifest = _write_snapshot(tmp_path, [before, after])
+
+    result = audit_raw_ohlc_file(path, manifest_path=manifest)
+
+    gap = result["large_gap_examples"][0]
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert gap["gap_category"] == "non_weekend_long_gap"
+    assert gap["calendar_context"] == ["new_years_day"]
+    assert result["holiday_context_gap_count_over_8_hours"] == 1
+    assert "non_weekend_long_gaps_detected_review_data_coverage" in result["warnings"]
 
 
 def test_raw_ohlc_audit_can_audit_operator_csv_without_manifest(tmp_path):

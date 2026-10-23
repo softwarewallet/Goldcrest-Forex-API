@@ -12,7 +12,7 @@ import json
 import math
 import statistics
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -51,6 +51,27 @@ def _is_weekend_closure_like_gap(left: datetime, right: datetime) -> bool:
         and resumes_near_open
         and 24 <= gap_hours <= 72
     )
+
+
+def _fixed_date_calendar_context(left: datetime, right: datetime) -> list[str]:
+    """Annotate fixed-date calendar context without asserting market closure.
+
+    The tags are informational only. They do not reclassify a gap, suppress a warning,
+    or replace an instrument/provider-specific market-session calendar.
+    """
+    known_dates = {
+        (1, 1): "new_years_day",
+        (12, 25): "christmas_day",
+    }
+    contexts: list[str] = []
+    current = left.date()
+    end = right.date()
+    while current <= end:
+        context = known_dates.get((current.month, current.day))
+        if context and context not in contexts:
+            contexts.append(context)
+        current += timedelta(days=1)
+    return contexts
 
 
 def audit_raw_ohlc_file(
@@ -232,9 +253,11 @@ def audit_raw_ohlc_file(
                 "to_utc": right.isoformat().replace("+00:00", "Z"),
                 "gap_hours": round(gap_seconds / 3600, 3),
                 "gap_category": "weekend_closure_like" if weekend_like else "non_weekend_long_gap",
+                "calendar_context": _fixed_date_calendar_context(left, right),
             })
         weekend_like_gaps = [gap for gap in long_gaps if gap["gap_category"] == "weekend_closure_like"]
         non_weekend_long_gaps = [gap for gap in long_gaps if gap["gap_category"] == "non_weekend_long_gap"]
+        calendar_context_gaps = [gap for gap in long_gaps if gap["calendar_context"]]
         if unaligned_rows == 0 and len(timeframes) == 1 and frame_seconds == 0:
             warnings.append("unknown_timeframe_candle_alignment_not_checked")
         if non_weekend_long_gaps:
@@ -243,6 +266,7 @@ def audit_raw_ohlc_file(
         long_gaps = []
         weekend_like_gaps = []
         non_weekend_long_gaps = []
+        calendar_context_gaps = []
 
     if not manifest:
         pagination_summary = None
@@ -282,10 +306,17 @@ def audit_raw_ohlc_file(
         "weekend_closure_like_gap_count_over_8_hours": len(weekend_like_gaps),
         "non_weekend_long_gap_count_over_8_hours": len(non_weekend_long_gaps),
         "non_weekend_long_gap_examples": non_weekend_long_gaps[:10],
+        "holiday_context_gap_count_over_8_hours": len(calendar_context_gaps),
+        "holiday_context_gap_examples": calendar_context_gaps[:10],
         "gap_classification": {
             "method": "conservative_utc_weekend_window_heuristic",
             "weekend_closure_like": "Gap starts Friday at or after 16:00 UTC and resumes Sunday at/after 16:00 UTC or Monday by 06:00 UTC, lasting 24-72 hours. Heuristic only; not proof of an expected closure.",
             "non_weekend_long_gap": "Any gap over 8 hours not matching the weekend-like heuristic; review market calendar and data coverage.",
+            "fixed_date_calendar_context": "Informational UTC-date tags for Christmas Day and New Year's Day only. These tags do not establish expected market closure, alter gap_category, or suppress the non-weekend long-gap warning.",
+            "recognized_fixed_date_contexts": {
+                "christmas_day": "December 25 UTC calendar date",
+                "new_years_day": "January 1 UTC calendar date",
+            },
         },
         "invalid_ohlc_rows": invalid_ohlc_rows,
         "nonfinite_ohlc_rows": nonfinite_rows,
@@ -298,8 +329,9 @@ def audit_raw_ohlc_file(
         "automatic_model_selection": False,
         "interpretation": (
             "Local snapshot integrity and OHLC structure only. Weekend-like gap classification is a "
-            "conservative timestamp heuristic, not proof of expected market closure. Review non-weekend "
-            "long gaps, holidays, instrument inactivity and provider coverage before model evaluation."
+            "conservative timestamp heuristic, not proof of expected market closure. Fixed-date holiday "
+            "context tags are informational only; review all non-weekend long gaps, instrument-specific "
+            "sessions and provider coverage before model evaluation."
         ),
     }
 
