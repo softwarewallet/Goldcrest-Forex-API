@@ -309,6 +309,20 @@ def test_optional_has_more_flag_falls_back_when_sdk_does_not_expose_it():
     assert ctrader_history_ingest._response_has_more_trendbars(SimpleNamespace(hasMore=False)) is False
 
 
+def test_has_more_is_read_from_raw_protobuf_when_old_sdk_schema_omits_field():
+    response = SimpleNamespace(trendbar=[])
+    # field 1 (varint), field 5 (length-delimited), then field 7 (optional bool)
+    payload_with_more = bytes((0x08, 0x02, 0x2A, 0x03)) + b"abc" + bytes((0x38, 0x01))
+    payload_without_more = bytes((0x38, 0x00))
+
+    assert ctrader_history_ingest._response_has_more_trendbars(
+        response, SimpleNamespace(payload=payload_with_more)
+    ) is True
+    assert ctrader_history_ingest._response_has_more_trendbars(
+        response, SimpleNamespace(payload=payload_without_more)
+    ) is False
+
+
 def test_read_only_download_runs_auth_symbol_and_trendbar_flow(tmp_path):
     from app.ctrader_history_ingest import download_ctrader_history
 
