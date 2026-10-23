@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.research_provenance_auditor import audit_experiment_matrix_file
-from app.research_validation import summarize_experiment_matrix, validate_completed_run, validate_prepared_dataset
+from app.research_validation import collect_research_preflight, summarize_experiment_matrix, validate_completed_run, validate_prepared_dataset
 
 
 def _sha(path: Path) -> str:
@@ -238,3 +238,19 @@ def test_ctrader_config_check_never_emits_secret_values(tmp_path, monkeypatch):
     assert result["ctrader_demo_config"]["status"] == "FAIL"
     assert result["ctrader_demo_config"]["credential_values_exposed"] is False
     assert secret not in serialized
+
+
+
+def test_standalone_preflight_reports_only_presence_and_never_secrets(monkeypatch):
+    for name in ("CTRADER_CLIENT_ID", "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID"):
+        monkeypatch.delenv(name, raising=False)
+    secret = "must-never-be-returned"
+    monkeypatch.setenv("CTRADER_CLIENT_SECRET", secret)
+
+    result = collect_research_preflight(check_ctrader_config=True)
+
+    assert result["status"] == "FAIL"
+    assert result["ctrader_demo_config"]["network_checked"] is False
+    assert result["ctrader_demo_config"]["credential_values_exposed"] is False
+    assert secret not in json.dumps(result)
+    assert result["actionable"] is False
