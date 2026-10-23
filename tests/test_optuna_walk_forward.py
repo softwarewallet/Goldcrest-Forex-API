@@ -66,6 +66,10 @@ def test_optuna_walk_forward_tunes_then_scores_untouched_test(model_type, tmp_pa
         assert fold.trials_completed == 1
         assert fold.best_params
         assert fold.test_metrics["sample_count"] > 0
+        assert len(fold.test_predictions) == fold.test_metrics["sample_count"]
+        assert fold.baseline_diagnostics["baseline_labels_used_test_data"] is False
+        assert fold.baseline_diagnostics["refit_rows_matured_before_test"] == fold.refit_rows_available
+        assert all(0 <= row["model_probability_class_1"] <= 1 for row in fold.test_predictions)
         assert fold.test_start_utc > fold.validation_end_utc
         assert fold.refit_rows_available >= fold.train_rows_available_for_tuning
 
