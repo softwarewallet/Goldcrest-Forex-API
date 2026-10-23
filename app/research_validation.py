@@ -20,7 +20,7 @@ from app.runtime_diagnostics import collect_runtime_diagnostics
 
 _CONTRACT_COLUMNS = {
     "symbol", "timeframe", "timestamp", "open", "high", "low", "close",
-    "label", "label_available_at",
+    "label", "label_available_at", "label_elapsed_hours", "label_eligible",
 }
 _METRIC_KEYS = (
     "brier_score", "log_loss", "accuracy_at_fixed_half",
@@ -67,6 +67,7 @@ def validate_prepared_dataset(
     *,
     expected_symbol: str | None = None,
     expected_timeframe: str | None = None,
+    max_label_elapsed_hours: float | None = None,
 ) -> dict[str, Any]:
     """Check prepared rows without sorting, imputing, dropping, or changing the data."""
     source = Path(dataset_path)
@@ -84,6 +85,9 @@ def validate_prepared_dataset(
     invalid_feature_rows = 0
     invalid_label_rows = 0
     missing_feature_cells = 0
+    label_elapsed_metadata_count = 0
+    eligible_label_rows = 0
+    ineligible_label_rows = 0
 
     def fail(code: str) -> None:
         errors[code] = errors.get(code, 0) + 1
@@ -102,6 +106,12 @@ def validate_prepared_dataset(
             feature_names = [name for name in columns if name not in _CONTRACT_COLUMNS]
             if not feature_names:
                 fail("no_feature_columns")
+            has_elapsed = "label_elapsed_hours" in columns
+            has_eligibility = "label_eligible" in columns
+            if has_elapsed != has_eligibility:
+                fail("label_eligibility_metadata_incomplete")
+            if max_label_elapsed_hours is not None and not (has_elapsed and has_eligibility):
+                fail("label_eligibility_metadata_missing_for_elapsed_cap")
             previous_timestamp: datetime | None = None
             seen_timestamps: set[datetime] = set()
             for row in reader:
@@ -115,6 +125,29 @@ def validate_prepared_dataset(
                     available = _parse_utc(row.get("label_available_at") or "", "label_available_at")
                     if available < ts:
                         fail("label_available_before_feature")
+                    if has_elapsed and has_eligibility:
+                        label_elapsed_metadata_count += 1
+                        try:
+                            declared_elapsed = float(row.get("label_elapsed_hours") or "")
+                            actual_elapsed = (available - ts).total_seconds() / 3600.0
+                            if (
+                                not math.isfinite(declared_elapsed)
+                                or declared_elapsed <= 0
+                                or abs(declared_elapsed - actual_elapsed) > 1e-5
+                            ):
+                                raise ValueError
+                            eligibility_text = (row.get("label_eligible") or "").strip()
+                            if eligibility_text not in {"0", "1"}:
+                                raise ValueError
+                            is_eligible = eligibility_text == "1"
+                            if max_label_elapsed_hours is not None and (
+                                is_eligible != (declared_elapsed <= max_label_elapsed_hours + 1e-9)
+                            ):
+                                fail("label_eligibility_cap_mismatch")
+                            eligible_label_rows += int(is_eligible)
+                            ineligible_label_rows += int(not is_eligible)
+                        except (TypeError, ValueError, OverflowError):
+                            fail("invalid_label_eligibility_metadata")
                     if ts in seen_timestamps:
                         fail("duplicate_timestamp")
                     if previous_timestamp is not None and ts <= previous_timestamp:
@@ -184,6 +217,13 @@ def validate_prepared_dataset(
         warnings.append("OHLC validation failed for one or more rows; details are in errors.")
     if invalid_feature_rows:
         fail("invalid_or_missing_features")
+    if label_elapsed_metadata_count and label_elapsed_metadata_count != row_count:
+        fail("label_eligibility_metadata_row_count_mismatch")
+    if max_label_elapsed_hours is not None and row_count and label_elapsed_metadata_count != row_count:
+        fail("label_eligibility_metadata_row_count_mismatch")
+    if not label_elapsed_metadata_count:
+        eligible_label_rows = row_count
+        ineligible_label_rows = 0
     label_count = len(labels)
     positive = sum(labels)
     negative = label_count - positive
@@ -208,6 +248,13 @@ def validate_prepared_dataset(
             "positive_count": positive,
             "negative_count": negative,
             "positive_prevalence": prevalence,
+        },
+        "label_eligibility": {
+            "mode": "elapsed_time_cap" if label_elapsed_metadata_count else "all_labels_included",
+            "max_label_elapsed_hours": max_label_elapsed_hours,
+            "eligible_row_count": eligible_label_rows,
+            "ineligible_row_count": ineligible_label_rows,
+            "metadata_row_count": label_elapsed_metadata_count,
         },
         "invalid_ohlc_rows": invalid_ohlc_rows,
         "invalid_feature_cells_or_rows": invalid_feature_rows,
@@ -343,8 +390,26 @@ def summarize_experiment_matrix(report_path: str | Path) -> dict[str, Any]:
             expected_rows = window_rows_by_index.get(fold_identity)
             if expected_rows is None:
                 errors.append(f"experiment_{exp_index}_fold_{fold_index}_missing_common_test_window")
+            elif report.get("label_eligibility_mode", "all_labels_included") == "elapsed_time_cap":
+                available_before_filter = fold.get("test_rows_available_before_eligibility")
+                excluded_by_filter = fold.get("test_rows_excluded_ineligible")
+                if (
+                    isinstance(available_before_filter, bool)
+                    or not isinstance(available_before_filter, int)
+                    or isinstance(excluded_by_filter, bool)
+                    or not isinstance(excluded_by_filter, int)
+                    or available_before_filter != expected_rows
+                    or excluded_by_filter < 0
+                    or excluded_by_filter >= available_before_filter
+                ):
+                    errors.append(f"experiment_{exp_index}_fold_{fold_index}_invalid_eligibility_counts")
+                elif sample_count != available_before_filter - excluded_by_filter:
+                    errors.append(f"experiment_{exp_index}_fold_{fold_index}_eligible_test_sample_count_mismatch")
             elif sample_count != expected_rows:
                 errors.append(f"experiment_{exp_index}_fold_{fold_index}_test_sample_count_mismatch")
+            test_predictions = fold.get("test_predictions")
+            if isinstance(test_predictions, list) and len(test_predictions) != sample_count:
+                errors.append(f"experiment_{exp_index}_fold_{fold_index}_prediction_count_mismatch")
             total_test_rows += sample_count
             for name in _METRIC_KEYS:
                 value = metrics.get(name)
@@ -516,7 +581,11 @@ def validate_completed_run(
             dataset_path,
             expected_symbol=manifest.get("symbol"),
             expected_timeframe=manifest.get("timeframe"),
+            max_label_elapsed_hours=manifest.get("max_label_elapsed_hours"),
         )
+        expected_eligibility_mode = manifest.get("label_eligibility_mode", "all_labels_included")
+        if dataset_summary.get("label_eligibility", {}).get("mode") != expected_eligibility_mode:
+            errors.append("dataset:label_eligibility_mode_does_not_match_manifest")
         if dataset_summary["status"] == "FAIL":
             errors.extend(f"dataset:{item}" for item in dataset_summary["errors"])
         elif dataset_summary["status"] == "PASS_WITH_WARNINGS":
