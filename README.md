@@ -59,3 +59,15 @@ See `docs/resource-aware-runtime.md` for limits, diagnostics, and safeguards.
 Each completed run writes a separate `<run-id>_provenance_audit.json` receipt beside the experiment-matrix report. The pipeline manifest records the receipt path, SHA-256 fingerprint, and audit status; the original experiment-matrix report is not modified. The auditor checks structural consistency and recorded safeguards only. It does not recompute metrics, prove absence of data leakage, validate provider data rights, or establish profitability.
 
 By default, a failed structural audit is recorded in the receipt and manifest while preserving the research artifacts for inspection. Add `--strict-provenance-audit` to make the CLI return exit code 3 when the audit status is `FAIL`. This mode still writes the audit receipt and pipeline manifest. The research pipeline remains offline unless `--fetch-ctrader` is explicitly selected, and no research output is connected to broker execution.
+
+
+## Research run integrity audit
+
+After a completed offline research run, verify all artifact hashes and cross-file consistency:
+
+```bash
+python -m app.research_run_audit data/research/runs/<run-id>_pipeline_manifest.json
+python -m app.research_run_audit data/research/runs/<run-id>_pipeline_manifest.json --json
+```
+
+Exit code 0 indicates integrity checks passed (possibly with warnings); exit code 3 indicates failure. This audit checks recorded hashes and safeguards but does not certify model quality, absence of leakage, data rights, or profitability. See `docs/research-run-integrity-audit.md`.
