@@ -47,7 +47,25 @@ python -m app.research_validation --check-ctrader-config --json
 
 A `PASS` from this command confirms that the file/environment has the expected values and
 that the host is DEMO. It does **not** make a network request or prove that the token is
-accepted. To test actual read-only historical-data connectivity, use a modest lookback:
+accepted.
+
+If the historical download fails with `CH_CTID_TRADER_ACCOUNT_NOT_FOUND`, do not guess the
+account ID or substitute the broker's displayed login number. Discover the account IDs granted
+to the access token on the DEMO endpoint:
+
+```bash
+python -m app.ctrader_account_discovery --json
+```
+
+Choose an account from the report with `"demo_eligible": true`, and set that exact
+`account_id` as `CTRADER_ACCOUNT_ID` in the local `.env`. LIVE accounts are identified but
+are never authenticated or used by this research workflow. If no account is marked eligible
+for DEMO, verify the token's granted account access and reauthorize the intended DEMO account.
+This discovery command authenticates the application and requests the account list only; it
+does not authorize any account or request market data.
+
+After setting the account ID returned by the discovery command, test the historical download
+with a modest lookback:
 
 ```bash
 python -m app.ctrader_history_ingest \
