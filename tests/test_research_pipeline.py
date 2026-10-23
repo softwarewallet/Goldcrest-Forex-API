@@ -101,6 +101,10 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert stored["provenance_audit_sha256"]
     assert stored["provenance_audit_status"] == audit["status"] == "FAIL"
     assert stored["strict_provenance_audit"] is False
+    assert result["validation_status"] == "FAIL"  # deliberately incomplete mocked experiment report
+    assert Path(result["validation_report_path"]).is_file()
+    validation_report = json.loads(Path(result["validation_report_path"]).read_text(encoding="utf-8"))
+    assert validation_report["actionable"] is False
 
 
 def test_pipeline_requires_existing_ohlc_file(tmp_path):
@@ -112,3 +116,21 @@ def test_pipeline_requires_existing_ohlc_file(tmp_path):
             ohlc_csv=tmp_path / "missing.csv",
             initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
         )
+
+
+
+def test_pipeline_rejects_unsafe_run_id_before_writing_files(tmp_path):
+    source = tmp_path / "ohlc.csv"
+    source.write_text(
+        "timestamp,open,high,low,close\n"
+        "2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="safe filename token"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD", timeframe="M15", horizon_bars=1, class_1_means="UP",
+            terms_reference="provider terms", source_version="test", output_dir=tmp_path / "run",
+            run_id="../escape", retrieved_at_utc="2026-10-21T00:00:00Z",
+            ohlc_csv=source, initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
+        )
+    assert not (tmp_path / "run").exists()
