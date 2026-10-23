@@ -88,7 +88,7 @@ def run_research_pipeline(
     destination.mkdir(parents=True, exist_ok=True)
 
     if fetch_ctrader:
-        raw_csv = destination / f"{file_instrument}_{period}_ctrader_ohlc.csv"
+        raw_csv = destination / f"{run_id}_{file_instrument}_{period}_ctrader_ohlc.csv"
         ingestion = download_ctrader_history(
             symbol=instrument,
             timeframe=period,
@@ -168,8 +168,10 @@ def run_research_pipeline(
             + ", ".join(raw_audit["errors"])
         )
 
-    dataset_csv = destination / f"{file_instrument}_{period}_research_dataset.csv"
-    dataset_manifest_path = destination / f"{file_instrument}_{period}_research_dataset.manifest.json"
+    # Dataset artifacts are run-scoped: generating a new comparison run must never
+    # overwrite the dataset referenced by an older manifest.
+    dataset_csv = destination / f"{run_id}_{file_instrument}_{period}_research_dataset.csv"
+    dataset_manifest_path = destination / f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json"
     dataset_manifest = prepare_research_dataset(
         raw_csv,
         dataset_csv,
