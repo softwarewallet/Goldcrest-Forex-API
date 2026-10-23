@@ -46,8 +46,8 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
             "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.1\n",
             encoding="utf-8",
         )
-        Path(manifest_path).write_text('{"actionable":false}\n', encoding="utf-8")
-        return {"feature_names": ["ret_1"], "actionable": False}
+        Path(manifest_path).write_text(json.dumps({"actionable": False, "feature_implementation_sha256": "a" * 64, "feature_schema_sha256": "b" * 64, "feature_backend": "numpy_fallback"}) + "\n", encoding="utf-8")
+        return {"feature_names": ["ret_1"], "actionable": False, "feature_implementation_sha256": "a" * 64, "feature_schema_sha256": "b" * 64, "feature_backend": "numpy_fallback"}
 
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
     monkeypatch.setattr(
@@ -146,8 +146,8 @@ def test_pipeline_manifest_hash_is_reproducible_and_covers_payload(tmp_path, mon
             "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.1\n",
             encoding="utf-8",
         )
-        Path(manifest_path).write_text('{"actionable":false}\n', encoding="utf-8")
-        return {"actionable": False}
+        Path(manifest_path).write_text(json.dumps({"actionable": False, "feature_implementation_sha256": "a" * 64, "feature_schema_sha256": "b" * 64, "feature_backend": "numpy_fallback"}) + "\n", encoding="utf-8")
+        return {"actionable": False, "feature_implementation_sha256": "a" * 64, "feature_schema_sha256": "b" * 64, "feature_backend": "numpy_fallback"}
 
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
     monkeypatch.setattr(research_pipeline, "load_historical_dataset", lambda path, names: ([], [], "a" * 64))
