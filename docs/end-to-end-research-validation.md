@@ -445,6 +445,13 @@ OHLC, labels, target-availability timestamps, and feature values remain identica
 the same symbol/timeframe, source metadata, label horizon, class semantics, feature schema, model/feature
 experiment pairs, and chronological fold/test windows.
 
+The immutable raw-snapshot hash and audit status must match. The audit warning text itself can differ
+between historical runs when audit rules or warning categories have changed since the baseline was
+created. In that case, the paired comparison continues with PASS_WITH_WARNINGS, records both warning
+lists, and sets raw_ohlc_audit_warning_sets_identical to false; review these warnings before
+interpreting the metrics. Raw snapshot identity, successful per-run audit integrity, and no hard audit
+errors remain mandatory.
+
 For each matching model/feature variant and fold, the report contains three views:
 
 - The baseline's original held-out metrics across its complete test window.
