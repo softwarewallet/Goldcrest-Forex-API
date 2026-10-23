@@ -152,12 +152,40 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
     if dataset_hash and dataset_manifest.get("output_dataset_sha256") != dataset_hash:
         errors.append("dataset_manifest_output_hash_mismatch")
 
+    label_cap = manifest.get("max_label_elapsed_hours")
+    eligibility_mode = manifest.get("label_eligibility_mode", "all_labels_included")
+    dataset_eligibility = dataset_manifest.get("label_eligibility")
+    if eligibility_mode == "elapsed_time_cap":
+        if (
+            isinstance(label_cap, bool)
+            or not isinstance(label_cap, (int, float))
+            or label_cap <= 0
+        ):
+            errors.append("pipeline_label_eligibility_cap_invalid")
+        if not isinstance(dataset_eligibility, dict):
+            errors.append("dataset_manifest_label_eligibility_missing")
+        elif (
+            dataset_eligibility.get("mode") != "elapsed_time_cap"
+            or dataset_eligibility.get("max_label_elapsed_hours") != label_cap
+            or dataset_eligibility.get("all_rows_preserved_for_fixed_temporal_folds") is not True
+            or dataset_eligibility.get("labels_rewritten") is not False
+        ):
+            errors.append("dataset_manifest_label_eligibility_mismatch")
+    elif label_cap is not None:
+        errors.append("pipeline_label_eligibility_mode_cap_mismatch")
+    elif isinstance(dataset_eligibility, dict) and dataset_eligibility.get("mode") != "elapsed_time_cap":
+        errors.append("dataset_manifest_label_eligibility_mode_mismatch")
+
     report = related.get("experiment_matrix_report", {})
     if report:
         if report.get("run_id") != manifest.get("run_id"):
             errors.append("experiment_report_run_id_mismatch")
         if report.get("dataset_sha256") != dataset_hash:
             errors.append("experiment_report_dataset_sha256_mismatch")
+        if report.get("label_eligibility_mode", "all_labels_included") != eligibility_mode:
+            errors.append("experiment_report_label_eligibility_mode_mismatch")
+        if report.get("max_label_elapsed_hours") != label_cap:
+            errors.append("experiment_report_label_eligibility_cap_mismatch")
         for field in ("actionable", "automatic_winner_selection", "test_metrics_used_for_selection"):
             if report.get(field) is not False:
                 errors.append(f"experiment_report_{field}_must_be_false")
