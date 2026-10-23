@@ -15,7 +15,9 @@ python -m app.research_regime_analysis \
   --manifest data/research/runs/<run-id>_pipeline_manifest.json \
   --ohlc-csv data/research/<exact-raw-ohlc-file>.csv \
   --output data/research/runs/<run-id>_regime_analysis.json \
-  --volatility-window 20
+  --volatility-window 20 \
+  --bootstrap-resamples 500 \
+  --seed 20261023
 ```
 
 This stage does not retrain any model. It works from the stored out-of-sample prediction records
@@ -34,6 +36,25 @@ The output gives model and baseline accuracy, log loss, and Brier score inside e
 paired differences shown descriptively. Empty regimes are emitted with a zero sample count rather
 than being silently omitted. Fold threshold reports include the sample counts and calibration
 history size so results can be audited.
+
+## Regime-specific uncertainty
+
+For each model, regime, baseline, and probability-loss metric, the report now includes a paired
+circular moving-block bootstrap interval. Improvements are defined as baseline loss minus model
+loss, so positive values favor the model. Resampling draws blocks from the full chronological
+held-out fold, then computes the conditional metric using only sampled rows in the requested
+regime. This avoids treating non-adjacent observations from a filtered regime subset as consecutive.
+Resampling is stratified by walk-forward fold. The block length defaults to the prediction-label
+horizon and can be changed with `--block-length` only when there is a defensible dependence
+assumption. `--bootstrap-resamples` accepts 100 to 20,000 draws, and `--seed` makes the draws
+repeatable.
+
+The `interval_evidence` value is either `positive_interval_excludes_zero`,
+`negative_interval_excludes_zero`, or `interval_includes_zero`. An interval that includes zero
+is inconclusive under this descriptive bootstrap. Intervals are not proof of statistical
+significance, and conditional sample sizes can vary sharply by fold. Multiple regime/baseline/model
+comparisons also make post-hoc selection especially vulnerable to selection bias. Treat these
+intervals as uncertainty diagnostics rather than a decision rule.
 
 ## Interpretation and limits
 
