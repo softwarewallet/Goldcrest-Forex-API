@@ -381,6 +381,29 @@ def compare_label_eligibility_runs(
         if base_window_map != variant_window_map:
             raise ValueError("runs do not use the same chronological fold/test windows")
 
+        ordered_windows = sorted(
+            (
+                _utc(window["test_start_utc"], "fold test start"),
+                _utc(window["test_end_utc"], "fold test end"),
+                window["test_rows"],
+            )
+            for window in base_window_map.values()
+        )
+        overlapping_window_count = 0
+        furthest_test_end: datetime | None = None
+        for start, end, _ in ordered_windows:
+            # Boundaries are inclusive; windows sharing a boundary timestamp overlap.
+            if furthest_test_end is not None and start <= furthest_test_end:
+                overlapping_window_count += 1
+            if furthest_test_end is None or end > furthest_test_end:
+                furthest_test_end = end
+        test_observations_across_folds = sum(window["test_rows"] for window in base_window_map.values())
+        unique_test_timestamps_across_windows = sum(
+            any(start <= _utc(row["_timestamp_utc"], "dataset timestamp") <= end
+                for start, end, _ in ordered_windows)
+            for row in base_rows
+        )
+
         base_experiments = _experiments_by_key(base_matrix, "baseline")
         variant_experiments = _experiments_by_key(variant_matrix, "variant")
         if set(base_experiments) != set(variant_experiments):
@@ -512,6 +535,10 @@ def compare_label_eligibility_runs(
         warnings: list[str] = []
         if baseline_audit.get("status") == "PASS_WITH_WARNINGS":
             warnings.append("raw_ohlc_audit_passed_with_warnings")
+        if overlapping_window_count:
+            warnings.append(
+                f"overlapping_test_windows:{overlapping_window_count}; fold metrics are not independent"
+            )
         overall = {
             "schema_version": 1,
             "scope": "GOLDCREST_PAIRED_LABEL_ELIGIBILITY_SENSITIVITY",
@@ -530,6 +557,13 @@ def compare_label_eligibility_runs(
             "dataset_timestamps_identical": True,
             "shared_dataset_labels_features_and_ohlc_identical": True,
             "common_fold_windows_identical": True,
+            "test_window_overlap_count": overlapping_window_count,
+            "test_windows_overlap": overlapping_window_count > 0,
+            "test_observations_across_folds": test_observations_across_folds,
+            "unique_test_timestamps_across_fold_windows": unique_test_timestamps_across_windows,
+            "repeated_test_timestamp_observations": (
+                test_observations_across_folds - unique_test_timestamps_across_windows
+            ),
             "experiment_count": len(comparisons),
             "experiments": comparisons,
             "eligibility_summary": {
