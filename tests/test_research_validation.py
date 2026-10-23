@@ -74,7 +74,7 @@ def _build_complete_run(tmp_path: Path) -> Path:
             "trials_completed": 2,
             "test_metrics_used_for_tuning": False,
             "test_metrics": {
-                "sample_count": 10, "positive_count": 5, "negative_count": 5,
+                "sample_count": 4, "positive_count": 2, "negative_count": 2,
                 "prevalence": 0.5, "brier_score": 0.2, "log_loss": 0.6,
                 "accuracy_at_fixed_half": 0.6, "mean_predicted_probability": 0.51,
                 "expected_calibration_error": 0.08,
@@ -93,7 +93,7 @@ def _build_complete_run(tmp_path: Path) -> Path:
             "trials_completed": 2,
             "test_metrics_used_for_tuning": False,
             "test_metrics": {
-                "sample_count": 10, "positive_count": 4, "negative_count": 6,
+                "sample_count": 4, "positive_count": 2, "negative_count": 2,
                 "prevalence": 0.4, "brier_score": 0.22, "log_loss": 0.62,
                 "accuracy_at_fixed_half": 0.55, "mean_predicted_probability": 0.49,
                 "expected_calibration_error": 0.09,
@@ -236,6 +236,7 @@ def test_ctrader_config_check_never_emits_secret_values(tmp_path, monkeypatch):
 
     serialized = json.dumps(result)
     assert result["ctrader_demo_config"]["status"] == "FAIL"
+    assert result["status"] == "FAIL"
     assert result["ctrader_demo_config"]["credential_values_exposed"] is False
     assert secret not in serialized
 
