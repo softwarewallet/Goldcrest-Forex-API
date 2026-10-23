@@ -180,8 +180,8 @@ def analyze_prediction_temporal_stability(
         })
     if any(gap["gap_category"] == "non_weekend_long_gap" for gap in long_gaps):
         warnings.append("non_weekend_long_gaps_detected_review_market_calendar_and_provider_coverage")
-    if not long_gaps:
-        warnings.append("no_gaps_above_configured_threshold_found")
+    # A clean result with no intervals above the chosen threshold is valid; zero gaps
+    # is reported in the metrics instead of being treated as a data-quality warning.
 
     experiments = matrix.get("experiments")
     if not isinstance(experiments, list) or not experiments:
