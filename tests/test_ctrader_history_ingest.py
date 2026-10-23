@@ -361,7 +361,7 @@ def test_read_only_download_runs_auth_symbol_and_trendbar_flow(tmp_path):
 
 
 
-def test_history_download_paginates_full_pages_sorts_rows_and_records_completeness(tmp_path, monkeypatch):
+def test_history_download_paginates_with_older_sdk_count_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(ctrader_history_ingest, "_TREND_BAR_PAGE_SIZE", 2)
     latest_minute = int(datetime.now(timezone.utc).timestamp() // 60)
 
@@ -374,14 +374,10 @@ def test_history_download_paginates_full_pages_sorts_rows_and_records_completene
             deltaClose=300,
         )
 
-    newest_page = SimpleNamespace(
-        trendbar=[bar(latest_minute - 15), bar(latest_minute)],
-        hasMore=True,
-    )
-    older_page = SimpleNamespace(
-        trendbar=[bar(latest_minute - 45), bar(latest_minute - 30)],
-        hasMore=False,
-    )
+    # ctrader-open-api==0.9.2 doesn't expose ProtoOAGetTrendbarsRes.hasMore.
+    # An exactly full count page must therefore trigger a backwards request.
+    newest_page = SimpleNamespace(trendbar=[bar(latest_minute - 15), bar(latest_minute)])
+    older_page = SimpleNamespace(trendbar=[bar(latest_minute - 30)])
 
     class PagedFakeClient(FakeClient):
         def send(self, request):
@@ -435,14 +431,14 @@ def test_history_download_paginates_full_pages_sorts_rows_and_records_completene
     trendbar_requests = [item for item in clients[0].sent if type(item).__name__ == "ProtoOAGetTrendbarsReq"]
     timestamps = [row["timestamp"] for row in rows]
 
-    assert len(rows) == 4
+    assert len(rows) == 3
     assert timestamps == sorted(timestamps)
-    assert len(set(timestamps)) == 4
+    assert len(set(timestamps)) == 3
     assert len(trendbar_requests) == 2
     assert all(request.count == 2 for request in trendbar_requests)
     assert trendbar_requests[1].toTimestamp < trendbar_requests[0].toTimestamp
     assert trendbar_requests[1].fromTimestamp == trendbar_requests[0].fromTimestamp
     assert result["pagination"]["complete"] is True
     assert result["pagination"]["pages_requested"] == 2
-    assert result["pagination"]["has_more_flag_available"] is True
-    assert result["rows"] == 4
+    assert result["pagination"]["has_more_flag_available"] is False
+    assert result["rows"] == 3
