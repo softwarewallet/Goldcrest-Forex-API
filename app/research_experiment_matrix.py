@@ -38,13 +38,13 @@ class ExperimentMatrixReport:
     dataset_sha256: str
     symbol: str
     timeframe: str
-    horizon_bars: int
-    class_1_means: str
     feature_names: tuple[str, ...]
     model_types: tuple[str, ...]
     fold_count: int
     experiments: tuple[dict[str, Any], ...]
     common_fold_test_windows: tuple[dict[str, Any], ...]
+    horizon_bars: int = 1
+    class_1_means: str = "UP"
     test_metrics_used_for_selection: bool = False
     automatic_winner_selection: bool = False
     actionable: bool = False
