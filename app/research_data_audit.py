@@ -160,10 +160,18 @@ def audit_raw_ohlc_file(
         errors.append("multiple_symbols_in_csv")
     if len(timeframes) > 1:
         errors.append("multiple_timeframes_in_csv")
+    if symbols and "" in symbols:
+        errors.append("blank_symbol_in_csv")
+    if timeframes and ("" in timeframes or any(frame not in _TIMEFRAME_MINUTES for frame in timeframes)):
+        errors.append("unsupported_or_blank_timeframe_in_csv")
     if expected_symbol and symbols and symbols != {expected_symbol.strip().upper()}:
         errors.append("csv_symbol_mismatch")
     if expected_timeframe and timeframes and timeframes != {expected_timeframe.strip().upper()}:
         errors.append("csv_timeframe_mismatch")
+    if manifest and len(symbols) == 1 and str(manifest.get("symbol", "")).upper() != next(iter(symbols)):
+        errors.append("manifest_csv_symbol_mismatch")
+    if manifest and len(timeframes) == 1 and str(manifest.get("timeframe", "")).upper() != next(iter(timeframes)):
+        errors.append("manifest_csv_timeframe_mismatch")
     if first_bad_timestamp_line is not None:
         errors.append(f"timestamps_not_strictly_increasing_line_{first_bad_timestamp_line}")
     if invalid_ohlc_rows:
