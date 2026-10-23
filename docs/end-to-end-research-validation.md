@@ -201,6 +201,12 @@ manifest. An operator-supplied local CSV can be audited without a companion mani
 explicitly marked with a provenance warning because its input hash cannot be independently
 verified against a retrieval receipt.
 
+The experiment-matrix provenance audit compares the shared test windows against each model's fold
+records. All of these UTC timestamps are normalized to the same ISO-8601 `Z` representation before
+comparison, so equivalent `+00:00` and `Z` offsets do not create false audit failures. The pipeline
+also prints `provenance_audit_errors` and `provenance_audit_warnings` in its JSON output to make
+future failures diagnosable without copying the entire response.
+
 Every successful pipeline run now emits:
 - raw OHLC audit receipt with status, warnings, and a SHA-256 stored in the pipeline manifest;
 - canonical raw OHLC snapshot (when fetching from cTrader);
