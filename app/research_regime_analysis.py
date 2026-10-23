@@ -232,7 +232,10 @@ def analyze_prediction_regimes(
     threshold_by_fold = {row["fold_index"]: row for row in threshold_reports}
     experiments_result: list[dict[str, Any]] = []
     skipped_without_volatility = 0
-    for experiment in matrix.get("experiments", []):
+    for experiment_index, experiment in enumerate(matrix.get("experiments", [])):
+        # Fold regime counts are shared-window diagnostics, so count each timestamp only
+        # once rather than once per model/feature experiment.
+        record_fold_counts = experiment_index == 0
         buckets: dict[str, dict[str, list[Any]]] = {
             regime: {
                 "labels": [],
@@ -242,13 +245,11 @@ def analyze_prediction_regimes(
             }
             for regime in _REGIMES
         }
-        fold_regime_counts: dict[int, dict[str, int]] = {}
         for fold in experiment.get("fold_results", []):
             fold_index = fold.get("fold_index")
             if fold_index not in fold_assignments:
                 errors.append(f"experiment_{experiment.get('experiment_id')}_fold_{fold_index}_threshold_missing")
                 continue
-            fold_regime_counts[fold_index] = {regime: 0 for regime in _REGIMES}
             for prediction in fold.get("test_predictions", []):
                 try:
                     timestamp = _parse_utc(prediction.get("timestamp_utc"), "prediction timestamp")
@@ -258,7 +259,8 @@ def analyze_prediction_regimes(
                     regime = fold_assignments[fold_index].get(timestamp)
                     if regime is None:
                         skipped_without_volatility += 1
-                        threshold_by_fold[fold_index]["predictions_without_warmup_volatility"] += 1
+                        if record_fold_counts:
+                            threshold_by_fold[fold_index]["predictions_without_warmup_volatility"] += 1
                         continue
                     label = prediction["label"]
                     probability = float(prediction["model_probability_class_1"])
@@ -275,8 +277,8 @@ def analyze_prediction_regimes(
                             errors.append(f"experiment_{experiment.get('experiment_id')}_invalid_baseline_probability")
                             break
                         bucket[baseline_name].append(baseline_probability)
-                    fold_regime_counts[fold_index][regime] += 1
-                    threshold_by_fold[fold_index]["regime_counts"][regime] += 1
+                    if record_fold_counts:
+                        threshold_by_fold[fold_index]["regime_counts"][regime] += 1
                 except (KeyError, TypeError, ValueError):
                     errors.append(f"experiment_{experiment.get('experiment_id')}_malformed_prediction_row")
 
