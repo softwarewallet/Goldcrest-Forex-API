@@ -27,7 +27,7 @@ _METRIC_KEYS = (
     "brier_score", "log_loss", "accuracy_at_fixed_half",
     "expected_calibration_error", "prevalence", "mean_predicted_probability",
 )
-_REQUIRED_RESEARCH_MODULES = ("numpy", "scikit-learn", "SciPy", "XGBoost", "LightGBM", "Optuna")
+_REQUIRED_RESEARCH_MODULES = ("NumPy", "scikit-learn", "SciPy", "XGBoost", "LightGBM", "Optuna")
 
 
 def _parse_utc(value: str, field: str) -> datetime:
@@ -439,6 +439,40 @@ def _runtime_summary() -> dict[str, Any]:
     }
 
 
+def collect_research_preflight(*, check_ctrader_config: bool = False) -> dict[str, Any]:
+    """Inspect research prerequisites without starting model training or network calls."""
+    runtime = _runtime_summary()
+    missing = [name for name, present in runtime["required_research_modules"].items() if not present]
+    warnings = []
+    errors = []
+    if missing:
+        warnings.append("required research modules not detected: " + ", ".join(missing))
+    ctrader = _ctrader_config_status() if check_ctrader_config else {
+        "status": "NOT_CHECKED",
+        "network_checked": False,
+        "credential_values_exposed": False,
+    }
+    if check_ctrader_config and ctrader["status"] == "FAIL":
+        errors.append("cTrader DEMO configuration is incomplete or invalid")
+    return {
+        "schema_version": 1,
+        "scope": "GOLDCREST_RESEARCH_PREFLIGHT",
+        "status": "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS",
+        "runtime_preflight": runtime,
+        "ctrader_demo_config": ctrader,
+        "errors": errors,
+        "warnings": warnings,
+        "actionable": False,
+        "execution_connected": False,
+        "network_checked": False,
+        "credential_values_exposed": False,
+        "interpretation": (
+            "Dependency discovery and optional cTrader DEMO environment-variable validation only. "
+            "This preflight does not test API connectivity, served-model health, model accuracy, or profitability."
+        ),
+    }
+
+
 def validate_completed_run(
     manifest_file: str | Path,
     *,
@@ -531,37 +565,49 @@ def validate_completed_run(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Validate a completed offline research run and emit a consolidated report."
+        description="Preflight research prerequisites or validate a completed offline research run."
     )
-    parser.add_argument("manifest", help="Path to <run-id>_pipeline_manifest.json")
-    parser.add_argument("--output", help="Output path for the consolidated JSON report")
+    parser.add_argument(
+        "manifest", nargs="?", help="Path to <run-id>_pipeline_manifest.json; omit for preflight only"
+    )
+    parser.add_argument("--output", help="Output path for the JSON report")
     parser.add_argument(
         "--check-ctrader-config", action="store_true",
         help="Check cTrader DEMO environment-variable presence only; no network requests are made",
     )
     parser.add_argument("--json", action="store_true", help="Print the report as JSON")
     args = parser.parse_args(argv)
-    report = validate_completed_run(
-        args.manifest, output_path=args.output, check_ctrader_config=args.check_ctrader_config
-    )
+    if args.manifest:
+        report = validate_completed_run(
+            args.manifest, output_path=args.output, check_ctrader_config=args.check_ctrader_config
+        )
+    else:
+        report = collect_research_preflight(check_ctrader_config=args.check_ctrader_config)
+        if args.output:
+            target = Path(args.output)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\\n", encoding="utf-8")
+            report["report_path"] = str(target.resolve())
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         print(f"Research validation: {report['status']}")
-        print(f"Run ID: {report.get('run_id') or 'unknown'}")
+        if report.get("run_id"):
+            print(f"Run ID: {report['run_id']}")
         dataset = report.get("dataset_quality") or {}
-        print(f"Dataset rows: {dataset.get('row_count', 'unavailable')}")
+        if dataset:
+            print(f"Dataset rows: {dataset.get('row_count', 'unavailable')}")
         matrix = report.get("experiment_quality") or {}
-        print(f"Experiments/folds: {matrix.get('experiment_count', 'unavailable')}/{matrix.get('fold_count', 'unavailable')}")
-        print(f"Automatic winner selection: false")
+        if matrix:
+            print(f"Experiments/folds: {matrix.get('experiment_count', 'unavailable')}/{matrix.get('fold_count', 'unavailable')}")
         for item in report.get("errors", []):
             print(f"ERROR: {item}")
         for item in report.get("warnings", []):
             print(f"WARNING: {item}")
         if report.get("report_path"):
             print(f"Report: {report['report_path']}")
-    return 0 if report["status"] != "FAIL" else 3
-
+        print("Actionable: false")
+    return 3 if report["status"] == "FAIL" else 0
 
 if __name__ == "__main__":
     raise SystemExit(main())
