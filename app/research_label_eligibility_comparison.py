@@ -332,8 +332,22 @@ def compare_label_eligibility_runs(
             variant_value = variant["dataset_manifest"].get(field)
             if base_value != variant_value:
                 raise ValueError(f"dataset manifests differ on {field}")
-        if base_manifest.get("raw_ohlc_audit_warnings") != variant_manifest.get("raw_ohlc_audit_warnings"):
-            raise ValueError("runs have different raw OHLC audit warning sets")
+        # The raw OHLC snapshot hash and audit status above are the comparison gates.
+        # Audit warning wording can legitimately drift when audit rules evolve between
+        # historical runs, even though both runs audited the exact same immutable bytes.
+        # Preserve and surface both warning sets rather than making paired metric analysis
+        # impossible; any difference makes the report PASS_WITH_WARNINGS, not PASS.
+        baseline_raw_audit_warnings = base_manifest.get("raw_ohlc_audit_warnings", [])
+        variant_raw_audit_warnings = variant_manifest.get("raw_ohlc_audit_warnings", [])
+        if (not isinstance(baseline_raw_audit_warnings, list)
+                or not all(isinstance(item, str) for item in baseline_raw_audit_warnings)):
+            raise ValueError("baseline raw OHLC audit warning metadata is invalid")
+        if (not isinstance(variant_raw_audit_warnings, list)
+                or not all(isinstance(item, str) for item in variant_raw_audit_warnings)):
+            raise ValueError("variant raw OHLC audit warning metadata is invalid")
+        raw_audit_warning_sets_identical = (
+            set(baseline_raw_audit_warnings) == set(variant_raw_audit_warnings)
+        )
 
         cap_hours = float(variant_manifest["max_label_elapsed_hours"])
         base_fields, base_rows, base_by_time = _read_dataset(baseline["artifacts"]["dataset_path"])
@@ -532,9 +546,16 @@ def compare_label_eligibility_runs(
             })
 
         baseline_audit = baseline.get("raw_ohlc_audit", {})
+        variant_audit = variant.get("raw_ohlc_audit", {})
         warnings: list[str] = []
-        if baseline_audit.get("status") == "PASS_WITH_WARNINGS":
+        if (baseline_audit.get("status") == "PASS_WITH_WARNINGS"
+                or variant_audit.get("status") == "PASS_WITH_WARNINGS"):
             warnings.append("raw_ohlc_audit_passed_with_warnings")
+        if not raw_audit_warning_sets_identical:
+            warnings.append(
+                "raw_ohlc_audit_warning_sets_differ_between_runs; both sets are preserved "
+                "in the report and require review"
+            )
         if overlapping_window_count:
             warnings.append(
                 f"overlapping_test_windows:{overlapping_window_count}; fold metrics are not independent"
@@ -551,6 +572,9 @@ def compare_label_eligibility_runs(
             "class_1_means": base_manifest.get("class_1_means"),
             "max_label_elapsed_hours": cap_hours,
             "raw_ohlc_sha256": base_manifest["raw_ohlc_sha256"],
+            "raw_ohlc_audit_warning_sets_identical": raw_audit_warning_sets_identical,
+            "baseline_raw_ohlc_audit_warnings": list(baseline_raw_audit_warnings),
+            "variant_raw_ohlc_audit_warnings": list(variant_raw_audit_warnings),
             "baseline_dataset_sha256": _sha256_file(baseline["artifacts"]["dataset_path"]),
             "variant_dataset_sha256": _sha256_file(variant["artifacts"]["dataset_path"]),
             "raw_ohlc_snapshots_identical": True,
