@@ -13,6 +13,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Sequence
+from app.research_reproducibility_auditor import audit_experiment_reproducibility
 
 
 def _sha256(path: Path) -> str:
@@ -193,6 +194,15 @@ def certify_pipeline_manifest(manifest_path: str | Path) -> dict[str, Any]:
         except (OSError, ValueError, json.JSONDecodeError):
             errors.append("provenance_receipt_unreadable")
 
+    fingerprint_path = _resolve(base, manifest.get("experiment_fingerprint_path"), "experiment_fingerprint_path", errors)
+    if fingerprint_path is not None:
+        reproducibility = audit_experiment_reproducibility(fingerprint_path, manifest_file)
+        if reproducibility.get("status") != "PASS":
+            errors.append("reproducibility_audit_failed")
+            errors.extend("reproducibility:" + str(item) for item in reproducibility.get("errors", []))
+    else:
+        reproducibility = {"status": "FAIL", "errors": ["experiment_fingerprint_missing"]}
+
     if manifest.get("data_quality_audit_status") == "PASS_WITH_WARNINGS":
         warnings.append("data_quality_audit_has_warnings_review_session_gaps")
     elif manifest.get("data_quality_audit_status") != "PASS":
@@ -213,6 +223,8 @@ def certify_pipeline_manifest(manifest_path: str | Path) -> dict[str, Any]:
         "pipeline_manifest_sha256_actual": actual_manifest_hash,
         "artifact_checks": {name: "CHECKED" if name in resolved else "MISSING" for name in artifacts},
         "dataset_temporal_checks": dataset_stats,
+        "reproducibility_audit_status": reproducibility.get("status"),
+        "reproducibility_audit_errors": reproducibility.get("errors", []),
         "actionable": False,
         "execution_connected": False,
         "interpretation": (
