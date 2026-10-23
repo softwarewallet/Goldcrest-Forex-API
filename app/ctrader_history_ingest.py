@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from app.ctrader_history import normalize_ctrader_trendbars
 
@@ -48,7 +48,15 @@ def load_config(environ: dict[str, str] | None = None) -> CTraderResearchConfig:
     """
     if environ is None:
         dotenv_path = _PROJECT_ROOT / ".env"
-        load_dotenv(dotenv_path=dotenv_path, override=False, encoding="utf-8")
+        file_values = dotenv_values(dotenv_path=dotenv_path, encoding="utf-8")
+        # Keep the documented precedence rule: non-empty process values win, but an
+        # exported empty variable must not shadow a valid value in the repository .env.
+        # Copy only cTrader settings into the process environment; never print them.
+        for name in (*_ENV_NAMES, "CTRADER_HOST"):
+            process_value = os.environ.get(name, "")
+            file_value = file_values.get(name)
+            if not process_value.strip() and isinstance(file_value, str) and file_value.strip():
+                os.environ[name] = file_value
         source = os.environ
     else:
         source = environ
