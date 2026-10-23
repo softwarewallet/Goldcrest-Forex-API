@@ -188,7 +188,9 @@ def test_baseline_dataset_validation_does_not_require_optional_eligibility_colum
 
     result = validate_prepared_dataset(dataset, max_label_elapsed_hours=None)
 
-    assert result["status"] == "PASS"
+    # One-row fixture is intentionally class-imbalanced, so the validator warns.
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert result["errors"] == []
     assert result["feature_names"] == ["feature_x"]
     assert result["label_eligibility"]["mode"] == "all_labels_included"
     assert result["label_eligibility"]["eligible_row_count"] == 1
