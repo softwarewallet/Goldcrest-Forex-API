@@ -133,7 +133,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
 
     raw_audit = related.get("raw_ohlc_audit_path", {})
     raw_hash = checked_artifacts.get("raw_ohlc_path", {}).get("sha256")
-    if raw_audit:
+    if "raw_ohlc_audit_path" in related:
         if raw_audit.get("snapshot_sha256") != raw_hash:
             errors.append("raw_ohlc_audit_snapshot_sha256_mismatch")
         if raw_audit.get("status") != manifest.get("raw_ohlc_audit_status"):
