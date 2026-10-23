@@ -82,8 +82,8 @@ def audit_raw_ohlc_file(
         except (OSError, json.JSONDecodeError):
             errors.append("snapshot_manifest_unreadable")
 
+    is_ctrader_manifest = bool(manifest) and manifest.get("scope") == "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION"
     if manifest:
-        is_ctrader_manifest = manifest.get("scope") == "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION"
         if not is_ctrader_manifest:
             if require_manifest:
                 errors.append("unexpected_manifest_scope")
@@ -177,9 +177,9 @@ def audit_raw_ohlc_file(
         errors.append("csv_symbol_mismatch")
     if expected_timeframe and timeframes and timeframes != {expected_timeframe.strip().upper()}:
         errors.append("csv_timeframe_mismatch")
-    if manifest and len(symbols) == 1 and str(manifest.get("symbol", "")).upper() != next(iter(symbols)):
+    if is_ctrader_manifest and len(symbols) == 1 and str(manifest.get("symbol", "")).upper() != next(iter(symbols)):
         errors.append("manifest_csv_symbol_mismatch")
-    if manifest and len(timeframes) == 1 and str(manifest.get("timeframe", "")).upper() != next(iter(timeframes)):
+    if is_ctrader_manifest and len(timeframes) == 1 and str(manifest.get("timeframe", "")).upper() != next(iter(timeframes)):
         errors.append("manifest_csv_timeframe_mismatch")
     if first_bad_timestamp_line is not None:
         errors.append(f"timestamps_not_strictly_increasing_line_{first_bad_timestamp_line}")
@@ -191,13 +191,11 @@ def audit_raw_ohlc_file(
         errors.append(f"timestamps_not_aligned_to_timeframe:{unaligned_rows}")
 
     if timestamps and len(timestamps) == rows_count:
-        if timestamps[0].isoformat().replace("+00:00", "Z") != manifest.get("first_timestamp_utc"):
-            if manifest:
-                errors.append("manifest_first_timestamp_mismatch")
-        if timestamps[-1].isoformat().replace("+00:00", "Z") != manifest.get("last_timestamp_utc"):
-            if manifest:
-                errors.append("manifest_last_timestamp_mismatch")
-        if manifest and manifest.get("rows") != rows_count:
+        if is_ctrader_manifest and timestamps[0].isoformat().replace("+00:00", "Z") != manifest.get("first_timestamp_utc"):
+            errors.append("manifest_first_timestamp_mismatch")
+        if is_ctrader_manifest and timestamps[-1].isoformat().replace("+00:00", "Z") != manifest.get("last_timestamp_utc"):
+            errors.append("manifest_last_timestamp_mismatch")
+        if is_ctrader_manifest and manifest.get("rows") != rows_count:
             errors.append("manifest_row_count_mismatch")
         intervals_seconds = [
             (right - left).total_seconds() for left, right in zip(timestamps, timestamps[1:])
