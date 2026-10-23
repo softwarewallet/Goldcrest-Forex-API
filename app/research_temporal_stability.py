@@ -80,7 +80,7 @@ def _describe_group(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     labels = [int(row["label"]) for row in rows]
     model_probabilities = [float(row["model_probability"]) for row in rows]
     baseline_probabilities = {
-        key: [float(row["baseline_probabilities"][field]) for row in rows]
+        key: [float(row["baseline_probabilities"][key]) for row in rows]
         for key, field in _BASELINES.items()
     }
     model_metrics = _metric_summary(labels, model_probabilities)
