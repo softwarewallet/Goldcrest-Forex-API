@@ -142,6 +142,74 @@ def test_cli_prints_safe_download_diagnostic_and_hides_arbitrary_exception_text(
     assert "secret-token-must-not-be-shown" not in output
 
 
+def test_application_config_does_not_require_account_id():
+    from app.ctrader_history_ingest import load_application_config
+
+    config = load_application_config({
+        "CTRADER_CLIENT_ID": "client-id",
+        "CTRADER_CLIENT_SECRET": "secret-value",
+        "CTRADER_ACCESS_TOKEN": "access-value",
+        "CTRADER_HOST": "demo",
+    })
+
+    assert config.host == "demo"
+    assert config.client_id == "client-id"
+    assert config.access_token == "access-value"
+
+
+def test_account_discovery_reports_only_accounts_explicitly_marked_demo():
+    from app.ctrader_account_discovery import discover_authorized_accounts, _account_environment
+
+    class FakeGetAccountListByAccessTokenReq(FakeRequest):
+        pass
+
+    accounts = [
+        SimpleNamespace(ctidTraderAccountId=987654, isLive=False, brokerTitleShort="DemoBroker"),
+        SimpleNamespace(ctidTraderAccountId=123456, isLive=True, brokerTitleShort="LiveBroker"),
+        SimpleNamespace(ctidTraderAccountId=555555, brokerTitleShort="UnknownFlagBroker"),
+    ]
+    responses = {
+        "ProtoOAApplicationAuthReq": object(),
+        "FakeGetAccountListByAccessTokenReq": SimpleNamespace(ctidTraderAccount=accounts),
+    }
+    sdk = {
+        "Client": lambda host, port, protocol: FakeClient(host, port, protocol, responses),
+        "Protobuf": SimpleNamespace(extract=lambda value: value),
+        "TcpProtocol": object(),
+        "EndPoints": SimpleNamespace(PROTOBUF_DEMO_HOST="demo-host", PROTOBUF_PORT=5035),
+        "ProtoOAApplicationAuthReq": type("ProtoOAApplicationAuthReq", (FakeRequest,), {}),
+        "ProtoOAGetAccountListByAccessTokenReq": FakeGetAccountListByAccessTokenReq,
+        "reactor": FakeReactor(),
+    }
+    config = ctrader_history_ingest.load_application_config({
+        "CTRADER_CLIENT_ID": "id", "CTRADER_CLIENT_SECRET": "secret",
+        "CTRADER_ACCESS_TOKEN": "token", "CTRADER_HOST": "demo",
+    })
+
+    report = discover_authorized_accounts(config=config, sdk=sdk)
+
+    assert report["status"] == "PASS"
+    assert report["total_accounts_returned"] == 3
+    assert report["demo_account_count"] == 1
+    by_id = {account["account_id"]: account for account in report["accounts"]}
+    assert by_id[987654]["demo_eligible"] is True
+    assert by_id[123456]["demo_eligible"] is False
+    assert by_id[123456]["environment"] == "live"
+    assert by_id[555555]["environment"] == "unknown"
+    assert by_id[555555]["demo_eligible"] is False
+    assert report["credential_values_exposed"] is False
+    assert report["orders_possible_from_this_check"] is False
+
+
+def test_account_discovery_fails_closed_when_live_host_is_requested():
+    from app.ctrader_account_discovery import discover_authorized_accounts
+    from app.ctrader_history_ingest import CTraderApplicationConfig
+
+    config = CTraderApplicationConfig("id", "secret", "token", host="live")
+    with pytest.raises(ValueError, match="DEMO endpoint"):
+        discover_authorized_accounts(config=config)
+
+
 def test_config_fails_closed_for_live_host_or_missing_credentials():
     with pytest.raises(ValueError, match="Missing required"):
         load_config({})

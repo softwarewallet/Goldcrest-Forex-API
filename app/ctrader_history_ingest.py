@@ -32,6 +32,14 @@ _ENV_NAMES = (
 
 
 @dataclass(frozen=True)
+class CTraderApplicationConfig:
+    client_id: str
+    client_secret: str
+    access_token: str
+    host: str = "demo"
+
+
+@dataclass(frozen=True)
 class CTraderResearchConfig:
     client_id: str
     client_secret: str
@@ -40,26 +48,46 @@ class CTraderResearchConfig:
     host: str = "demo"
 
 
+def _configuration_source(environ: dict[str, str] | None) -> Any:
+    """Return explicit values or process environment populated from non-empty .env settings."""
+    if environ is not None:
+        return environ
+    dotenv_path = _PROJECT_ROOT / ".env"
+    file_values = dotenv_values(dotenv_path=dotenv_path, encoding="utf-8")
+    # Non-empty process values win; empty exported values fall back to the repository .env.
+    for name in (*_ENV_NAMES, "CTRADER_HOST"):
+        process_value = os.environ.get(name, "")
+        file_value = file_values.get(name)
+        if not process_value.strip() and isinstance(file_value, str) and file_value.strip():
+            os.environ[name] = file_value
+    return os.environ
+
+
+def load_application_config(environ: dict[str, str] | None = None) -> CTraderApplicationConfig:
+    """Load only application credentials and DEMO host; account ID is deliberately not required."""
+    source = _configuration_source(environ)
+    required = ("CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET", "CTRADER_ACCESS_TOKEN")
+    missing = [name for name in required if not source.get(name, "").strip()]
+    if missing:
+        raise ValueError("Missing required environment variables: " + ", ".join(missing))
+    host = source.get("CTRADER_HOST", "demo").strip().lower()
+    if host != "demo":
+        raise ValueError("Research account discovery is restricted to DEMO; set CTRADER_HOST=demo")
+    return CTraderApplicationConfig(
+        client_id=source["CTRADER_CLIENT_ID"].strip(),
+        client_secret=source["CTRADER_CLIENT_SECRET"].strip(),
+        access_token=source["CTRADER_ACCESS_TOKEN"].strip(),
+        host=host,
+    )
+
+
 def load_config(environ: dict[str, str] | None = None) -> CTraderResearchConfig:
     """Read credentials from the environment or repository-root .env, without printing or persisting them.
 
     Explicit mappings are used unchanged for deterministic tests and callers. In normal CLI
     use, non-empty variables already provided by the process take precedence over .env values.
     """
-    if environ is None:
-        dotenv_path = _PROJECT_ROOT / ".env"
-        file_values = dotenv_values(dotenv_path=dotenv_path, encoding="utf-8")
-        # Keep the documented precedence rule: non-empty process values win, but an
-        # exported empty variable must not shadow a valid value in the repository .env.
-        # Copy only cTrader settings into the process environment; never print them.
-        for name in (*_ENV_NAMES, "CTRADER_HOST"):
-            process_value = os.environ.get(name, "")
-            file_value = file_values.get(name)
-            if not process_value.strip() and isinstance(file_value, str) and file_value.strip():
-                os.environ[name] = file_value
-        source = os.environ
-    else:
-        source = environ
+    source = _configuration_source(environ)
     missing = [name for name in _ENV_NAMES if not source.get(name, "").strip()]
     if missing:
         raise ValueError("Missing required environment variables: " + ", ".join(missing))
