@@ -36,7 +36,8 @@ def _feature_names_from_dataset(path: str | Path) -> list[str]:
     missing = required - set(columns)
     if missing:
         raise ValueError(f"prepared dataset is missing required columns: {sorted(missing)}")
-    features = [name for name in columns if name not in required]
+    metadata_fields = required | {"label_elapsed_hours", "label_eligible"}
+    features = [name for name in columns if name not in metadata_fields]
     if not features:
         raise ValueError("prepared dataset contains no feature columns")
     return features
@@ -67,6 +68,7 @@ def run_research_pipeline(
     include_ablation: bool = True,
     strict_provenance_audit: bool = False,
     strict_validation: bool = False,
+    max_label_elapsed_hours: float | None = None,
 ) -> dict[str, Any]:
     """Run ingestion (optional), dataset preparation, and fixed-fold model comparison."""
     if fetch_ctrader == (ohlc_csv is not None):
@@ -180,6 +182,7 @@ def run_research_pipeline(
         source_version=actual_source_version,
         retrieved_at_utc=retrieved_at_utc,
         terms_reference=terms_reference,
+        max_label_elapsed_hours=max_label_elapsed_hours,
     )
     feature_names = _feature_names_from_dataset(dataset_csv)
     bars, examples, dataset_sha256 = load_historical_dataset(dataset_csv, feature_names)
@@ -242,6 +245,11 @@ def run_research_pipeline(
         "ingestion": ingestion,
         "label_horizon_bars": horizon_bars,
         "class_1_means": class_1_means,
+        "max_label_elapsed_hours": max_label_elapsed_hours,
+        "label_eligibility_mode": (
+            "elapsed_time_cap" if max_label_elapsed_hours is not None else "all_labels_included"
+        ),
+        "label_eligibility_metadata": dataset_manifest.get("label_eligibility"),
         "test_metrics_used_for_selection": False,
         "automatic_winner_selection": False,
         "actionable": False,
@@ -275,6 +283,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeframe", required=True, choices=("M1", "M5", "M15", "M30", "H1", "H4", "D1"))
     parser.add_argument("--horizon-bars", type=int, required=True)
     parser.add_argument("--class-1-means", choices=("UP", "DOWN"), required=True)
+    parser.add_argument(
+        "--max-label-elapsed-hours",
+        type=float,
+        help="Optional eligibility cap; keeps the original bar timeline but excludes longer-duration labels from fitting and scoring",
+    )
     parser.add_argument("--retrieved-at-utc", help="Required for --ohlc-csv; ISO-8601 timestamp")
     parser.add_argument("--terms-reference", required=True, help="Actual applicable data-provider terms reference")
     parser.add_argument("--source-version", required=True, help="Provider/export version; never invent provenance")
@@ -322,6 +335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_ablation=not args.no_ablation,
             strict_provenance_audit=args.strict_provenance_audit,
             strict_validation=args.strict_validation,
+            max_label_elapsed_hours=args.max_label_elapsed_hours,
         )
     except Exception as exc:
         # Errors are concise and do not print credential-bearing objects.
