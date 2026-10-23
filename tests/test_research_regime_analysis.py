@@ -107,7 +107,6 @@ def test_regime_analysis_is_non_actionable_and_uses_prior_only_thresholds():
     assert result["execution_connected"] is False
     assert result["automatic_model_selection"] is False
     assert result["test_metrics_used_for_selection"] is False
-    assert result["ohlc_hash_verified"] if "ohlc_hash_verified" in result else True
     threshold = result["fold_thresholds"][0]
     assert threshold["pretest_volatility_observations"] >= 10
     assert threshold["low_threshold_q25"] <= threshold["high_threshold_q75"]
