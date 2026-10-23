@@ -75,6 +75,32 @@ def test_process_environment_takes_precedence_over_dotenv(tmp_path, monkeypatch)
     assert config.client_secret == "file-client-secret"
 
 
+def test_empty_process_environment_values_do_not_shadow_dotenv(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text(
+        "CTRADER_HOST=demo\n"
+        "CTRADER_CLIENT_ID=file-client-id\n"
+        "CTRADER_CLIENT_SECRET=file-client-secret\n"
+        "CTRADER_ACCESS_TOKEN=file-access-token\n"
+        "CTRADER_ACCOUNT_ID=123456789\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ctrader_history_ingest, "_PROJECT_ROOT", tmp_path)
+    # Some shells/service managers export empty keys; those must not block the .env.
+    for name in (
+        "CTRADER_HOST", "CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET",
+        "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID",
+    ):
+        monkeypatch.setenv(name, "")
+
+    config = load_config()
+
+    assert config.host == "demo"
+    assert config.client_id == "file-client-id"
+    assert config.client_secret == "file-client-secret"
+    assert config.access_token == "file-access-token"
+    assert config.account_id == 123456789
+
+
 def test_config_fails_closed_for_live_host_or_missing_credentials():
     with pytest.raises(ValueError, match="Missing required"):
         load_config({})
