@@ -5,6 +5,61 @@ the pipeline manifest. The report combines artifact integrity checks, prepared-d
 quality, walk-forward result structure, fold-level test-metric summaries, and a local
 runtime preflight. It does not modify the trading application or publish actionable signals.
 
+## cTrader DEMO credentials: where to put them
+
+The configuration loader reads the ignored `.env` file at the root of the
+`Goldcrest-Forex-API` repository (the same directory as `requirements.txt` and
+`.env.example`). It now loads that file explicitly, independent of the shell's current
+working directory. Existing non-empty environment variables take precedence over values in
+`.env`.
+
+From the repository root, create or edit the file:
+
+```bash
+cp .env.example .env   # only if .env does not already exist
+nano .env
+```
+
+Add or fill in these entries using the actual cTrader Open API application credentials,
+a valid access token, and the numeric ID of the DEMO trading account:
+
+```dotenv
+CTRADER_HOST=demo
+CTRADER_CLIENT_ID=your_application_client_id
+CTRADER_CLIENT_SECRET=your_application_client_secret
+CTRADER_ACCESS_TOKEN=your_valid_demo_access_token
+CTRADER_ACCOUNT_ID=123456789
+```
+
+Replace every example value; do not paste credentials into GitHub, source code, screenshots,
+or this chat. Keep the real `.env` file local; it is already excluded by `.gitignore`.
+`CTRADER_ACCOUNT_ID` must be the numeric cTrader account ID, not the login/email or the
+application client ID. `CTRADER_HOST` must be exactly `demo`; this research ingestion
+rejects LIVE.
+
+Install the added dotenv dependency and check that configuration is being read:
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m app.research_validation --check-ctrader-config --json
+```
+
+A `PASS` from this command confirms that the file/environment has the expected values and
+that the host is DEMO. It does **not** make a network request or prove that the token is
+accepted. To test actual read-only historical-data connectivity, use a modest lookback:
+
+```bash
+python -m app.ctrader_history_ingest \
+  --symbol EURUSD --timeframe M15 --lookback-days 7 \
+  --output-csv data/research/EURUSD_M15_demo.csv
+```
+
+The output should report a row count and a snapshot hash. If this network check fails after
+configuration passes, check token expiry/permissions, the account ID, the exact instrument
+name in the DEMO account, and network access to the cTrader DEMO endpoint. The error output
+is deliberately sanitized; never print or share token/secret values when debugging.
+
 ## 1. Preflight the Ubuntu runtime
 
 From the repository root with the project virtual environment active:
