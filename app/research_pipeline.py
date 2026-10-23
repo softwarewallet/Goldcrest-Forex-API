@@ -235,6 +235,8 @@ def run_research_pipeline(
         "provenance_audit_path": str(provenance_audit_path),
         "provenance_audit_sha256": provenance_audit_sha256,
         "provenance_audit_status": provenance_audit["status"],
+        "provenance_audit_errors": provenance_audit["errors"],
+        "provenance_audit_warnings": provenance_audit["warnings"],
         "strict_provenance_audit": strict_provenance_audit,
         "ingestion": ingestion,
         "label_horizon_bars": horizon_bars,
