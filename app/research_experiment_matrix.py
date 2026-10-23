@@ -112,6 +112,8 @@ def run_experiment_matrix(
         raise ValueError("max_experiments must be a positive integer")
     if any(set(row.features) != set(names) for row in examples):
         raise ValueError("each example must contain exactly the declared full feature schema")
+    if any(not isinstance(row.label_eligible, bool) for row in examples):
+        raise ValueError("label_eligible must be a boolean")
 
     variants = feature_ablation_sets(names) if include_ablation else {"all_features": names}
     experiment_count = len(variants) * len(model_types)
