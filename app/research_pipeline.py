@@ -200,6 +200,7 @@ def run_research_pipeline(
         bootstrap_resamples=bootstrap_resamples,
         include_ablation=include_ablation,
         max_experiments=max_experiments,
+        class_1_means=class_1_means,
     )
     matrix_report_path = destination / f"{run_id}_experiment_matrix.json"
     write_experiment_matrix_report(report, matrix_report_path)
