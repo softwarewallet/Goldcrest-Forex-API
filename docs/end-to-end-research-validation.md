@@ -271,3 +271,18 @@ The pipeline still preserves diagnostic artifacts on validation failure. Review 
 warnings before trusting reported metrics. A passing report does not establish economic
 profitability, predictive edge, full absence of feature leakage, provider data rights, or
 production readiness. All outputs remain non-actionable and disconnected from broker execution.
+
+
+
+## Market-data gaps and expected FX closures
+
+The raw OHLC integrity audit now retains the total count and examples of intervals greater than
+eight hours, while also classifying likely FX weekend-closure intervals separately from other long
+gaps. The weekend classification is a conservative UTC timestamp heuristic: it requires a late
+Friday start, a Sunday-evening or early-Monday resumption, and a duration of 24-72 hours. It is not
+an authoritative trading-session calendar and does not prove that a missing interval was expected.
+
+The audit reports `weekend_closure_like_gap_count_over_8_hours`,
+`non_weekend_long_gap_count_over_8_hours`, and examples for both categories. Non-weekend long gaps
+still produce a warning for review. Do not treat a warning-free weekend classification as proof of
+complete data coverage; verify the provider's history and the applicable market calendar.
