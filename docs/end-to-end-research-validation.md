@@ -186,6 +186,13 @@ actual values. Do not invent data provenance. Fold sizes describe pre-purge bars
 the sample after horizon-based purging. For a resource-constrained laptop, begin with fewer
 trials and smaller experiments; do not start several model jobs in parallel.
 
+When `--ohlc-csv` points to a cTrader downloader output with the adjacent
+`<csv-path>.manifest.json`, the pipeline now derives the retrieval timestamp and cTrader DEMO
+source identity from that receipt. You can omit `--retrieved-at-utc` in that case; the audit
+gate validates the manifest's host, symbol, timeframe, pagination completeness, row count,
+timestamp bounds, and snapshot hash before feature generation. A local CSV without a cTrader
+receipt still requires an explicit `--retrieved-at-utc` and receives a provenance warning.
+
 Before any feature or label generation, the pipeline now runs the raw OHLC integrity audit and
 writes `<run-id>_raw_ohlc_audit.json`. A `FAIL` stops the pipeline before dataset preparation or
 model experiments. Large time gaps remain warnings (not automatic failures), because FX weekends

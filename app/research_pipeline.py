@@ -101,16 +101,48 @@ def run_research_pipeline(
         raw_csv = Path(ohlc_csv).resolve()  # type: ignore[arg-type]
         if not raw_csv.is_file():
             raise ValueError(f"OHLC CSV does not exist: {raw_csv}")
-        if not retrieved_at_utc:
-            raise ValueError("retrieved_at_utc is required when using an existing OHLC CSV")
-        source_name = "Operator-supplied canonical OHLC CSV"
-        actual_source_version = source_version
         raw_sha256 = _sha256(raw_csv)
+
+        # Reuse provenance already recorded by the cTrader downloader instead of asking
+        # the operator to re-enter a retrieval time or mislabelling the provider as a CSV export.
+        local_manifest_path = Path(str(raw_csv) + ".manifest.json")
+        local_manifest: dict[str, Any] = {}
+        if local_manifest_path.is_file():
+            try:
+                loaded_manifest = json.loads(local_manifest_path.read_text(encoding="utf-8"))
+                if isinstance(loaded_manifest, dict):
+                    local_manifest = loaded_manifest
+            except (OSError, json.JSONDecodeError):
+                # The mandatory raw audit below will report a malformed companion manifest.
+                pass
+
+        is_ctrader_snapshot = (
+            local_manifest.get("scope") == "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION"
+        )
+        if not retrieved_at_utc and is_ctrader_snapshot:
+            manifest_retrieved_at = local_manifest.get("retrieved_at_utc")
+            if isinstance(manifest_retrieved_at, str) and manifest_retrieved_at.strip():
+                retrieved_at_utc = manifest_retrieved_at
+
+        if not retrieved_at_utc:
+            raise ValueError(
+                "retrieved_at_utc is required for a local OHLC CSV unless its cTrader "
+                "DEMO manifest contains retrieved_at_utc"
+            )
+
+        source_name = (
+            "cTrader Open API (DEMO historical snapshot)"
+            if is_ctrader_snapshot
+            else "Operator-supplied canonical OHLC CSV"
+        )
+        actual_source_version = source_version
         ingestion = {
             "scope": "LOCAL_OHLC_INPUT",
-            "rows": None,
+            "rows": local_manifest.get("rows") if is_ctrader_snapshot else None,
             "snapshot_sha256": raw_sha256,
-            "host": "not_applicable",
+            "host": local_manifest.get("host", "unknown") if is_ctrader_snapshot else "not_applicable",
+            "source_manifest_scope": local_manifest.get("scope") or None,
+            "pagination": local_manifest.get("pagination") if is_ctrader_snapshot else None,
             "actionable": False,
         }
 
