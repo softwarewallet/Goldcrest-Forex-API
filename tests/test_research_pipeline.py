@@ -171,3 +171,52 @@ def test_pipeline_stops_before_dataset_preparation_when_raw_audit_fails(tmp_path
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["status"] == "FAIL"
     assert any(error.startswith("invalid_ohlc_rows:") for error in report["errors"])
+
+
+
+def test_pipeline_reuses_ctrader_manifest_provenance_for_local_snapshot(tmp_path, monkeypatch):
+    raw = tmp_path / "EURUSD_M365_demo.csv"
+    raw.write_text(
+        "symbol,timeframe,timestamp,open,high,low,close\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
+        encoding="utf-8",
+    )
+    retrieved_at = "2026-10-23T11:00:00Z"
+    raw_manifest = {
+        "schema_version": 1,
+        "scope": "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION",
+        "host": "demo",
+        "actionable": False,
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "rows": 1,
+        "first_timestamp_utc": "2026-01-01T00:00:00Z",
+        "last_timestamp_utc": "2026-01-01T00:00:00Z",
+        "snapshot_sha256": research_pipeline._sha256(raw),
+        "retrieved_at_utc": retrieved_at,
+        "pagination": {"complete": True, "window_count": 1, "pages_requested": 1},
+    }
+    Path(str(raw) + ".manifest.json").write_text(
+        json.dumps(raw_manifest, indent=2) + "\n", encoding="utf-8"
+    )
+    captured = {}
+
+    def stop_after_provenance_check(input_csv, output_csv, manifest_path, **kwargs):
+        captured.update(kwargs)
+        raise RuntimeError("stop_after_provenance_check")
+
+    monkeypatch.setattr(research_pipeline, "prepare_research_dataset", stop_after_provenance_check)
+
+    with pytest.raises(RuntimeError, match="stop_after_provenance_check"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD", timeframe="M15", horizon_bars=4, class_1_means="UP",
+            terms_reference="https://help.ctrader.com/open-api/terms-of-use/",
+            source_version="ctrader-open-api==0.9.2",
+            output_dir=tmp_path / "run", run_id="manifest-provenance-test",
+            retrieved_at_utc=None, ohlc_csv=raw,
+            initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
+            include_ablation=False,
+        )
+
+    assert captured["data_source"] == "cTrader Open API (DEMO historical snapshot)"
+    assert captured["retrieved_at_utc"] == retrieved_at
