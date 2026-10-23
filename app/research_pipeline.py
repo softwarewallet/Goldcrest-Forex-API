@@ -23,6 +23,7 @@ from app.research_data_quality import audit_ohlc_csv_file
 from app.research_temporal_leakage_auditor import audit_temporal_integrity_file
 from app.research_feature_provenance_auditor import audit_feature_provenance_file
 from app.research_experiment_fingerprint import build_experiment_fingerprint
+from app.research_reproducibility_auditor import audit_experiment_reproducibility
 
 
 def _sha256(path: str | Path) -> str:
@@ -234,6 +235,7 @@ def run_research_pipeline(
         "experiment_fingerprint_path": str(fingerprint_path),
         "experiment_fingerprint_file_sha256": fingerprint_file_sha256,
         "experiment_fingerprint_sha256": experiment_fingerprint["experiment_fingerprint_sha256"],
+        "reproducibility_audit_path": str(destination / f"{run_id}_reproducibility_audit.json"),
         "strict_feature_provenance_audit": strict_feature_provenance_audit,
         "strict_provenance_audit": strict_provenance_audit,
         "ingestion": ingestion,
@@ -249,6 +251,19 @@ def run_research_pipeline(
     payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     manifest_path = destination / f"{run_id}_pipeline_manifest.json"
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    reproducibility_path = destination / f"{run_id}_reproducibility_audit.json"
+    reproducibility_audit = audit_experiment_reproducibility(fingerprint_path, manifest_path)
+    payload["reproducibility_audit_status"] = reproducibility_audit["status"]
+    payload["reproducibility_audit_errors"] = reproducibility_audit["errors"]
+    # The audit receipt hash is not embedded in the manifest, avoiding a hash cycle.
+    payload.pop("pipeline_manifest_sha256", None)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    reproducibility_audit = audit_experiment_reproducibility(fingerprint_path, manifest_path)
+    reproducibility_path.write_text(json.dumps(reproducibility_audit, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    payload["reproducibility_audit_status"] = reproducibility_audit["status"]
+    payload["reproducibility_audit_errors"] = reproducibility_audit["errors"]
     return payload
 
 
