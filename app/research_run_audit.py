@@ -173,8 +173,8 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             errors.append("dataset_manifest_label_eligibility_mismatch")
     elif label_cap is not None:
         errors.append("pipeline_label_eligibility_mode_cap_mismatch")
-    elif isinstance(dataset_eligibility, dict) and dataset_eligibility.get("mode") != "elapsed_time_cap":
-        errors.append("dataset_manifest_label_eligibility_mode_mismatch")
+    elif isinstance(dataset_eligibility, dict):
+        errors.append("dataset_manifest_label_eligibility_cap_not_in_pipeline_manifest")
 
     report = related.get("experiment_matrix_report", {})
     if report:
