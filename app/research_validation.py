@@ -252,6 +252,7 @@ def summarize_experiment_matrix(report_path: str | Path) -> dict[str, Any]:
         errors.append("invalid_fold_count")
 
     parsed_windows: list[tuple[datetime, datetime]] = []
+    window_rows_by_index: dict[int, int] = {}
     for index, window in enumerate(windows):
         try:
             start = _parse_utc(str(window["test_start_utc"]), "test_start_utc")
@@ -259,6 +260,14 @@ def summarize_experiment_matrix(report_path: str | Path) -> dict[str, Any]:
             if end < start:
                 raise ValueError("test end precedes start")
             parsed_windows.append((start, end))
+            fold_index = window.get("fold_index", index)
+            test_rows = window.get("test_rows")
+            if isinstance(fold_index, bool) or not isinstance(fold_index, int):
+                raise ValueError("fold index must be an integer")
+            if isinstance(test_rows, bool) or not isinstance(test_rows, int) or test_rows < 1:
+                errors.append(f"invalid_common_test_window_row_count_{index}")
+            else:
+                window_rows_by_index[fold_index] = test_rows
         except (KeyError, TypeError, ValueError):
             errors.append(f"invalid_common_test_window_{index}")
 
@@ -330,6 +339,12 @@ def summarize_experiment_matrix(report_path: str | Path) -> dict[str, Any]:
             if sample_count < 1 or positive < 0 or negative < 0 or positive + negative != sample_count:
                 errors.append(f"experiment_{exp_index}_fold_{fold_index}_inconsistent_class_counts")
                 continue
+            fold_identity = fold.get("fold_index", fold_index)
+            expected_rows = window_rows_by_index.get(fold_identity)
+            if expected_rows is None:
+                errors.append(f"experiment_{exp_index}_fold_{fold_index}_missing_common_test_window")
+            elif sample_count != expected_rows:
+                errors.append(f"experiment_{exp_index}_fold_{fold_index}_test_sample_count_mismatch")
             total_test_rows += sample_count
             for name in _METRIC_KEYS:
                 value = metrics.get(name)
@@ -530,6 +545,8 @@ def validate_completed_run(
         "credential_values_exposed": False,
         "note": "Use --check-ctrader-config to inspect required variable presence; it does not connect to cTrader.",
     }
+    if check_ctrader_config and cTrader["status"] == "FAIL":
+        errors.append("cTrader DEMO configuration is incomplete or invalid")
 
     status = "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS"
     result: dict[str, Any] = {
