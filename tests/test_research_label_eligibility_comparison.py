@@ -52,7 +52,14 @@ def _fixture_predictions(capped: bool) -> list[dict]:
     return predictions
 
 
-def _build_run(root: Path, run_id: str, *, capped: bool, raw_salt: str = "") -> Path:
+def _build_run(
+    root: Path,
+    run_id: str,
+    *,
+    capped: bool,
+    raw_salt: str = "",
+    audit_warnings: list[str] | None = None,
+) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     raw = root / "raw.csv"
     raw.write_text(
@@ -204,10 +211,12 @@ def _build_run(root: Path, run_id: str, *, capped: bool, raw_salt: str = "") -> 
     }
     provenance_hash = _write_json(provenance_path, provenance)
 
+    audit_warnings = list(audit_warnings or [])
+    audit_status = "PASS_WITH_WARNINGS" if audit_warnings else "PASS"
     raw_audit_path = root / f"{run_id}_raw_audit.json"
     raw_audit = {
-        "schema_version": 1, "snapshot_sha256": raw_hash, "status": "PASS",
-        "errors": [], "warnings": [], "actionable": False, "execution_connected": False,
+        "schema_version": 1, "snapshot_sha256": raw_hash, "status": audit_status,
+        "errors": [], "warnings": audit_warnings, "actionable": False, "execution_connected": False,
     }
     raw_audit_hash = _write_json(raw_audit_path, raw_audit)
 
@@ -224,8 +233,8 @@ def _build_run(root: Path, run_id: str, *, capped: bool, raw_salt: str = "") -> 
         "raw_ohlc_sha256": raw_hash,
         "raw_ohlc_audit_path": str(raw_audit_path.resolve()),
         "raw_ohlc_audit_sha256": raw_audit_hash,
-        "raw_ohlc_audit_status": "PASS",
-        "raw_ohlc_audit_warnings": [],
+        "raw_ohlc_audit_status": audit_status,
+        "raw_ohlc_audit_warnings": audit_warnings,
         "dataset_path": str(data.resolve()),
         "dataset_sha256": data_hash,
         "dataset_manifest_path": str(dataset_manifest_path.resolve()),
@@ -280,6 +289,33 @@ def test_compares_models_on_exact_same_eligible_held_out_timestamps(tmp_path):
     assert fold["variant_eligible_test_metrics"]["sample_count"] == 2
     assert fold["paired_variant_minus_baseline_delta"]["prevalence"] == 0.0
     assert experiment["automatically_selected"] is False
+    assert report["actionable"] is False
+    assert report["execution_connected"] is False
+
+
+def test_comparison_warns_but_continues_when_audit_warning_sets_differ(tmp_path):
+    baseline = _build_run(
+        tmp_path / "baseline", "baseline-run", capped=False,
+        audit_warnings=["legacy_long_gap_warning"],
+    )
+    variant = _build_run(
+        tmp_path / "variant", "cap-run", capped=True,
+        audit_warnings=["non_weekend_long_gap_detected_review_data_coverage"],
+    )
+
+    report = compare_label_eligibility_runs(baseline, variant)
+
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert report["raw_ohlc_snapshots_identical"] is True
+    assert report["raw_ohlc_audit_warning_sets_identical"] is False
+    assert report["baseline_raw_ohlc_audit_warnings"] == ["legacy_long_gap_warning"]
+    assert report["variant_raw_ohlc_audit_warnings"] == [
+        "non_weekend_long_gap_detected_review_data_coverage"
+    ]
+    assert any(
+        "raw_ohlc_audit_warning_sets_differ_between_runs" in warning
+        for warning in report["warnings"]
+    )
     assert report["actionable"] is False
     assert report["execution_connected"] is False
 
