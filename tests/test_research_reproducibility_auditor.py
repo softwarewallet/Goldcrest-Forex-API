@@ -77,3 +77,14 @@ def test_audit_detects_pipeline_link_mismatch(tmp_path):
     result = audit_experiment_reproducibility(fp_path, pipe_path)
     assert result["status"] == "FAIL"
     assert "pipeline_fingerprint_hash_mismatch" in result["errors"]
+
+
+def test_unicode_manifest_hash_uses_same_canonicalization(tmp_path):
+    fp_path, pipe_path = _write_run(tmp_path)
+    pipeline = json.loads(pipe_path.read_text(encoding="utf-8"))
+    pipeline["note"] = "\u00e9"
+    pipeline.pop("pipeline_manifest_sha256", None)
+    pipeline["pipeline_manifest_sha256"] = hashlib.sha256(json.dumps(pipeline, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")).hexdigest()
+    pipe_path.write_text(json.dumps(pipeline, ensure_ascii=False), encoding="utf-8")
+    result = audit_experiment_reproducibility(fp_path, pipe_path)
+    assert "pipeline_manifest_sha256_mismatch" not in result["errors"]
