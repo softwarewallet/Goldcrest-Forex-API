@@ -411,29 +411,33 @@ def _ctrader_config_status() -> dict[str, Any]:
     from app.ctrader_history_ingest import load_config
 
     required = ("CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET", "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID")
-    presence = {name: bool(os.getenv(name, "").strip()) for name in required}
-    host = os.getenv("CTRADER_HOST", "demo").strip().lower() or "demo"
     try:
-        config = load_config()
-        return {
-            "status": "PASS",
-            "host": config.host,
-            "required_variables_present": presence,
-            "credential_values_exposed": False,
-            "network_checked": False,
-            "orders_possible_from_this_check": False,
-        }
+        config = load_config()  # Loads the repository-root .env when present.
     except Exception as exc:
+        presence = {name: bool(os.getenv(name, "").strip()) for name in required}
+        host = os.getenv("CTRADER_HOST", "demo").strip().lower() or "demo"
         return {
             "status": "FAIL",
             "host": "demo" if host == "demo" else "rejected_non_demo",
             "required_variables_present": presence,
+            "env_file_checked": str((Path(__file__).resolve().parent.parent / ".env")),
             "error_type": type(exc).__name__,
             "error": str(exc),
             "credential_values_exposed": False,
             "network_checked": False,
             "orders_possible_from_this_check": False,
         }
+
+    presence = {name: bool(os.getenv(name, "").strip()) for name in required}
+    return {
+        "status": "PASS",
+        "host": config.host,
+        "required_variables_present": presence,
+        "env_file_checked": str((Path(__file__).resolve().parent.parent / ".env")),
+        "credential_values_exposed": False,
+        "network_checked": False,
+        "orders_possible_from_this_check": False,
+    }
 
 
 def _runtime_summary() -> dict[str, Any]:

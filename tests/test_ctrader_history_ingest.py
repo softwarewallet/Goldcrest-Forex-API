@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app import ctrader_history_ingest
 from app.ctrader_history_ingest import (
     CTraderResearchConfig,
     download_ctrader_history,
@@ -24,6 +25,54 @@ def test_config_reads_credentials_without_echoing_and_defaults_to_demo():
     assert config.host == "demo"
     assert config.account_id == 12345
     assert config.client_secret == "secret-value"
+
+
+def test_default_config_loads_credentials_from_repository_root_dotenv(tmp_path, monkeypatch):
+    dotenv = tmp_path / ".env"
+    dotenv.write_text(
+        "CTRADER_HOST=demo\n"
+        "CTRADER_CLIENT_ID=file-client-id\n"
+        "CTRADER_CLIENT_SECRET='file-client-secret'\n"
+        "CTRADER_ACCESS_TOKEN=file-access-token\n"
+        "CTRADER_ACCOUNT_ID=123456789\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ctrader_history_ingest, "_PROJECT_ROOT", tmp_path)
+    for name in (
+        "CTRADER_HOST", "CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET",
+        "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    config = load_config()
+
+    assert config.host == "demo"
+    assert config.client_id == "file-client-id"
+    assert config.client_secret == "file-client-secret"
+    assert config.access_token == "file-access-token"
+    assert config.account_id == 123456789
+
+
+def test_process_environment_takes_precedence_over_dotenv(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text(
+        "CTRADER_CLIENT_ID=file-client-id\n"
+        "CTRADER_CLIENT_SECRET=file-client-secret\n"
+        "CTRADER_ACCESS_TOKEN=file-access-token\n"
+        "CTRADER_ACCOUNT_ID=123456789\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ctrader_history_ingest, "_PROJECT_ROOT", tmp_path)
+    for name in (
+        "CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET",
+        "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CTRADER_CLIENT_ID", "shell-client-id")
+
+    config = load_config()
+
+    assert config.client_id == "shell-client-id"
+    assert config.client_secret == "file-client-secret"
 
 
 def test_config_fails_closed_for_live_host_or_missing_credentials():

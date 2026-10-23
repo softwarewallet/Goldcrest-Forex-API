@@ -16,9 +16,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from dotenv import load_dotenv
+
 from app.ctrader_history import normalize_ctrader_trendbars
 
 _ALLOWED_PERIODS = {"M1", "M5", "M15", "M30", "H1", "H4", "D1"}
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 _ENV_NAMES = (
     "CTRADER_CLIENT_ID",
     "CTRADER_CLIENT_SECRET",
@@ -37,8 +41,17 @@ class CTraderResearchConfig:
 
 
 def load_config(environ: dict[str, str] | None = None) -> CTraderResearchConfig:
-    """Read credentials from env without printing or persisting them."""
-    source = os.environ if environ is None else environ
+    """Read credentials from the environment or repository-root .env, without printing or persisting them.
+
+    Explicit mappings are used unchanged for deterministic tests and callers. In normal CLI
+    use, non-empty variables already provided by the process take precedence over .env values.
+    """
+    if environ is None:
+        dotenv_path = _PROJECT_ROOT / ".env"
+        load_dotenv(dotenv_path=dotenv_path, override=False, encoding="utf-8")
+        source = os.environ
+    else:
+        source = environ
     missing = [name for name in _ENV_NAMES if not source.get(name, "").strip()]
     if missing:
         raise ValueError("Missing required environment variables: " + ", ".join(missing))
