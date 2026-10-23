@@ -141,6 +141,8 @@ def run_optuna_walk_forward(
         digest.update(str(row.label).encode("ascii"))
         digest.update(b"\0")
         digest.update(_iso(row.label_available_at).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(b"eligible" if row.label_eligible else b"ineligible")
         for name in names:
             digest.update(b"\0")
             digest.update(name.encode("utf-8"))
