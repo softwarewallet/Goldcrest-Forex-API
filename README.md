@@ -21,6 +21,8 @@ python -m pytest -q
 uvicorn app.main:app --host 127.0.0.1 --port 8090
 ```
 
+For cTrader historical research, put `CTRADER_HOST`, `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, `CTRADER_ACCESS_TOKEN`, and the numeric `CTRADER_ACCOUNT_ID` in the repository-root `.env` file (same folder as `requirements.txt`). The research loader reads that file explicitly; see [cTrader DEMO setup and verification](docs/end-to-end-research-validation.md#ctrader-demo-credentials-where-to-put-them). The real `.env` remains ignored by Git. Only `CTRADER_HOST=demo` is accepted by this research workflow.
+
 The API bind address and port are set by the Uvicorn command, not by the `GOLDCREST_BIND_HOST` / `GOLDCREST_PORT` settings in `.env`. For trusted-LAN access, run Uvicorn with `--host 0.0.0.0 --port 8090` and configure the host firewall to permit port 8090 only from the required private subnet. Never expose this API or llama.cpp directly to the public Internet. The production systemd service should use explicit, reviewed bind and port arguments.
 
 ## Routes
