@@ -300,7 +300,7 @@ def test_comparison_fails_when_shared_dataset_feature_differs(tmp_path):
     variant_manifest_path = Path(variant)
     pipeline = json.loads(variant_manifest_path.read_text(encoding="utf-8"))
     dataset_path = Path(pipeline["dataset_path"])
-    text = dataset_path.read_text(encoding="utf-8").replace(",0.2,24.0,0,", ",0.25,24.0,0,")
+    text = dataset_path.read_text(encoding="utf-8").replace(",0.2,24.0,0\\n", ",0.25,24.0,0\\n")
     dataset_path.write_text(text, encoding="utf-8")
     new_dataset_hash = _digest(dataset_path)
     pipeline["dataset_sha256"] = new_dataset_hash
