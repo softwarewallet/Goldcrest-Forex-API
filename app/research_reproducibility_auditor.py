@@ -63,7 +63,7 @@ def audit_experiment_reproducibility(fingerprint_path: str | Path, pipeline_mani
         claimed = manifest.get("pipeline_manifest_sha256")
         payload = dict(manifest)
         payload.pop("pipeline_manifest_sha256", None)
-        actual = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+        actual = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")).hexdigest()
         checks["pipeline_manifest_self_hash"] = "PASS" if claimed == actual else "FAIL"
         if claimed != actual:
             errors.append("pipeline_manifest_sha256_mismatch")
