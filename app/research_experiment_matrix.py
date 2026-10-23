@@ -38,6 +38,8 @@ class ExperimentMatrixReport:
     dataset_sha256: str
     symbol: str
     timeframe: str
+    horizon_bars: int
+    class_1_means: str
     feature_names: tuple[str, ...]
     model_types: tuple[str, ...]
     fold_count: int
@@ -78,6 +80,7 @@ def run_experiment_matrix(
     bootstrap_resamples: int = 500,
     include_ablation: bool = True,
     max_experiments: int = 10,
+    class_1_means: str = "UP",
 ) -> ExperimentMatrixReport:
     """Run each model/feature variant on one shared, immutable purged fold plan."""
     names = tuple(feature_names)
@@ -92,6 +95,8 @@ def run_experiment_matrix(
     unsupported = set(model_types) - {"xgboost", "lightgbm"}
     if unsupported:
         raise ValueError(f"unsupported model types: {sorted(unsupported)}")
+    if class_1_means not in {"UP", "DOWN"}:
+        raise ValueError("class_1_means must be 'UP' or 'DOWN'")
     if isinstance(max_experiments, bool) or not isinstance(max_experiments, int) or max_experiments < 1:
         raise ValueError("max_experiments must be a positive integer")
     if any(set(row.features) != set(names) for row in examples):
@@ -143,6 +148,7 @@ def run_experiment_matrix(
                 random_seed=random_seed + model_index * 1000 + variant_index,
                 bootstrap_resamples=bootstrap_resamples,
                 plan=plan,
+                class_1_means=class_1_means,
             )
             experiment_results.append({
                 "experiment_id": variant_run_id,
@@ -170,6 +176,8 @@ def run_experiment_matrix(
         dataset_sha256=dataset_sha256,
         symbol=bars[0].symbol,
         timeframe=bars[0].timeframe,
+        horizon_bars=horizon_bars,
+        class_1_means=class_1_means,
         feature_names=names,
         model_types=tuple(model_types),
         fold_count=len(plan.folds),
