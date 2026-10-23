@@ -267,11 +267,7 @@ def run_optuna_walk_forward(
                 "matured_refit_prevalence_probability_class_1": float(refit_prevalence),
                 "matured_refit_majority_class": refit_majority_class,
                 "lagged_direction_probability_class_1": float(lagged_probability),
-                "lagged_direction_prediction": (
-                    int(lagged_probability >= 0.5)
-                    if lagged_direction_class is not None
-                    else refit_majority_class
-                ),
+                "lagged_direction_prediction": int(lagged_probability >= 0.5),
             })
         baseline_diagnostics = {
             "class_1_means": class_1_means,
