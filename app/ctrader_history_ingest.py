@@ -181,20 +181,72 @@ def _trendbar_timestamp_ms(bar: Any) -> int:
     raise ValueError("trendbar does not expose a supported timestamp")
 
 
-def _response_has_more_trendbars(response: Any) -> bool | None:
-    """Read the optional hasMore flag when the installed cTrader protobuf schema exposes it."""
+def _read_wire_varint(payload: bytes, offset: int) -> tuple[int, int]:
+    value = 0
+    shift = 0
+    while offset < len(payload) and shift < 70:
+        byte = payload[offset]
+        offset += 1
+        value |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return value, offset
+        shift += 7
+    raise ValueError("invalid protobuf varint")
+
+
+def _extract_optional_bool_wire_field(payload: bytes, field_number: int) -> bool | None:
+    """Read an optional bool from protobuf wire bytes when an older SDK schema omits it."""
+    offset = 0
+    try:
+        while offset < len(payload):
+            tag, offset = _read_wire_varint(payload, offset)
+            number, wire_type = tag >> 3, tag & 0x07
+            if number == 0:
+                return None
+            if number == field_number:
+                if wire_type != 0:
+                    return None
+                value, _offset = _read_wire_varint(payload, offset)
+                return bool(value)
+            if wire_type == 0:
+                _value, offset = _read_wire_varint(payload, offset)
+            elif wire_type == 1:
+                offset += 8
+            elif wire_type == 2:
+                length, offset = _read_wire_varint(payload, offset)
+                offset += length
+            elif wire_type == 5:
+                offset += 4
+            else:
+                return None
+            if offset > len(payload):
+                return None
+    except (ValueError, IndexError):
+        return None
+    return None
+
+
+def _response_has_more_trendbars(response: Any, message: Any | None = None) -> bool | None:
+    """Read hasMore from the response or raw protobuf payload, even with an older SDK schema."""
     has_field = getattr(response, "HasField", None)
     if callable(has_field):
         try:
             if has_field("hasMore"):
                 value = getattr(response, "hasMore")
                 return bool(value) if isinstance(value, bool) else None
-            # Older ctrader-open-api releases do not expose this optional field.
-            return None
         except (ValueError, TypeError):
             pass
     value = getattr(response, "hasMore", None)
-    return value if isinstance(value, bool) else None
+    if isinstance(value, bool):
+        return value
+
+    # ctrader-open-api==0.9.2's generated response class predates hasMore field 7.
+    # The SDK still passes through the original ProtoMessage payload, so inspect only that
+    # top-level optional bool rather than upgrading/vendor-modifying the generated schema.
+    payload = getattr(message, "payload", None)
+    if isinstance(payload, (bytes, bytearray)):
+        return _extract_optional_bool_wire_field(bytes(payload), 7)
+    return None
 
 
 def _build_trendbar_windows(
@@ -414,13 +466,16 @@ def download_ctrader_history(
             trendbars = list(response.trendbar)
             window_start, _window_end = pagination["windows"][pagination["window_index"]]
             if not trendbars:
-                if _response_has_more_trendbars(response) is True:
+                has_more = _response_has_more_trendbars(response, message)
+                if has_more is not None:
+                    pagination["has_more_flag_available"] = True
+                if has_more is True:
                     raise ValueError("cTrader indicated more trendbars but returned an empty page")
                 advance_window()
                 return message
 
             pagination["trendbars"].extend(trendbars)
-            has_more = _response_has_more_trendbars(response)
+            has_more = _response_has_more_trendbars(response, message)
             if has_more is not None:
                 pagination["has_more_flag_available"] = True
             # Version 0.9.2 of the Python SDK does not expose ProtoOAGetTrendbarsRes.hasMore.
