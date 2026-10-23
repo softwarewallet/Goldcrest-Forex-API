@@ -99,7 +99,7 @@ def _ohlc_rows(matrix):
 def test_regime_analysis_is_non_actionable_and_uses_prior_only_thresholds():
     matrix = _matrix()
     bars = _ohlc_rows(matrix)
-    result = analyze_prediction_regimes(matrix, bars, volatility_window=10)
+    result = analyze_prediction_regimes(matrix, bars, volatility_window=10, bootstrap_resamples=100, random_seed=41)
 
     assert result["status"] in {"PASS", "PASS_WITH_WARNINGS"}
     assert result["errors"] == []
@@ -114,6 +114,16 @@ def test_regime_analysis_is_non_actionable_and_uses_prior_only_thresholds():
     metrics = result["experiments"][0]["regime_metrics"]
     assert sum(metrics[name]["sample_count"] for name in metrics) == 12
     assert all(metrics[name]["model"] is None or metrics[name]["model"]["sample_count"] > 0 for name in metrics)
+    for regime_result in metrics.values():
+        if regime_result["sample_count"]:
+            uncertainty = regime_result["paired_bootstrap_uncertainty"]["constant_probability_0_5"]["log_loss"]
+            assert uncertainty["bootstrap_resamples"] == 100
+            assert uncertainty["folds_compared"] == 1
+            assert len(uncertainty["confidence_interval_95"]) == 2
+            assert uncertainty["interval_evidence"] in {
+                "positive_interval_excludes_zero", "negative_interval_excludes_zero", "interval_includes_zero"
+            }
+            assert uncertainty["method"] == "paired_circular_moving_block_bootstrap_stratified_by_walk_forward_fold"
 
 
 def test_regime_thresholds_do_not_use_test_period_volatility():
@@ -133,8 +143,8 @@ def test_regime_thresholds_do_not_use_test_period_volatility():
             row["high"] = str(max(open_price, modified_close) * 1.0001)
             row["low"] = str(min(open_price, modified_close) * 0.9999)
 
-    first = analyze_prediction_regimes(matrix, original_bars, volatility_window=10)
-    second = analyze_prediction_regimes(matrix, changed_bars, volatility_window=10)
+    first = analyze_prediction_regimes(matrix, original_bars, volatility_window=10, bootstrap_resamples=100, random_seed=41)
+    second = analyze_prediction_regimes(matrix, changed_bars, volatility_window=10, bootstrap_resamples=100, random_seed=41)
 
     assert first["status"] in {"PASS", "PASS_WITH_WARNINGS"}
     assert second["status"] in {"PASS", "PASS_WITH_WARNINGS"}
@@ -142,6 +152,33 @@ def test_regime_thresholds_do_not_use_test_period_volatility():
     second_threshold = second["fold_thresholds"][0]
     assert first_threshold["low_threshold_q25"] == second_threshold["low_threshold_q25"]
     assert first_threshold["high_threshold_q75"] == second_threshold["high_threshold_q75"]
+
+
+def test_regime_bootstrap_is_deterministic_and_does_not_enable_selection():
+    matrix = _matrix()
+    bars = _ohlc_rows(matrix)
+    first = analyze_prediction_regimes(matrix, bars, volatility_window=10, bootstrap_resamples=100, random_seed=9)
+    second = analyze_prediction_regimes(matrix, bars, volatility_window=10, bootstrap_resamples=100, random_seed=9)
+
+    first_metrics = first["experiments"][0]["regime_metrics"]
+    second_metrics = second["experiments"][0]["regime_metrics"]
+    for regime in first_metrics:
+        if first_metrics[regime]["sample_count"]:
+            first_interval = first_metrics[regime]["paired_bootstrap_uncertainty"]["constant_probability_0_5"]["brier_score"]["confidence_interval_95"]
+            second_interval = second_metrics[regime]["paired_bootstrap_uncertainty"]["constant_probability_0_5"]["brier_score"]["confidence_interval_95"]
+            assert first_interval == second_interval
+    assert first["automatic_model_selection"] is False
+    assert first["test_metrics_used_for_selection"] is False
+    assert first["actionable"] is False
+    assert first["execution_connected"] is False
+
+
+def test_regime_analysis_fails_closed_for_invalid_bootstrap_count():
+    result = analyze_prediction_regimes(_matrix(), _ohlc_rows(_matrix()), volatility_window=10, bootstrap_resamples=99)
+
+    assert result["status"] == "FAIL"
+    assert any("bootstrap_resamples_must_be_between_100_and_20000" in error for error in result["errors"])
+    assert result["actionable"] is False
 
 
 def test_regime_analysis_fails_closed_for_malformed_ohlc():
