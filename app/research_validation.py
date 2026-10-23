@@ -96,7 +96,8 @@ def validate_prepared_dataset(
         with source.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             columns = list(reader.fieldnames or [])
-            missing = _CONTRACT_COLUMNS - set(columns)
+            required_contract_columns = _CONTRACT_COLUMNS - {"label_elapsed_hours", "label_eligible"}
+            missing = required_contract_columns - set(columns)
             if missing:
                 return {
                     "status": "FAIL", "path": str(source), "row_count": 0,
