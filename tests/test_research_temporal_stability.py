@@ -73,14 +73,58 @@ def test_temporal_stability_identifies_forward_horizon_crossing_long_gap():
     assert result["prediction_count"] == 4
     assert result["prediction_horizon_crosses_long_gap_count"] == 1
     assert result["prediction_horizon_crosses_long_gap_fraction"] == 0.25
+    assert result["prediction_model_row_count"] == 4
+    assert result["unique_prediction_timestamp_count"] == 4
+    assert result["prediction_model_rows_crossing_non_weekend_gap_count"] == 1
+    assert result["prediction_model_rows_crossing_weekend_gap_count"] == 0
+    assert result["prediction_model_rows_crossing_holiday_context_gap_count"] == 0
     experiment = result["experiments"][0]
     assert experiment["fold_count"] == 2
     assert experiment["gap_exposure"]["metrics_by_group"]["horizon_crosses_long_gap"]["sample_count"] == 1
     assert experiment["gap_exposure"]["metrics_by_group"]["horizon_does_not_cross_long_gap"]["sample_count"] == 3
+    assert experiment["gap_exposure"]["counts_by_exposure_category"] == {
+        "no_long_gap": 3,
+        "weekend_closure_like": 0,
+        "non_weekend_long_gap": 1,
+        "multiple_gap_categories": 0,
+    }
+    assert experiment["gap_exposure"]["metrics_by_exposure_category"]["non_weekend_long_gap"]["sample_count"] == 1
     assert experiment["fold_consistency"]["constant_probability_0_5"]["log_loss_baseline_minus_model"]["fold_count"] == 2
     assert result["actionable"] is False
     assert result["automatic_model_selection"] is False
     assert result["execution_connected"] is False
+
+
+def test_temporal_stability_reports_holiday_context_exposure_separately():
+    matrix, bars = _fixture()
+    old_to_index = {
+        datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00")): index
+        for index, row in enumerate(bars)
+    }
+    holiday_left = datetime(2025, 12, 24, 21, 15, tzinfo=timezone.utc)
+    new_timestamps = [
+        holiday_left - timedelta(minutes=15 * (4 - index)) for index in range(5)
+    ]
+    new_timestamps.append(datetime(2025, 12, 25, 22, 0, tzinfo=timezone.utc))
+    for index in range(6, len(bars)):
+        new_timestamps.append(new_timestamps[5] + timedelta(minutes=15 * (index - 5)))
+    for index, timestamp in enumerate(new_timestamps):
+        bars[index]["timestamp"] = timestamp.isoformat().replace("+00:00", "Z")
+    for experiment in matrix["experiments"]:
+        for fold in experiment["fold_results"]:
+            for prediction in fold["test_predictions"]:
+                old_timestamp = datetime.fromisoformat(prediction["timestamp_utc"].replace("Z", "+00:00"))
+                index = old_to_index[old_timestamp]
+                prediction["timestamp_utc"] = new_timestamps[index].isoformat().replace("+00:00", "Z")
+
+    result = analyze_prediction_temporal_stability(matrix, bars)
+
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert result["holiday_context_gap_count"] == 1
+    experiment = result["experiments"][0]
+    assert experiment["gap_exposure"]["horizon_crosses_holiday_context_gap_count"] == 1
+    assert experiment["gap_exposure"]["metrics_by_group"]["crosses_holiday_context_gap"]["sample_count"] == 1
+    assert experiment["gap_exposure"]["metrics_by_group"]["does_not_cross_holiday_context_gap"]["sample_count"] == 3
 
 
 def test_temporal_stability_warns_when_no_gap_exceeds_threshold():

@@ -255,15 +255,25 @@ The tool verifies the run manifest, exact raw OHLC file hash, and experiment-mat
 scoring held-out predictions. It reports per-fold log loss and Brier score, fold counts where
 model loss improves or worsens versus each persisted baseline, and sensitivity groups based on
 whether the forward label horizon spans an OHLC interval longer than the configured threshold.
+It also separates exposures crossing weekend-closure-like gaps from non-weekend long gaps and
+reports whether a crossed interval carries Christmas/New Year's fixed-date context. The
+`prediction_count` / `prediction_model_row_count` totals one row per model forecast; because models
+share held-out windows, `unique_prediction_timestamp_count` separately reports the deduplicated
+number of evaluation timestamps. Category exposure counts therefore may be larger than the number
+of unique timestamps when multiple models score the same forecast windows.
+
 The label horizon is interpreted as a number of rows in the original chronologically ordered OHLC
-snapshot, matching the dataset builder's forward-close label definition.
+snapshot, matching the dataset builder's forward-close label definition. A nominal four-bar horizon
+can therefore span far more than four timeframe durations if bars are separated by a market closure
+or a data gap. Check `metrics_by_exposure_category` and `crosses_holiday_context_gap` groups before
+interpreting aggregate scores.
 
 Long-gap classifications use the same conservative weekend-window heuristic and fixed-date context
 annotations as the raw OHLC audit. Those calendar tags are not an authoritative session calendar.
-Gap-exposed and unexposed samples may differ in time-of-week and volatility, so score differences
-are descriptive rather than causal. Fold-level consistency is not an inferential significance test.
-No model is ranked or selected by this report; outputs remain non-actionable and disconnected from
-execution.
+Gap-exposed and unexposed samples may differ in time-of-week, label prevalence, volatility, and
+sample size, so score differences are descriptive rather than causal. Fold-level consistency is
+not an inferential significance test. No model is ranked or selected by this report; outputs remain
+non-actionable and disconnected from execution.
 
 ## 4. Produce a compact model-results summary
 

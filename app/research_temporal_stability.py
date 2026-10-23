@@ -166,18 +166,23 @@ def analyze_prediction_temporal_stability(
     timestamp_to_index = {timestamp: index for index, timestamp in enumerate(timestamps)}
     gap_threshold_seconds = float(gap_threshold_hours) * 3600.0
     long_gaps: list[dict[str, Any]] = []
-    for left, right in zip(timestamps, timestamps[1:]):
+    long_gap_by_position: dict[int, dict[str, Any]] = {}
+    for position, (left, right) in enumerate(zip(timestamps, timestamps[1:])):
         elapsed = (right - left).total_seconds()
         if elapsed <= gap_threshold_seconds:
             continue
         weekend_like = _is_weekend_closure_like_gap(left, right)
-        long_gaps.append({
+        gap = {
             "from_utc": _timestamp_text(left),
             "to_utc": _timestamp_text(right),
             "gap_hours": round(elapsed / 3600.0, 3),
             "gap_category": "weekend_closure_like" if weekend_like else "non_weekend_long_gap",
             "calendar_context": _fixed_date_calendar_context(left, right),
-        })
+        }
+        long_gaps.append(gap)
+        # position is the index of the left OHLC bar; label horizons include this
+        # interval when the target row lies after position + 1.
+        long_gap_by_position[position] = gap
     if any(gap["gap_category"] == "non_weekend_long_gap" for gap in long_gaps):
         warnings.append("non_weekend_long_gaps_detected_review_market_calendar_and_provider_coverage")
     # A clean result with no intervals above the chosen threshold is valid; zero gaps
@@ -191,6 +196,10 @@ def analyze_prediction_temporal_stability(
     results: list[dict[str, Any]] = []
     total_predictions = 0
     total_horizon_gap_exposed = 0
+    total_weekend_gap_exposed = 0
+    total_non_weekend_gap_exposed = 0
+    total_holiday_context_exposed = 0
+    unique_prediction_timestamps: set[datetime] = set()
     missing_prediction_timestamps = 0
     for experiment in experiments:
         if not isinstance(experiment, dict):
@@ -237,11 +246,25 @@ def analyze_prediction_temporal_stability(
                         key: _probability(prediction.get(field), field)
                         for key, field in _BASELINES.items()
                     }
-                    crossed = [
-                        timestamps[pos + 1]
+                    crossed_gap_entries = [
+                        long_gap_by_position[pos]
                         for pos in range(ohlc_index, target_index)
-                        if (timestamps[pos + 1] - timestamps[pos]).total_seconds() > gap_threshold_seconds
+                        if pos in long_gap_by_position
                     ]
+                    crossed_categories = sorted({gap["gap_category"] for gap in crossed_gap_entries})
+                    if not crossed_categories:
+                        exposure_category = "no_long_gap"
+                    elif len(crossed_categories) > 1:
+                        exposure_category = "multiple_gap_categories"
+                    else:
+                        exposure_category = crossed_categories[0]
+                    crosses_weekend_gap = any(
+                        gap["gap_category"] == "weekend_closure_like" for gap in crossed_gap_entries
+                    )
+                    crosses_non_weekend_gap = any(
+                        gap["gap_category"] == "non_weekend_long_gap" for gap in crossed_gap_entries
+                    )
+                    crosses_holiday_context_gap = any(gap["calendar_context"] for gap in crossed_gap_entries)
                     elapsed_hours = (timestamps[target_index] - timestamp).total_seconds() / 3600.0
                     row = {
                         "timestamp": timestamp,
@@ -251,11 +274,19 @@ def analyze_prediction_temporal_stability(
                         "ohlc_index": ohlc_index,
                         "target_timestamp": timestamps[target_index],
                         "elapsed_hours": elapsed_hours,
-                        "horizon_crosses_long_gap": bool(crossed),
-                        "crossed_gap_count": len(crossed),
-                        "crossed_gap_start_timestamps": [_timestamp_text(timestamps[pos]) for pos in range(ohlc_index, target_index)
-                            if (timestamps[pos + 1] - timestamps[pos]).total_seconds() > gap_threshold_seconds],
+                        "horizon_crosses_long_gap": bool(crossed_gap_entries),
+                        "crossed_gap_count": len(crossed_gap_entries),
+                        "crossed_gap_start_timestamps": [gap["from_utc"] for gap in crossed_gap_entries],
+                        "crossed_gap_categories": crossed_categories,
+                        "crossed_gap_calendar_contexts": sorted({
+                            context for gap in crossed_gap_entries for context in gap["calendar_context"]
+                        }),
+                        "exposure_category": exposure_category,
+                        "crosses_weekend_gap": crosses_weekend_gap,
+                        "crosses_non_weekend_gap": crosses_non_weekend_gap,
+                        "crosses_holiday_context_gap": crosses_holiday_context_gap,
                     }
+                    unique_prediction_timestamps.add(timestamp)
                     parsed_rows.append(row)
                     experiment_exposure_rows.append(row)
                     if row["horizon_crosses_long_gap"]:
@@ -268,6 +299,14 @@ def analyze_prediction_temporal_stability(
             fold_group_summaries = {
                 "horizon_crosses_long_gap": _describe_group([row for row in parsed_rows if row["horizon_crosses_long_gap"]]),
                 "horizon_does_not_cross_long_gap": _describe_group([row for row in parsed_rows if not row["horizon_crosses_long_gap"]]),
+                "crosses_holiday_context_gap": _describe_group([row for row in parsed_rows if row["crosses_holiday_context_gap"]]),
+                "does_not_cross_holiday_context_gap": _describe_group([row for row in parsed_rows if not row["crosses_holiday_context_gap"]]),
+            }
+            exposure_category_metrics = {
+                category: _describe_group([row for row in parsed_rows if row["exposure_category"] == category])
+                for category in (
+                    "no_long_gap", "weekend_closure_like", "non_weekend_long_gap", "multiple_gap_categories"
+                )
             }
             all_metrics = _describe_group(parsed_rows)
             fold_baseline_comparisons: dict[str, dict[str, float]] = {}
@@ -288,6 +327,14 @@ def analyze_prediction_temporal_stability(
                     "horizon_crosses_long_gap_count": gap_crossing_count,
                     "horizon_does_not_cross_long_gap_count": len(parsed_rows) - gap_crossing_count,
                     "metrics_by_group": fold_group_summaries,
+                    "counts_by_exposure_category": {
+                        category: sum(row["exposure_category"] == category for row in parsed_rows)
+                        for category in exposure_category_metrics
+                    },
+                    "metrics_by_exposure_category": exposure_category_metrics,
+                    "horizon_crosses_weekend_gap_count": sum(row["crosses_weekend_gap"] for row in parsed_rows),
+                    "horizon_crosses_non_weekend_gap_count": sum(row["crosses_non_weekend_gap"] for row in parsed_rows),
+                    "horizon_crosses_holiday_context_gap_count": sum(row["crosses_holiday_context_gap"] for row in parsed_rows),
                     "maximum_label_elapsed_hours": round(max(row["elapsed_hours"] for row in parsed_rows), 3),
                     "median_label_elapsed_hours": round(statistics.median(row["elapsed_hours"] for row in parsed_rows), 3),
                 },
@@ -296,10 +343,19 @@ def analyze_prediction_temporal_stability(
             total_horizon_gap_exposed += gap_crossing_count
 
         fold_reports.sort(key=lambda row: row["fold_index"])
+        total_weekend_gap_exposed += sum(row["crosses_weekend_gap"] for row in experiment_exposure_rows)
+        total_non_weekend_gap_exposed += sum(row["crosses_non_weekend_gap"] for row in experiment_exposure_rows)
+        total_holiday_context_exposed += sum(row["crosses_holiday_context_gap"] for row in experiment_exposure_rows)
         all_experiment_metrics = _describe_group(experiment_exposure_rows)
         exposure_metrics = {
             "horizon_crosses_long_gap": _describe_group([row for row in experiment_exposure_rows if row["horizon_crosses_long_gap"]]),
             "horizon_does_not_cross_long_gap": _describe_group([row for row in experiment_exposure_rows if not row["horizon_crosses_long_gap"]]),
+            "crosses_holiday_context_gap": _describe_group([row for row in experiment_exposure_rows if row["crosses_holiday_context_gap"]]),
+            "does_not_cross_holiday_context_gap": _describe_group([row for row in experiment_exposure_rows if not row["crosses_holiday_context_gap"]]),
+        }
+        exposure_category_metrics = {
+            category: _describe_group([row for row in experiment_exposure_rows if row["exposure_category"] == category])
+            for category in ("no_long_gap", "weekend_closure_like", "non_weekend_long_gap", "multiple_gap_categories")
         }
         results.append({
             "experiment_id": experiment_id,
@@ -313,7 +369,15 @@ def analyze_prediction_temporal_stability(
                 "horizon_crosses_long_gap_count": sum(bool(row["horizon_crosses_long_gap"]) for row in experiment_exposure_rows),
                 "horizon_does_not_cross_long_gap_count": sum(not row["horizon_crosses_long_gap"] for row in experiment_exposure_rows),
                 "metrics_by_group": exposure_metrics,
-                "interpretation": "Forward-label horizon exposure is identified from the ordered OHLC rows. Differences between groups are descriptive and may be confounded by time-of-week, volatility, and sample size.",
+                "counts_by_exposure_category": {
+                    category: sum(row["exposure_category"] == category for row in experiment_exposure_rows)
+                    for category in exposure_category_metrics
+                },
+                "metrics_by_exposure_category": exposure_category_metrics,
+                "horizon_crosses_weekend_gap_count": sum(row["crosses_weekend_gap"] for row in experiment_exposure_rows),
+                "horizon_crosses_non_weekend_gap_count": sum(row["crosses_non_weekend_gap"] for row in experiment_exposure_rows),
+                "horizon_crosses_holiday_context_gap_count": sum(row["crosses_holiday_context_gap"] for row in experiment_exposure_rows),
+                "interpretation": "Forward-label horizon exposure is identified from the ordered OHLC rows. Weekend, non-weekend, and holiday-context categories are informational annotations; differences between groups are descriptive and may be confounded by time-of-week, volatility, and sample size.",
             },
         })
 
@@ -339,10 +403,26 @@ def analyze_prediction_temporal_stability(
         "non_weekend_long_gap_count": sum(gap["gap_category"] == "non_weekend_long_gap" for gap in long_gaps),
         "holiday_context_gap_count": sum(bool(gap["calendar_context"]) for gap in long_gaps),
         "long_gap_examples": long_gaps[:100],
+        # Prediction rows include one scored row per model, so counts are model-row counts;
+        # unique timestamps deduplicate the shared held-out windows across experiments.
         "prediction_count": total_predictions,
+        "prediction_model_row_count": total_predictions,
+        "unique_prediction_timestamp_count": len(unique_prediction_timestamps),
         "prediction_horizon_crosses_long_gap_count": total_horizon_gap_exposed,
         "prediction_horizon_crosses_long_gap_fraction": (
             total_horizon_gap_exposed / total_predictions if total_predictions else None
+        ),
+        "prediction_model_rows_crossing_weekend_gap_count": total_weekend_gap_exposed,
+        "prediction_model_rows_crossing_weekend_gap_fraction": (
+            total_weekend_gap_exposed / total_predictions if total_predictions else None
+        ),
+        "prediction_model_rows_crossing_non_weekend_gap_count": total_non_weekend_gap_exposed,
+        "prediction_model_rows_crossing_non_weekend_gap_fraction": (
+            total_non_weekend_gap_exposed / total_predictions if total_predictions else None
+        ),
+        "prediction_model_rows_crossing_holiday_context_gap_count": total_holiday_context_exposed,
+        "prediction_model_rows_crossing_holiday_context_gap_fraction": (
+            total_holiday_context_exposed / total_predictions if total_predictions else None
         ),
         "missing_prediction_timestamp_count": missing_prediction_timestamps,
         "experiments": results,
