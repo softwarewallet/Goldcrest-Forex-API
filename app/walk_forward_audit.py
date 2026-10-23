@@ -48,6 +48,9 @@ def audit_walk_forward_plan(
     total_train_rows = 0
     total_matured_train_rows = 0
     total_unmatured_train_rows = 0
+    total_ineligible_train_rows = 0
+    total_ineligible_validation_rows = 0
+    total_ineligible_test_rows = 0
 
     for fold in plan.folds:
         if fold.fold_index in seen_fold_indices:
@@ -69,11 +72,16 @@ def audit_walk_forward_plan(
 
         train_cutoff = max(train_times)
         train_examples = [by_time[t] for t in train_times]
+        eligible_train = [row for row in train_examples if row.label_eligible]
         matured = [
-            row for row in train_examples
+            row for row in eligible_train
             if row.label_available_at.astimezone(timezone.utc) <= train_cutoff
         ]
-        unmatured = len(train_examples) - len(matured)
+        unmatured = len(eligible_train) - len(matured)
+        validation_examples = [by_time[t] for t in validation_times]
+        test_examples = [by_time[t] for t in test_times]
+        ineligible_validation = sum(not row.label_eligible for row in validation_examples)
+        ineligible_test = sum(not row.label_eligible for row in test_examples)
         for timestamp in test_times:
             test_timestamp_counts[timestamp] = test_timestamp_counts.get(timestamp, 0) + 1
 
@@ -81,12 +89,17 @@ def audit_walk_forward_plan(
         total_train_rows += len(train_examples)
         total_matured_train_rows += len(matured)
         total_unmatured_train_rows += unmatured
+        total_ineligible_train_rows += len(train_examples) - len(eligible_train)
+        total_ineligible_validation_rows += ineligible_validation
+        total_ineligible_test_rows += ineligible_test
         fold_reports.append({
             "fold_index": fold.fold_index,
             "train": {
                 "start_utc": _utc_iso(fold.train[0].timestamp),
                 "end_utc": _utc_iso(fold.train[-1].timestamp),
                 "rows_available": len(train_examples),
+                "rows_label_eligible": len(eligible_train),
+                "rows_excluded_ineligible": len(train_examples) - len(eligible_train),
                 "rows_label_matured_at_cutoff": len(matured),
                 "rows_excluded_unmatured": unmatured,
                 "label_maturity_cutoff_utc": _utc_iso(fold.train[-1].timestamp),
@@ -95,11 +108,15 @@ def audit_walk_forward_plan(
                 "start_utc": _utc_iso(fold.validation[0].timestamp),
                 "end_utc": _utc_iso(fold.validation[-1].timestamp),
                 "rows": len(validation_times),
+                "rows_eligible": len(validation_examples) - ineligible_validation,
+                "rows_excluded_ineligible": ineligible_validation,
             },
             "test": {
                 "start_utc": _utc_iso(fold.test[0].timestamp),
                 "end_utc": _utc_iso(fold.test[-1].timestamp),
                 "rows": len(test_times),
+                "rows_eligible": len(test_examples) - ineligible_test,
+                "rows_excluded_ineligible": ineligible_test,
             },
             "purged_rows": int(fold.purged_rows),
             "partitions_disjoint": True,
@@ -120,6 +137,9 @@ def audit_walk_forward_plan(
         "training_rows_available_across_folds": total_train_rows,
         "training_rows_label_matured_at_cutoff_across_folds": total_matured_train_rows,
         "training_rows_excluded_unmatured_across_folds": total_unmatured_train_rows,
+        "training_rows_excluded_ineligible_across_folds": total_ineligible_train_rows,
+        "validation_rows_excluded_ineligible_across_folds": total_ineligible_validation_rows,
+        "test_rows_excluded_ineligible_across_folds": total_ineligible_test_rows,
         "test_observations_across_folds": total_test_observations,
         "unique_test_timestamps": unique_test_timestamps,
         "repeated_test_timestamp_observations": repeated_test_timestamps,
