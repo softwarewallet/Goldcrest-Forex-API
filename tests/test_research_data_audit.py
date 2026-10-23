@@ -111,3 +111,21 @@ def test_raw_ohlc_audit_warns_on_long_market_gaps_without_calling_them_corruptio
     assert result["status"] == "PASS_WITH_WARNINGS"
     assert result["large_gap_count_over_8_hours"] == 1
     assert "large_time_gaps_detected_review_market_closures_and_data_coverage" in result["warnings"]
+
+
+
+def test_raw_ohlc_audit_can_audit_operator_csv_without_manifest(tmp_path):
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    path, manifest = _write_snapshot(
+        tmp_path, [start, start + timedelta(minutes=15), start + timedelta(minutes=30)]
+    )
+    manifest.unlink()
+
+    result = audit_raw_ohlc_file(
+        path, expected_symbol="EURUSD", expected_timeframe="M15", require_manifest=False
+    )
+
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert result["errors"] == []
+    assert "snapshot_manifest_missing_provenance_hash_unverified" in result["warnings"]
+    assert result["actionable"] is False
