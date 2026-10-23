@@ -34,6 +34,25 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _is_weekend_closure_like_gap(left: datetime, right: datetime) -> bool:
+    """Conservative UTC heuristic; labels a likely FX weekend closure, not a guarantee.
+
+    Candidate gaps must start late Friday and resume Sunday evening or early Monday.
+    Other long gaps remain reviewable as non-weekend gaps instead of being silently ignored.
+    """
+    gap_hours = (right - left).total_seconds() / 3600
+    resumes_near_open = (
+        (right.weekday() == 6 and right.hour >= 16)
+        or (right.weekday() == 0 and right.hour <= 6)
+    )
+    return (
+        left.weekday() == 4
+        and left.hour >= 16
+        and resumes_near_open
+        and 24 <= gap_hours <= 72
+    )
+
+
 def audit_raw_ohlc_file(
     csv_path: str | Path,
     *,
@@ -202,19 +221,28 @@ def audit_raw_ohlc_file(
         ]
         frame = next(iter(timeframes), "")
         frame_seconds = _TIMEFRAME_MINUTES.get(frame, 0) * 60
-        long_gaps = [
-            {"from_utc": left.isoformat().replace("+00:00", "Z"),
-             "to_utc": right.isoformat().replace("+00:00", "Z"),
-             "gap_hours": round((right-left).total_seconds()/3600, 3)}
-            for left, right in zip(timestamps, timestamps[1:])
-            if (right-left).total_seconds() > 8 * 3600
-        ]
+        long_gaps: list[dict[str, Any]] = []
+        for left, right in zip(timestamps, timestamps[1:]):
+            gap_seconds = (right - left).total_seconds()
+            if gap_seconds <= 8 * 3600:
+                continue
+            weekend_like = _is_weekend_closure_like_gap(left, right)
+            long_gaps.append({
+                "from_utc": left.isoformat().replace("+00:00", "Z"),
+                "to_utc": right.isoformat().replace("+00:00", "Z"),
+                "gap_hours": round(gap_seconds / 3600, 3),
+                "gap_category": "weekend_closure_like" if weekend_like else "non_weekend_long_gap",
+            })
+        weekend_like_gaps = [gap for gap in long_gaps if gap["gap_category"] == "weekend_closure_like"]
+        non_weekend_long_gaps = [gap for gap in long_gaps if gap["gap_category"] == "non_weekend_long_gap"]
         if unaligned_rows == 0 and len(timeframes) == 1 and frame_seconds == 0:
             warnings.append("unknown_timeframe_candle_alignment_not_checked")
-        if long_gaps:
-            warnings.append("large_time_gaps_detected_review_market_closures_and_data_coverage")
+        if non_weekend_long_gaps:
+            warnings.append("non_weekend_long_gaps_detected_review_data_coverage")
     else:
         long_gaps = []
+        weekend_like_gaps = []
+        non_weekend_long_gaps = []
 
     if not manifest:
         pagination_summary = None
@@ -251,6 +279,14 @@ def audit_raw_ohlc_file(
         },
         "large_gap_count_over_8_hours": len(long_gaps),
         "large_gap_examples": long_gaps[:10],
+        "weekend_closure_like_gap_count_over_8_hours": len(weekend_like_gaps),
+        "non_weekend_long_gap_count_over_8_hours": len(non_weekend_long_gaps),
+        "non_weekend_long_gap_examples": non_weekend_long_gaps[:10],
+        "gap_classification": {
+            "method": "conservative_utc_weekend_window_heuristic",
+            "weekend_closure_like": "Gap starts Friday at or after 16:00 UTC and resumes Sunday at/after 16:00 UTC or Monday by 06:00 UTC, lasting 24-72 hours. Heuristic only; not proof of an expected closure.",
+            "non_weekend_long_gap": "Any gap over 8 hours not matching the weekend-like heuristic; review market calendar and data coverage.",
+        },
         "invalid_ohlc_rows": invalid_ohlc_rows,
         "nonfinite_ohlc_rows": nonfinite_rows,
         "unaligned_timestamp_rows": unaligned_rows,
@@ -261,8 +297,9 @@ def audit_raw_ohlc_file(
         "execution_connected": False,
         "automatic_model_selection": False,
         "interpretation": (
-            "Local snapshot integrity and OHLC structure only. Gaps can reflect weekends, holidays, "
-            "instrument inactivity or provider behavior; investigate large gaps before model evaluation."
+            "Local snapshot integrity and OHLC structure only. Weekend-like gap classification is a "
+            "conservative timestamp heuristic, not proof of expected market closure. Review non-weekend "
+            "long gaps, holidays, instrument inactivity and provider coverage before model evaluation."
         ),
     }
 
