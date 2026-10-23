@@ -228,7 +228,8 @@ def test_completed_run_validation_writes_consolidated_non_actionable_report(tmp_
 
 def test_ctrader_config_check_never_emits_secret_values(tmp_path, monkeypatch):
     manifest = _build_complete_run(tmp_path)
-    for name in ("CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET", "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID"):
+    monkeypatch.setattr(ctrader_history_ingest, "_PROJECT_ROOT", tmp_path / "isolated-project")
+    for name in ("CTRADER_HOST", "CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET", "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID"):
         monkeypatch.delenv(name, raising=False)
     secret = "test-secret-value-do-not-print"
     monkeypatch.setenv("CTRADER_CLIENT_SECRET", secret)
@@ -243,8 +244,9 @@ def test_ctrader_config_check_never_emits_secret_values(tmp_path, monkeypatch):
 
 
 
-def test_standalone_preflight_reports_only_presence_and_never_secrets(monkeypatch):
-    for name in ("CTRADER_CLIENT_ID", "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID"):
+def test_standalone_preflight_reports_only_presence_and_never_secrets(tmp_path, monkeypatch):
+    monkeypatch.setattr(ctrader_history_ingest, "_PROJECT_ROOT", tmp_path / "isolated-project")
+    for name in ("CTRADER_HOST", "CTRADER_CLIENT_ID", "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID"):
         monkeypatch.delenv(name, raising=False)
     secret = "must-never-be-returned"
     monkeypatch.setenv("CTRADER_CLIENT_SECRET", secret)
