@@ -38,6 +38,8 @@ class OptunaTuningResult:
     selection_metric: str = "validation_log_loss_minimize"
     test_partition_used: bool = False
     actionable: bool = False
+    train_rows_excluded_ineligible: int = 0
+    validation_rows_excluded_ineligible: int = 0
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -68,6 +70,8 @@ def _validate_partition(rows: Sequence[TimedBinaryExample], feature_names: tuple
                 raise ValueError(f"feature {feature!r} must be finite")
         if isinstance(row.label, bool) or row.label not in (0, 1):
             raise ValueError("labels must be explicitly supplied as 0 or 1")
+        if not isinstance(row.label_eligible, bool):
+            raise ValueError("label_eligible must be a boolean")
 
 
 def tune_on_validation(
@@ -104,29 +108,34 @@ def tune_on_validation(
     _validate_partition(validation_examples, names, "validation")
     train_start = _utc(train_examples[0].timestamp, "train")
     train_end = _utc(train_examples[-1].timestamp, "train")
-    validation_start = _utc(validation_examples[0].timestamp, "validation")
-    validation_end = _utc(validation_examples[-1].timestamp, "validation")
+    eligible_validation = [row for row in validation_examples if row.label_eligible]
+    if not eligible_validation:
+        raise ValueError("elapsed-time eligibility excluded every validation row")
+    validation_start = _utc(eligible_validation[0].timestamp, "validation")
+    validation_end = _utc(eligible_validation[-1].timestamp, "validation")
     if train_start >= train_end:
         raise ValueError("training partition must contain at least two timestamps")
     if train_end >= validation_start:
         raise ValueError("validation must begin strictly after the training partition")
 
+    eligible_train = [row for row in train_examples if row.label_eligible]
     matured_train = [
-        row for row in train_examples
+        row for row in eligible_train
         if _utc(row.label_available_at, "label availability") <= train_end
     ]
-    excluded = len(train_examples) - len(matured_train)
+    excluded = len(eligible_train) - len(matured_train)
+    excluded_ineligible = len(train_examples) - len(eligible_train)
     if len(matured_train) < 4 or len({row.label for row in matured_train}) != 2:
-        raise ValueError("matured training rows must contain at least four rows and both classes")
-    if len(validation_examples) < 2 or len({row.label for row in validation_examples}) != 2:
-        raise ValueError("validation rows must contain both classes and at least two rows")
+        raise ValueError("matured eligible training rows must contain at least four rows and both classes")
+    if len(eligible_validation) < 2 or len({row.label for row in eligible_validation}) != 2:
+        raise ValueError("eligible validation rows must contain both classes and at least two rows")
 
     from app.models.tabular import feature_schema_fingerprint
     feature_sha = feature_schema_fingerprint(names)
     train_x = [row.features for row in matured_train]
     train_y = [row.label for row in matured_train]
-    valid_x = [row.features for row in validation_examples]
-    valid_y = [row.label for row in validation_examples]
+    valid_x = [row.features for row in eligible_validation]
+    valid_y = [row.label for row in eligible_validation]
     threads = get_ml_thread_count()
 
     def objective(trial: optuna.Trial) -> float:
@@ -183,10 +192,12 @@ def tune_on_validation(
         best_params=dict(study.best_params),
         train_rows_available=len(matured_train),
         train_rows_excluded_unmatured=excluded,
-        validation_rows=len(validation_examples),
+        validation_rows=len(eligible_validation),
         validation_start_utc=validation_start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
         validation_end_utc=validation_end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
         actionable=False,
+        train_rows_excluded_ineligible=excluded_ineligible,
+        validation_rows_excluded_ineligible=len(validation_examples) - len(eligible_validation),
     )
 
 
