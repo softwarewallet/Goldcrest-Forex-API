@@ -239,6 +239,32 @@ observations and must not be pooled as if they were. No candidate is ranked or s
 report. The validator also records package discovery and resource profile details. The optional
 cTrader config check only inspects environment configuration; it is not a broker/network test.
 
+## 5. Temporal stability and label-gap sensitivity
+
+Use the temporal stability diagnostic after the baseline and volatility-regime reports:
+
+```bash
+python -m app.research_temporal_stability \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json \
+  --ohlc-csv data/research/<exact-raw-ohlc-file>.csv \
+  --output data/research/runs/<run-id>_temporal_stability.json \
+  --gap-threshold-hours 8
+```
+
+The tool verifies the run manifest, exact raw OHLC file hash, and experiment-matrix hash before
+scoring held-out predictions. It reports per-fold log loss and Brier score, fold counts where
+model loss improves or worsens versus each persisted baseline, and sensitivity groups based on
+whether the forward label horizon spans an OHLC interval longer than the configured threshold.
+The label horizon is interpreted as a number of rows in the original chronologically ordered OHLC
+snapshot, matching the dataset builder's forward-close label definition.
+
+Long-gap classifications use the same conservative weekend-window heuristic and fixed-date context
+annotations as the raw OHLC audit. Those calendar tags are not an authoritative session calendar.
+Gap-exposed and unexposed samples may differ in time-of-week and volatility, so score differences
+are descriptive rather than causal. Fold-level consistency is not an inferential significance test.
+No model is ranked or selected by this report; outputs remain non-actionable and disconnected from
+execution.
+
 ## 4. Produce a compact model-results summary
 
 To avoid copying the entire pipeline JSON, create a short summary from the completed pipeline
