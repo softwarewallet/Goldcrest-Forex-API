@@ -258,7 +258,8 @@ def analyze_prediction_regimes(
                         continue
                     regime = fold_assignments[fold_index].get(timestamp)
                     if regime is None:
-                        skipped_without_volatility += 1
+                        if record_fold_counts:
+                            skipped_without_volatility += 1
                         if record_fold_counts:
                             threshold_by_fold[fold_index]["predictions_without_warmup_volatility"] += 1
                         continue
