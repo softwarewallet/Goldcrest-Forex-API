@@ -139,6 +139,143 @@ def _safe_api_error_diagnostic(response: Any) -> str | None:
     return f"{response_type} code={code}"
 
 
+# Keep each request inside conservative cTrader period-specific timestamp limits.
+# The bounds are intentionally below the documented maxima to tolerate rounding differences.
+_MINUTE_MS = 60_000
+_TREND_BAR_PAGE_SIZE = 1000
+_TREND_BAR_MAX_PAGES = 10_000
+_MAX_WINDOW_DAYS = {
+    "M1": 34,
+    "M5": 34,
+    "M15": 240,
+    "M30": 240,
+    "H1": 240,
+    "H4": 360,
+    "D1": 360,
+}
+
+
+def _trendbar_timestamp_ms(bar: Any) -> int:
+    """Return a cTrader trendbar's UTC opening timestamp in milliseconds."""
+    value = bar.get("utcTimestampInMinutes") if isinstance(bar, dict) else getattr(bar, "utcTimestampInMinutes", None)
+    if value is not None:
+        return int(value) * _MINUTE_MS
+    value = bar.get("timestamp_utc", bar.get("timestamp")) if isinstance(bar, dict) else getattr(
+        bar, "timestamp_utc", getattr(bar, "timestamp", None)
+    )
+    if isinstance(value, datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("trendbar timestamp must include timezone information")
+        return int(value.timestamp() * 1000)
+    if isinstance(value, str):
+        raw = value.strip()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(raw)
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("trendbar timestamp must include timezone information")
+        return int(parsed.timestamp() * 1000)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        # Generic adapters may provide Unix epoch seconds.
+        return int(float(value) * 1000)
+    raise ValueError("trendbar does not expose a supported timestamp")
+
+
+def _read_wire_varint(payload: bytes, offset: int) -> tuple[int, int]:
+    value = 0
+    shift = 0
+    while offset < len(payload) and shift < 70:
+        byte = payload[offset]
+        offset += 1
+        value |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return value, offset
+        shift += 7
+    raise ValueError("invalid protobuf varint")
+
+
+def _extract_optional_bool_wire_field(payload: bytes, field_number: int) -> bool | None:
+    """Read an optional bool from protobuf wire bytes when an older SDK schema omits it."""
+    offset = 0
+    try:
+        while offset < len(payload):
+            tag, offset = _read_wire_varint(payload, offset)
+            number, wire_type = tag >> 3, tag & 0x07
+            if number == 0:
+                return None
+            if number == field_number:
+                if wire_type != 0:
+                    return None
+                value, _offset = _read_wire_varint(payload, offset)
+                return bool(value)
+            if wire_type == 0:
+                _value, offset = _read_wire_varint(payload, offset)
+            elif wire_type == 1:
+                offset += 8
+            elif wire_type == 2:
+                length, offset = _read_wire_varint(payload, offset)
+                offset += length
+            elif wire_type == 5:
+                offset += 4
+            else:
+                return None
+            if offset > len(payload):
+                return None
+    except (ValueError, IndexError):
+        return None
+    return None
+
+
+def _response_has_more_trendbars(response: Any, message: Any | None = None) -> bool | None:
+    """Read hasMore from the response or raw protobuf payload, even with an older SDK schema."""
+    has_field = getattr(response, "HasField", None)
+    if callable(has_field):
+        try:
+            if has_field("hasMore"):
+                value = getattr(response, "hasMore")
+                return bool(value) if isinstance(value, bool) else None
+        except (ValueError, TypeError):
+            pass
+    value = getattr(response, "hasMore", None)
+    if isinstance(value, bool):
+        return value
+
+    # ctrader-open-api==0.9.2's generated response class predates hasMore field 7.
+    # The SDK still passes through the original ProtoMessage payload, so inspect only that
+    # top-level optional bool rather than upgrading/vendor-modifying the generated schema.
+    payload = getattr(message, "payload", None)
+    if isinstance(payload, (bytes, bytearray)):
+        return _extract_optional_bool_wire_field(bytes(payload), 7)
+    return None
+
+
+def _build_trendbar_windows(
+    start_timestamp_ms: int,
+    end_timestamp_ms: int,
+    timeframe: str,
+) -> list[tuple[int, int]]:
+    """Partition a history interval into overlapping minute-aligned windows within cTrader limits."""
+    if timeframe not in _MAX_WINDOW_DAYS:
+        raise ValueError("unsupported timeframe for cTrader history windows")
+    start = (int(start_timestamp_ms) // _MINUTE_MS) * _MINUTE_MS
+    end = (int(end_timestamp_ms) // _MINUTE_MS) * _MINUTE_MS
+    if start < 0 or end < start:
+        raise ValueError("invalid historical time range")
+    max_span = _MAX_WINDOW_DAYS[timeframe] * 24 * 60 * _MINUTE_MS
+    windows: list[tuple[int, int]] = []
+    window_start = start
+    while window_start <= end:
+        window_end = min(end, window_start + max_span)
+        window_end = (window_end // _MINUTE_MS) * _MINUTE_MS
+        windows.append((window_start, window_end))
+        if window_end >= end:
+            break
+        # Reuse the boundary minute in the next window; final deduplication avoids gaps
+        # from candle timestamps that sit exactly on a window boundary.
+        window_start = window_end
+    return windows
+
+
 def download_ctrader_history(
     *,
     symbol: str,
@@ -207,30 +344,40 @@ def download_ctrader_history(
         stop_loop()
         return failure
 
-    def get_bars(symbol_id: int) -> None:
-        request = sdk["ProtoOAGetTrendbarsReq"]()
-        request.ctidTraderAccountId = selected_config.account_id
-        request.symbolId = int(symbol_id)
-        request.period = getattr(sdk["ProtoOATrendbarPeriod"], period)
-        end_time = datetime.now(timezone.utc)
-        start_time = end_time - timedelta(days=days)
-        request.fromTimestamp = int(start_time.timestamp() * 1000)
-        request.toTimestamp = int(end_time.timestamp() * 1000)
-        deferred = client.send(request)
-        deferred.addCallbacks(on_bars, fail)
+    pagination: dict[str, Any] = {
+        "windows": [],
+        "window_index": 0,
+        "cursor_to_ms": None,
+        "trendbars": [],
+        "pages_requested": 0,
+        "duplicate_bars_removed": 0,
+        "has_more_flag_available": False,
+        "requested_start_ms": None,
+        "requested_end_ms": None,
+        "symbol_id": None,
+    }
 
-    def on_bars(message: Any) -> Any:
+    def finish_ingestion() -> None:
         if failure_state:
-            return message
+            stop_loop()
+            return
         try:
-            response = extract_response(message)
-            if response is None:
-                return message
-            trendbars = list(response.trendbar)
-            if not trendbars:
+            start_ms = int(pagination["requested_start_ms"])
+            end_ms = int(pagination["requested_end_ms"])
+            unique_bars: dict[int, Any] = {}
+            for bar in pagination["trendbars"]:
+                timestamp_ms = _trendbar_timestamp_ms(bar)
+                if timestamp_ms < start_ms or timestamp_ms > end_ms:
+                    continue
+                if timestamp_ms in unique_bars:
+                    pagination["duplicate_bars_removed"] += 1
+                    continue
+                unique_bars[timestamp_ms] = bar
+            if not unique_bars:
                 raise ValueError("cTrader returned no trendbars for this symbol/timeframe/window")
+            ordered_bars = [unique_bars[timestamp] for timestamp in sorted(unique_bars)]
             snapshot = normalize_ctrader_trendbars(
-                trendbars,
+                ordered_bars,
                 symbol=instrument,
                 timeframe=period,
                 output_csv=output_csv,
@@ -239,6 +386,17 @@ def download_ctrader_history(
             snapshot["retrieved_at_utc"] = retrieved_at
             snapshot["host"] = "demo"
             snapshot["request_lookback_days"] = days
+            snapshot["requested_start_utc"] = datetime.fromtimestamp(start_ms / 1000, timezone.utc).isoformat().replace("+00:00", "Z")
+            snapshot["requested_end_utc"] = datetime.fromtimestamp(end_ms / 1000, timezone.utc).isoformat().replace("+00:00", "Z")
+            snapshot["pagination"] = {
+                "complete": True,
+                "strategy": "period_limited_time_windows_with_count_pages",
+                "window_count": len(pagination["windows"]),
+                "pages_requested": pagination["pages_requested"],
+                "page_size": _TREND_BAR_PAGE_SIZE,
+                "duplicate_bars_removed": pagination["duplicate_bars_removed"],
+                "has_more_flag_available": pagination["has_more_flag_available"],
+            }
             manifest_path = Path(output_csv).with_suffix(Path(output_csv).suffix + ".manifest.json")
             manifest_path.write_text(
                 json.dumps(snapshot, indent=2, sort_keys=True, allow_nan=False) + "\n",
@@ -248,6 +406,96 @@ def download_ctrader_history(
         except Exception as exc:
             failure_state["error_type"] = type(exc).__name__
         finally:
+            stop_loop()
+
+    def request_current_page() -> None:
+        if failure_state:
+            return
+        if pagination["pages_requested"] >= _TREND_BAR_MAX_PAGES:
+            failure_state["error_type"] = "PaginationPageLimitExceeded"
+            stop_loop()
+            return
+        window_start, window_end = pagination["windows"][pagination["window_index"]]
+        cursor_to = pagination["cursor_to_ms"]
+        if not isinstance(cursor_to, int) or cursor_to < window_start:
+            advance_window()
+            return
+        request = sdk["ProtoOAGetTrendbarsReq"]()
+        request.ctidTraderAccountId = selected_config.account_id
+        request.symbolId = int(pagination["symbol_id"])
+        request.period = getattr(sdk["ProtoOATrendbarPeriod"], period)
+        request.fromTimestamp = int(window_start)
+        request.toTimestamp = int(cursor_to)
+        request.count = _TREND_BAR_PAGE_SIZE
+        pagination["pages_requested"] += 1
+        deferred = client.send(request)
+        deferred.addCallbacks(on_bars, fail)
+
+    def advance_window() -> None:
+        if failure_state:
+            stop_loop()
+            return
+        next_index = pagination["window_index"] + 1
+        if next_index >= len(pagination["windows"]):
+            finish_ingestion()
+            return
+        pagination["window_index"] = next_index
+        pagination["cursor_to_ms"] = pagination["windows"][next_index][1]
+        request_current_page()
+
+    def get_bars(symbol_id: int) -> None:
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(days=days)
+        start_ms = int(start_time.timestamp() * 1000)
+        end_ms = int(end_time.timestamp() * 1000)
+        pagination["windows"] = _build_trendbar_windows(start_ms, end_ms, period)
+        pagination["window_index"] = 0
+        pagination["cursor_to_ms"] = pagination["windows"][0][1]
+        pagination["symbol_id"] = int(symbol_id)
+        pagination["requested_start_ms"] = pagination["windows"][0][0]
+        pagination["requested_end_ms"] = pagination["windows"][-1][1]
+        request_current_page()
+
+    def on_bars(message: Any) -> Any:
+        if failure_state:
+            return message
+        try:
+            response = extract_response(message)
+            if response is None:
+                return message
+            trendbars = list(response.trendbar)
+            window_start, _window_end = pagination["windows"][pagination["window_index"]]
+            if not trendbars:
+                has_more = _response_has_more_trendbars(response, message)
+                if has_more is not None:
+                    pagination["has_more_flag_available"] = True
+                if has_more is True:
+                    raise ValueError("cTrader indicated more trendbars but returned an empty page")
+                advance_window()
+                return message
+
+            pagination["trendbars"].extend(trendbars)
+            has_more = _response_has_more_trendbars(response, message)
+            if has_more is not None:
+                pagination["has_more_flag_available"] = True
+            # Version 0.9.2 of the Python SDK does not expose ProtoOAGetTrendbarsRes.hasMore.
+            # If unavailable, a full count-sized page is a conservative signal to keep paging.
+            needs_more = has_more if has_more is not None else len(trendbars) >= _TREND_BAR_PAGE_SIZE
+            if needs_more:
+                oldest_timestamp_ms = min(_trendbar_timestamp_ms(bar) for bar in trendbars)
+                current_cursor = int(pagination["cursor_to_ms"])
+                if oldest_timestamp_ms <= window_start:
+                    advance_window()
+                else:
+                    next_cursor = oldest_timestamp_ms - 1
+                    if next_cursor >= current_cursor:
+                        raise ValueError("cTrader trendbar pagination did not move backwards")
+                    pagination["cursor_to_ms"] = next_cursor
+                    request_current_page()
+            else:
+                advance_window()
+        except Exception as exc:
+            failure_state["error_type"] = type(exc).__name__
             stop_loop()
         return message
 

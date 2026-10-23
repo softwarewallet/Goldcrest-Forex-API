@@ -73,10 +73,22 @@ python -m app.ctrader_history_ingest \
   --output-csv data/research/EURUSD_M15_demo.csv
 ```
 
-The output should report a row count and a snapshot hash. If this network check fails after
-configuration passes, check token expiry/permissions, the account ID, the exact instrument
-name in the DEMO account, and network access to the cTrader DEMO endpoint. The error output
-is deliberately sanitized; never print or share token/secret values when debugging.
+The output should report a row count and a snapshot hash. The manifest now records requested
+time bounds, window count, page count, any duplicate bars removed at overlapping window
+boundaries, and whether the SDK exposed the response's `hasMore` flag. The downloader divides
+long lookbacks into timeframe-bounded windows and requests historical bars in count-limited
+pages, proceeding backward from each page's earliest timestamp. The pinned
+`ctrader-open-api==0.9.2` SDK does not expose `ProtoOAGetTrendbarsRes.hasMore`, so a full
+page triggers a conservative backwards request as a fallback. Returned rows are timestamp
+sorted and deduplicated before CSV normalization; the final manifest records the result as
+complete only after every requested time window has been traversed.
+
+The downloader observes the official cTrader historical-data request limit by issuing pages
+sequentially on the same connection (the SDK throttles message sending). Conservative
+timeframe-specific windows stay below documented maximum timestamp spans. If this network
+check fails after configuration passes, check token expiry/permissions, the account ID, the
+exact instrument name in the DEMO account, and network access to the cTrader DEMO endpoint.
+The error output is deliberately sanitized; never print or share token/secret values when debugging.
 
 ## cTrader TLS and connection failures
 

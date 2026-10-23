@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -284,12 +285,51 @@ class FakeReactor:
         return None
 
 
+def test_trendbar_windows_are_minute_aligned_bounded_and_overlap_without_gaps():
+    minute_ms = 60_000
+    start_ms = 1_700_000_123_456
+    end_ms = start_ms + 800 * 24 * 60 * minute_ms
+
+    windows = ctrader_history_ingest._build_trendbar_windows(start_ms, end_ms, "M15")
+
+    assert len(windows) > 1
+    assert windows[0][0] == (start_ms // minute_ms) * minute_ms
+    assert windows[-1][1] == (end_ms // minute_ms) * minute_ms
+    for window_start, window_end in windows:
+        assert window_start % minute_ms == 0
+        assert window_end % minute_ms == 0
+        assert window_end - window_start <= 240 * 24 * 60 * minute_ms
+    for previous, current in zip(windows, windows[1:]):
+        assert previous[1] == current[0]
+
+
+def test_optional_has_more_flag_falls_back_when_sdk_does_not_expose_it():
+    assert ctrader_history_ingest._response_has_more_trendbars(SimpleNamespace(trendbar=[])) is None
+    assert ctrader_history_ingest._response_has_more_trendbars(SimpleNamespace(hasMore=True)) is True
+    assert ctrader_history_ingest._response_has_more_trendbars(SimpleNamespace(hasMore=False)) is False
+
+
+def test_has_more_is_read_from_raw_protobuf_when_old_sdk_schema_omits_field():
+    response = SimpleNamespace(trendbar=[])
+    # field 1 (varint), field 5 (length-delimited), then field 7 (optional bool)
+    payload_with_more = bytes((0x08, 0x02, 0x2A, 0x03)) + b"abc" + bytes((0x38, 0x01))
+    payload_without_more = bytes((0x38, 0x00))
+
+    assert ctrader_history_ingest._response_has_more_trendbars(
+        response, SimpleNamespace(payload=payload_with_more)
+    ) is True
+    assert ctrader_history_ingest._response_has_more_trendbars(
+        response, SimpleNamespace(payload=payload_without_more)
+    ) is False
+
+
 def test_read_only_download_runs_auth_symbol_and_trendbar_flow(tmp_path):
     from app.ctrader_history_ingest import download_ctrader_history
 
+    latest_minute = int(datetime.now(timezone.utc).timestamp() // 60)
     bars = [
-        SimpleNamespace(utcTimestampInMinutes=29_000_000, low=110000, deltaOpen=200, deltaHigh=800, deltaClose=500),
-        SimpleNamespace(utcTimestampInMinutes=29_000_015, low=110100, deltaOpen=100, deltaHigh=600, deltaClose=400),
+        SimpleNamespace(utcTimestampInMinutes=latest_minute - 15, low=110000, deltaOpen=200, deltaHigh=800, deltaClose=500),
+        SimpleNamespace(utcTimestampInMinutes=latest_minute, low=110100, deltaOpen=100, deltaHigh=600, deltaClose=400),
     ]
     responses = {
         "ProtoOAApplicationAuthReq": object(),
@@ -328,4 +368,91 @@ def test_read_only_download_runs_auth_symbol_and_trendbar_flow(tmp_path):
     assert result["host"] == "demo"
     assert result["rows"] == 2
     assert result["snapshot_sha256"]
+    assert result["pagination"]["complete"] is True
+    assert result["pagination"]["pages_requested"] == 1
+    assert result["pagination"]["window_count"] == 1
     assert Path(str(output) + ".manifest.json").exists()
+
+
+
+def test_history_download_paginates_with_older_sdk_count_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(ctrader_history_ingest, "_TREND_BAR_PAGE_SIZE", 2)
+    latest_minute = int(datetime.now(timezone.utc).timestamp() // 60)
+
+    def bar(minute):
+        return SimpleNamespace(
+            utcTimestampInMinutes=minute,
+            low=110000,
+            deltaOpen=100,
+            deltaHigh=500,
+            deltaClose=300,
+        )
+
+    # ctrader-open-api==0.9.2 doesn't expose ProtoOAGetTrendbarsRes.hasMore.
+    # An exactly full count page must therefore trigger a backwards request.
+    newest_page = SimpleNamespace(trendbar=[bar(latest_minute - 15), bar(latest_minute)])
+    older_page = SimpleNamespace(trendbar=[bar(latest_minute - 30)])
+
+    class PagedFakeClient(FakeClient):
+        def send(self, request):
+            self.sent.append(request)
+            name = type(request).__name__
+            if name == "ProtoOAGetTrendbarsReq":
+                response = self.responses[name].pop(0)
+            else:
+                response = self.responses[name]
+            return FakeDeferred(response)
+
+    responses = {
+        "ProtoOAApplicationAuthReq": object(),
+        "ProtoOAAccountAuthReq": object(),
+        "ProtoOASymbolsListReq": SimpleNamespace(symbol=[
+            SimpleNamespace(symbolName="EURUSD", symbolId=1),
+        ]),
+        "ProtoOAGetTrendbarsReq": [newest_page, older_page],
+    }
+    clients = []
+
+    def factory(host, port, protocol):
+        client = PagedFakeClient(host, port, protocol, responses)
+        clients.append(client)
+        return client
+
+    sdk = {
+        "Client": factory,
+        "Protobuf": SimpleNamespace(extract=lambda value: value),
+        "TcpProtocol": object(),
+        "EndPoints": SimpleNamespace(PROTOBUF_DEMO_HOST="demo-host", PROTOBUF_PORT=5035),
+        "ProtoOAApplicationAuthReq": type("ProtoOAApplicationAuthReq", (FakeRequest,), {}),
+        "ProtoOAAccountAuthReq": type("ProtoOAAccountAuthReq", (FakeRequest,), {}),
+        "ProtoOASymbolsListReq": type("ProtoOASymbolsListReq", (FakeRequest,), {}),
+        "ProtoOAGetTrendbarsReq": type("ProtoOAGetTrendbarsReq", (FakeRequest,), {}),
+        "ProtoOATrendbarPeriod": SimpleNamespace(M15=15),
+        "reactor": FakeReactor(),
+    }
+    output = tmp_path / "EURUSD_M15_paged.csv"
+    result = download_ctrader_history(
+        symbol="EURUSD",
+        timeframe="M15",
+        lookback_days=7,
+        output_csv=output,
+        config=CTraderResearchConfig("id", "secret", "token", 12345, "demo"),
+        sdk=sdk,
+    )
+
+    with output.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    trendbar_requests = [item for item in clients[0].sent if type(item).__name__ == "ProtoOAGetTrendbarsReq"]
+    timestamps = [row["timestamp"] for row in rows]
+
+    assert len(rows) == 3
+    assert timestamps == sorted(timestamps)
+    assert len(set(timestamps)) == 3
+    assert len(trendbar_requests) == 2
+    assert all(request.count == 2 for request in trendbar_requests)
+    assert trendbar_requests[1].toTimestamp < trendbar_requests[0].toTimestamp
+    assert trendbar_requests[1].fromTimestamp == trendbar_requests[0].fromTimestamp
+    assert result["pagination"]["complete"] is True
+    assert result["pagination"]["pages_requested"] == 2
+    assert result["pagination"]["has_more_flag_available"] is False
+    assert result["rows"] == 3
