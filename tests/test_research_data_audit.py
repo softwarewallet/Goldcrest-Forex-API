@@ -102,7 +102,7 @@ def test_raw_ohlc_audit_rejects_non_chronological_duplicate_and_invalid_ohlc(tmp
     assert "snapshot_sha256_mismatch" in result["errors"]
 
 
-def test_raw_ohlc_audit_warns_on_long_market_gaps_without_calling_them_corruption(tmp_path):
+def test_raw_ohlc_audit_warns_on_non_weekend_long_gaps_without_calling_them_corruption(tmp_path):
     start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
     path, manifest = _write_snapshot(tmp_path, [start, start + timedelta(minutes=15), start + timedelta(hours=9)])
 
@@ -110,8 +110,30 @@ def test_raw_ohlc_audit_warns_on_long_market_gaps_without_calling_them_corruptio
 
     assert result["status"] == "PASS_WITH_WARNINGS"
     assert result["large_gap_count_over_8_hours"] == 1
-    assert "large_time_gaps_detected_review_market_closures_and_data_coverage" in result["warnings"]
+    assert result["non_weekend_long_gap_count_over_8_hours"] == 1
+    assert result["weekend_closure_like_gap_count_over_8_hours"] == 0
+    assert result["large_gap_examples"][0]["gap_category"] == "non_weekend_long_gap"
+    assert "non_weekend_long_gaps_detected_review_data_coverage" in result["warnings"]
 
+
+
+
+
+
+def test_raw_ohlc_audit_classifies_late_friday_to_sunday_gap_as_weekend_like(tmp_path):
+    friday = datetime(2026, 1, 9, 21, 45, tzinfo=timezone.utc)
+    sunday = datetime(2026, 1, 11, 21, 0, tzinfo=timezone.utc)
+    path, manifest = _write_snapshot(tmp_path, [friday, sunday])
+
+    result = audit_raw_ohlc_file(path, manifest_path=manifest)
+
+    assert result["status"] == "PASS"
+    assert result["warnings"] == []
+    assert result["large_gap_count_over_8_hours"] == 1
+    assert result["weekend_closure_like_gap_count_over_8_hours"] == 1
+    assert result["non_weekend_long_gap_count_over_8_hours"] == 0
+    assert result["large_gap_examples"][0]["gap_category"] == "weekend_closure_like"
+    assert result["gap_classification"]["method"] == "conservative_utc_weekend_window_heuristic"
 
 
 def test_raw_ohlc_audit_can_audit_operator_csv_without_manifest(tmp_path):
