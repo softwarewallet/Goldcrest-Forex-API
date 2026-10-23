@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app import ctrader_history_ingest
 from app.research_provenance_auditor import audit_experiment_matrix_file
 from app.research_validation import collect_research_preflight, summarize_experiment_matrix, validate_completed_run, validate_prepared_dataset
 
@@ -255,3 +256,26 @@ def test_standalone_preflight_reports_only_presence_and_never_secrets(monkeypatc
     assert result["ctrader_demo_config"]["credential_values_exposed"] is False
     assert secret not in json.dumps(result)
     assert result["actionable"] is False
+
+
+
+def test_research_preflight_reads_ctrader_values_from_dotenv(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text(
+        "CTRADER_HOST=demo\n"
+        "CTRADER_CLIENT_ID=dotenv-client-id\n"
+        "CTRADER_CLIENT_SECRET=dotenv-client-secret\n"
+        "CTRADER_ACCESS_TOKEN=dotenv-access-token\n"
+        "CTRADER_ACCOUNT_ID=123456789\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ctrader_history_ingest, "_PROJECT_ROOT", tmp_path)
+    for name in ("CTRADER_HOST", "CTRADER_CLIENT_ID", "CTRADER_CLIENT_SECRET",
+                 "CTRADER_ACCESS_TOKEN", "CTRADER_ACCOUNT_ID"):
+        monkeypatch.delenv(name, raising=False)
+
+    result = collect_research_preflight(check_ctrader_config=True)
+
+    assert result["ctrader_demo_config"]["status"] == "PASS"
+    assert all(result["ctrader_demo_config"]["required_variables_present"].values())
+    assert result["ctrader_demo_config"]["network_checked"] is False
+    assert "dotenv-access-token" not in json.dumps(result)
