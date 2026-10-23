@@ -40,6 +40,8 @@ class TunedFoldResult:
     refit_rows_available: int
     refit_rows_excluded_unmatured: int
     test_metrics: Mapping[str, Any]
+    test_predictions: tuple[dict[str, Any], ...]
+    baseline_diagnostics: Mapping[str, Any]
     actionable: bool = False
 
 
@@ -94,6 +96,7 @@ def run_optuna_walk_forward(
     random_seed: int = 20261021,
     bootstrap_resamples: int = 500,
     plan: WalkForwardPlan | None = None,
+    class_1_means: str = "UP",
 ) -> OptunaWalkForwardReport:
     """Tune and test each fold independently; never tune on any fold's test rows."""
     names = tuple(feature_names)
@@ -104,6 +107,8 @@ def run_optuna_walk_forward(
         raise ValueError("dataset_sha256 must be a 64-character hexadecimal digest")
     if model_type not in {"xgboost", "lightgbm"}:
         raise ValueError("model_type must be 'xgboost' or 'lightgbm'")
+    if class_1_means not in {"UP", "DOWN"}:
+        raise ValueError("class_1_means must be 'UP' or 'DOWN'")
     if isinstance(n_trials_per_fold, bool) or not isinstance(n_trials_per_fold, int) or not 1 <= n_trials_per_fold <= 100:
         raise ValueError("n_trials_per_fold must be between 1 and 100")
     if isinstance(bootstrap_resamples, bool) or not isinstance(bootstrap_resamples, int) or bootstrap_resamples < 100:
@@ -151,6 +156,7 @@ def run_optuna_walk_forward(
     if walk_plan.horizon_bars != horizon_bars:
         raise ValueError("provided plan horizon does not match requested horizon")
     by_time = {timestamp: row for timestamp, row in zip(example_times, examples)}
+    bar_index_by_time = {timestamp: index for index, timestamp in enumerate(bar_times)}
     results: list[TunedFoldResult] = []
 
     for fold in walk_plan.folds:
@@ -210,6 +216,73 @@ def run_optuna_walk_forward(
         model.fit([row.features for row in refit_rows], [row.label for row in refit_rows], params=fit_params)
 
         probabilities = [model.predict(row.features).probability_class_1 for row in test]
+
+        # Fit simple reference baselines only on matured train+validation labels.
+        # No held-out test labels influence baseline prevalence, majority class, or direction skill.
+        refit_labels = [row.label for row in refit_rows]
+        refit_prevalence = sum(refit_labels) / len(refit_labels)
+        refit_majority_class = int(sum(refit_labels) > (len(refit_labels) / 2.0))  # ties default to class 0
+        direction_hits = 0
+        direction_training_rows = 0
+        class_1_is_up = class_1_means == "UP"
+        for historical_row in refit_rows:
+            historical_index = bar_index_by_time.get(_utc(historical_row.timestamp, "baseline history"))
+            if historical_index is None or historical_index == 0:
+                continue
+            change = bars[historical_index].close - bars[historical_index - 1].close
+            if not math.isfinite(change) or change == 0:
+                continue
+            predicts_up = change > 0
+            direction_class = int(predicts_up) if class_1_is_up else int(not predicts_up)
+            direction_training_rows += 1
+            direction_hits += int(direction_class == historical_row.label)
+        # Laplace smoothing prevents an unbounded 0/1 confidence estimate on small folds.
+        lagged_direction_hit_rate = (
+            (direction_hits + 1.0) / (direction_training_rows + 2.0)
+        )
+
+        test_predictions: list[dict[str, Any]] = []
+        for row, model_probability in zip(test, probabilities):
+            test_index = bar_index_by_time.get(_utc(row.timestamp, "baseline test"))
+            lagged_probability = refit_prevalence
+            lagged_direction_class: int | None = None
+            if test_index is not None and test_index > 0:
+                change = bars[test_index].close - bars[test_index - 1].close
+                if math.isfinite(change) and change != 0:
+                    predicts_up = change > 0
+                    lagged_direction_class = (
+                        int(predicts_up) if class_1_is_up else int(not predicts_up)
+                    )
+                    lagged_probability = (
+                        lagged_direction_hit_rate
+                        if lagged_direction_class == 1
+                        else 1.0 - lagged_direction_hit_rate
+                    )
+            test_predictions.append({
+                "timestamp_utc": _iso(row.timestamp),
+                "label": int(row.label),
+                "model_probability_class_1": float(model_probability),
+                "constant_probability_class_1": 0.5,
+                "matured_refit_prevalence_probability_class_1": float(refit_prevalence),
+                "matured_refit_majority_class": refit_majority_class,
+                "lagged_direction_probability_class_1": float(lagged_probability),
+                "lagged_direction_prediction": (
+                    int(lagged_probability >= 0.5)
+                    if lagged_direction_class is not None
+                    else refit_majority_class
+                ),
+            })
+        baseline_diagnostics = {
+            "class_1_means": class_1_means,
+            "refit_rows_matured_before_test": len(refit_rows),
+            "refit_positive_prevalence": refit_prevalence,
+            "refit_majority_class": refit_majority_class,
+            "lagged_direction_training_rows": direction_training_rows,
+            "lagged_direction_hits": direction_hits,
+            "lagged_direction_hit_rate_laplace_smoothed": lagged_direction_hit_rate,
+            "baseline_labels_used_test_data": False,
+        }
+
         seed_digest = hashlib.sha256(f"{random_seed}:{fold.fold_index}:test".encode()).hexdigest()
         metrics = _metrics(
             [row.label for row in test],
@@ -237,6 +310,8 @@ def run_optuna_walk_forward(
             refit_rows_available=len(refit_rows),
             refit_rows_excluded_unmatured=len(refit_candidates) - len(refit_rows),
             test_metrics=asdict(metrics),
+            test_predictions=tuple(test_predictions),
+            baseline_diagnostics=baseline_diagnostics,
             actionable=False,
         ))
 
