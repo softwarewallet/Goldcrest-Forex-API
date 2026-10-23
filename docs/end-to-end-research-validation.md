@@ -424,3 +424,41 @@ eligibility sensitivity test, not a claim that the target semantics are now corr
 remaining predictions may still have other data-quality or leakage limitations; no model is
 selected automatically and no execution path is connected.
 
+## 8. Compare the capped run against the baseline on paired timestamps
+
+After the baseline and cap run have both completed, create a paired comparison report:
+
+```bash
+python -m app.research_label_eligibility_comparison \
+  --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
+  --variant-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023-elapsed-cap-1h_pipeline_manifest.json \
+  --output data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_eligibility_comparison.json
+```
+
+Use the exact variant manifest path created by your run ID. Do not type the JSON report output into
+the shell; the command prints a compact status summary and saves the detailed report to the output
+file.
+
+The comparator validates both pipeline-manifest fingerprints and referenced artifact hashes,
+checks that the original raw OHLC snapshots match, and confirms that the shared dataset timestamps,
+OHLC, labels, target-availability timestamps, and feature values remain identical. It also requires
+the same symbol/timeframe, source metadata, label horizon, class semantics, feature schema, model/feature
+experiment pairs, and chronological fold/test windows.
+
+For each matching model/feature variant and fold, the report contains three views:
+
+- The baseline's original held-out metrics across its complete test window.
+- The baseline's metrics recomputed only on timestamps that remain eligible in the capped dataset.
+- The capped model's metrics on those exact same eligible timestamps.
+
+The paired deltas use `variant_minus_baseline`. Negative log-loss and Brier-score deltas, or a positive
+fixed-threshold accuracy delta, favor the capped variant descriptively. Because both models are then
+evaluated on the same eligible timestamps, this paired comparison separates model differences from the
+mechanical change in which test labels are included. The baseline-full metrics are kept as context and
+must not be compared as if they came from the same sample.
+
+Fold means are unweighted descriptive summaries. If test windows overlap, rows across folds are not
+independent; do not pool them as independent observations or interpret the means as inferential
+significance. The comparator is not a model-selection tool and does not establish profitability.
+All outputs remain `actionable=false` and `execution_connected=false`.
+
