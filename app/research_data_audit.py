@@ -40,6 +40,7 @@ def audit_raw_ohlc_file(
     manifest_path: str | Path | None = None,
     expected_symbol: str | None = None,
     expected_timeframe: str | None = None,
+    require_manifest: bool = True,
 ) -> dict[str, Any]:
     """Validate snapshot integrity, OHLC relationships, chronology, and coverage metadata."""
     path = Path(csv_path)
@@ -67,7 +68,10 @@ def audit_raw_ohlc_file(
         }
 
     if not manifest_file.is_file():
-        errors.append("snapshot_manifest_not_found")
+        if require_manifest:
+            errors.append("snapshot_manifest_not_found")
+        else:
+            warnings.append("snapshot_manifest_missing_provenance_hash_unverified")
     else:
         try:
             loaded = json.loads(manifest_file.read_text(encoding="utf-8"))
@@ -261,7 +265,7 @@ def audit_raw_ohlc_file(
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Audit a local cTrader DEMO OHLC CSV and its integrity manifest.")
+    parser = argparse.ArgumentParser(description="Audit a local OHLC CSV and, when required, its cTrader DEMO integrity manifest.")
     parser.add_argument("--csv", required=True, help="Downloaded CSV to audit")
     parser.add_argument("--manifest", help="Manifest path; defaults to <csv>.manifest.json")
     parser.add_argument("--symbol", help="Optional expected symbol, e.g. EURUSD")
