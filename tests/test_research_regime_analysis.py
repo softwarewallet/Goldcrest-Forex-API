@@ -107,6 +107,7 @@ def test_regime_analysis_is_non_actionable_and_uses_prior_only_thresholds():
     assert result["execution_connected"] is False
     assert result["automatic_model_selection"] is False
     assert result["test_metrics_used_for_selection"] is False
+    assert result["bootstrap"]["method"] == "paired_circular_moving_block_bootstrap_stratified_by_walk_forward_fold_conditioned_on_regime"
     threshold = result["fold_thresholds"][0]
     assert threshold["pretest_volatility_observations"] >= 10
     assert threshold["low_threshold_q25"] <= threshold["high_threshold_q75"]
