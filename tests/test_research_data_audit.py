@@ -402,7 +402,9 @@ def test_raw_ohlc_audit_includes_timestamp_coverage_profile(tmp_path):
 
 
 
-def _write_pipeline_manifest(tmp_path: Path, csv_path: Path) -> Path:
+def _write_pipeline_manifest(
+    tmp_path: Path, csv_path: Path, *, source: str | None = None
+) -> Path:
     payload = {
         "schema_version": 1,
         "run_id": "test-run",
@@ -414,6 +416,8 @@ def _write_pipeline_manifest(tmp_path: Path, csv_path: Path) -> Path:
         "actionable": False,
         "execution_connected": False,
     }
+    if source is not None:
+        payload["source"] = source
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
     payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     path = tmp_path / "test-run_pipeline_manifest.json"
@@ -489,3 +493,26 @@ def test_audit_cli_rejects_tampered_pipeline_manifest_fingerprint(tmp_path, caps
     assert exit_code == 3
     assert report["status"] == "FAIL"
     assert "pipeline_manifest_sha256_mismatch" in report["errors"]
+
+
+
+def test_audit_cli_allows_manifestless_operator_csv_referenced_by_pipeline_manifest(tmp_path, capsys):
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    csv_path, snapshot_manifest = _write_snapshot(
+        tmp_path, [start, start + timedelta(minutes=15), start + timedelta(minutes=30)]
+    )
+    snapshot_manifest.unlink()
+    pipeline_manifest = _write_pipeline_manifest(
+        tmp_path, csv_path, source="Operator-supplied canonical OHLC CSV"
+    )
+
+    exit_code = audit_main([
+        "--pipeline-manifest", str(pipeline_manifest),
+        "--json",
+    ])
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert "snapshot_manifest_missing_provenance_hash_unverified" in report["warnings"]
+    assert report["pipeline_manifest_raw_ohlc_sha256_verified"] is True
