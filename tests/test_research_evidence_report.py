@@ -375,6 +375,94 @@ def test_evidence_interpretation_identifies_mixed_regime_improvements():
     )
 
 
+def test_evidence_interpretation_summarizes_regime_bootstrap_intervals():
+    def regime(improvement_log, interval_log, improvement_brier, interval_brier):
+        return {
+            "loss_improvements_baseline_minus_model": {
+                "constant_probability_0_5": {
+                    "log_loss": improvement_log,
+                    "brier_score": improvement_brier,
+                },
+            },
+            "paired_bootstrap_uncertainty": {
+                "constant_probability_0_5": {
+                    "log_loss": {
+                        "confidence_interval_95": interval_log,
+                        "bootstrap_resamples": 500,
+                    },
+                    "brier_score": {
+                        "confidence_interval_95": interval_brier,
+                        "bootstrap_resamples": 500,
+                    },
+                },
+            },
+        }
+
+    regimes = {
+        "status": "PASS_WITH_WARNINGS",
+        "experiments": [{
+            "experiment_id": "model-a",
+            "model_type": "xgboost",
+            "regime_metrics": {
+                "low_volatility": regime(0.01, [0.001, 0.03], 0.01, [-0.01, 0.01]),
+                "mid_volatility": regime(-0.01, [-0.01, 0.02], -0.01, [-0.02, 0.01]),
+                "high_volatility": regime(0.02, [-0.04, -0.001], 0.02, [-0.03, 0.04]),
+            },
+        }],
+    }
+
+    result = evidence.build_evidence_interpretation(
+        baseline=None, calibration=None, regimes=regimes, temporal_stability=None
+    )
+    summary = result["volatility_regime_consistency"]
+    uncertainty = summary["paired_bootstrap_uncertainty"]
+    log_loss = next(
+        row for row in summary["comparisons"] if row["metric"] == "log_loss"
+    )["paired_bootstrap_uncertainty"]
+
+    assert uncertainty["status"] == "MIXED_INTERVAL_EVIDENCE"
+    assert uncertainty["intervals_evaluated"] == 6
+    assert uncertainty["intervals_excluding_zero_positive"] == 1
+    assert uncertainty["intervals_excluding_zero_negative"] == 1
+    assert uncertainty["intervals_including_zero"] == 4
+    assert uncertainty["intervals_unavailable"] == 0
+    assert log_loss["status"] == "MIXED_INTERVAL_EVIDENCE"
+    assert log_loss["intervals_evaluated"] == 3
+    assert log_loss["intervals_excluding_zero_positive"] == 1
+    assert log_loss["intervals_excluding_zero_negative"] == 1
+    assert log_loss["intervals_including_zero"] == 1
+    assert all(row["bootstrap_resamples"] == 500 for row in log_loss["regimes"])
+
+
+def test_evidence_interpretation_marks_missing_regime_intervals_unavailable():
+    regimes = {
+        "status": "PASS",
+        "experiments": [{
+            "experiment_id": "model-a",
+            "model_type": "xgboost",
+            "regime_metrics": {
+                "low_volatility": {
+                    "loss_improvements_baseline_minus_model": {
+                        "constant_probability_0_5": {"log_loss": 0.01}
+                    }
+                },
+                "mid_volatility": {
+                    "loss_improvements_baseline_minus_model": {
+                        "constant_probability_0_5": {"log_loss": 0.02}
+                    }
+                },
+            },
+        }],
+    }
+    result = evidence.build_evidence_interpretation(
+        baseline=None, calibration=None, regimes=regimes, temporal_stability=None
+    )
+    uncertainty = result["volatility_regime_consistency"]["paired_bootstrap_uncertainty"]
+    assert uncertainty["status"] == "UNCERTAINTY_UNAVAILABLE"
+    assert uncertainty["intervals_evaluated"] == 0
+    assert uncertainty["intervals_unavailable"] == 2
+
+
 def test_consolidated_report_includes_cross_diagnostic_interpretation(tmp_path, monkeypatch):
     manifest = _build_run(tmp_path, monkeypatch)
 

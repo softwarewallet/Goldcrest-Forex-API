@@ -463,6 +463,13 @@ def build_evidence_interpretation(
         calibration_status = "NO_MATERIAL_FIRST_TO_LAST_ECE_CHANGE_OBSERVED"
 
     regime_groups: list[dict[str, Any]] = []
+    regime_uncertainty_counts = {
+        "intervals_evaluated": 0,
+        "intervals_excluding_zero_positive": 0,
+        "intervals_excluding_zero_negative": 0,
+        "intervals_including_zero": 0,
+        "intervals_unavailable": 0,
+    }
     if isinstance(regimes, dict) and regimes.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
         experiments = regimes.get("experiments")
         for experiment in experiments if isinstance(experiments, list) else []:
@@ -471,25 +478,37 @@ def build_evidence_interpretation(
             regime_metrics = experiment.get("regime_metrics")
             if not isinstance(regime_metrics, dict):
                 continue
-            by_baseline_metric: dict[tuple[str, str], list[tuple[str, float]]] = {}
+            by_baseline_metric: dict[tuple[str, str], list[dict[str, Any]]] = {}
             for regime_name, regime in regime_metrics.items():
                 if not isinstance(regime, dict):
                     continue
                 improvements = regime.get("loss_improvements_baseline_minus_model")
                 if not isinstance(improvements, dict):
                     continue
+                uncertainty_by_baseline = regime.get("paired_bootstrap_uncertainty")
                 for baseline_name, metric_values in improvements.items():
                     if not isinstance(metric_values, dict):
                         continue
+                    baseline_uncertainty = (
+                        uncertainty_by_baseline.get(baseline_name)
+                        if isinstance(uncertainty_by_baseline, dict) else None
+                    )
                     for metric_name in ("log_loss", "brier_score"):
                         value = _number(metric_values.get(metric_name))
-                        if value is not None:
-                            by_baseline_metric.setdefault((str(baseline_name), metric_name), []).append(
-                                (str(regime_name), float(value))
-                            )
+                        if value is None:
+                            continue
+                        metric_uncertainty = (
+                            baseline_uncertainty.get(metric_name)
+                            if isinstance(baseline_uncertainty, dict) else None
+                        )
+                        by_baseline_metric.setdefault((str(baseline_name), metric_name), []).append({
+                            "regime": str(regime_name),
+                            "improvement": float(value),
+                            "uncertainty": metric_uncertainty if isinstance(metric_uncertainty, dict) else None,
+                        })
             for (baseline_name, metric_name), rows in sorted(by_baseline_metric.items()):
-                positive = sum(value > 0 for _, value in rows)
-                negative = sum(value < 0 for _, value in rows)
+                positive = sum(row["improvement"] > 0 for row in rows)
+                negative = sum(row["improvement"] < 0 for row in rows)
                 neutral = len(rows) - positive - negative
                 if len(rows) < 2:
                     consistency = "INSUFFICIENT_REGIME_COVERAGE"
@@ -501,6 +520,72 @@ def build_evidence_interpretation(
                     consistency = "NEGATIVE_IN_ALL_OBSERVED_REGIMES"
                 else:
                     consistency = "ZERO_IMPROVEMENT_IN_ALL_OBSERVED_REGIMES"
+
+                group_uncertainty = {
+                    "intervals_evaluated": 0,
+                    "intervals_excluding_zero_positive": 0,
+                    "intervals_excluding_zero_negative": 0,
+                    "intervals_including_zero": 0,
+                    "intervals_unavailable": 0,
+                }
+                regime_uncertainty_rows: list[dict[str, Any]] = []
+                for row in rows:
+                    uncertainty = row["uncertainty"]
+                    interval = uncertainty.get("confidence_interval_95") if isinstance(uncertainty, dict) else None
+                    valid_interval = (
+                        isinstance(interval, list)
+                        and len(interval) == 2
+                        and _number(interval[0]) is not None
+                        and _number(interval[1]) is not None
+                        and float(interval[0]) <= float(interval[1])
+                    )
+                    evidence = "unavailable"
+                    normalized_interval = None
+                    if not valid_interval:
+                        group_uncertainty["intervals_unavailable"] += 1
+                        regime_uncertainty_counts["intervals_unavailable"] += 1
+                    else:
+                        low, high = float(interval[0]), float(interval[1])
+                        normalized_interval = [low, high]
+                        group_uncertainty["intervals_evaluated"] += 1
+                        regime_uncertainty_counts["intervals_evaluated"] += 1
+                        if low > 0:
+                            evidence = "positive_interval_excludes_zero"
+                            group_uncertainty["intervals_excluding_zero_positive"] += 1
+                            regime_uncertainty_counts["intervals_excluding_zero_positive"] += 1
+                        elif high < 0:
+                            evidence = "negative_interval_excludes_zero"
+                            group_uncertainty["intervals_excluding_zero_negative"] += 1
+                            regime_uncertainty_counts["intervals_excluding_zero_negative"] += 1
+                        else:
+                            evidence = "interval_includes_zero"
+                            group_uncertainty["intervals_including_zero"] += 1
+                            regime_uncertainty_counts["intervals_including_zero"] += 1
+                    regime_uncertainty_rows.append({
+                        "regime": row["regime"],
+                        "improvement_baseline_minus_model": row["improvement"],
+                        "confidence_interval_95": normalized_interval,
+                        "interval_evidence": evidence,
+                        "bootstrap_resamples": (
+                            uncertainty.get("bootstrap_resamples")
+                            if isinstance(uncertainty, dict) else None
+                        ),
+                    })
+
+                if group_uncertainty["intervals_evaluated"] == 0:
+                    group_uncertainty_status = "UNCERTAINTY_UNAVAILABLE"
+                elif (
+                    group_uncertainty["intervals_excluding_zero_positive"]
+                    and group_uncertainty["intervals_excluding_zero_negative"]
+                ):
+                    group_uncertainty_status = "MIXED_INTERVAL_EVIDENCE"
+                elif group_uncertainty["intervals_excluding_zero_positive"]:
+                    group_uncertainty_status = "POSITIVE_INTERVAL_EVIDENCE_PRESENT"
+                elif group_uncertainty["intervals_excluding_zero_negative"]:
+                    group_uncertainty_status = "NEGATIVE_INTERVAL_EVIDENCE_PRESENT"
+                else:
+                    group_uncertainty_status = "NO_REGIME_INTERVAL_EXCLUDES_ZERO"
+
                 regime_groups.append({
                     "experiment_id": experiment.get("experiment_id"),
                     "model_type": experiment.get("model_type"),
@@ -511,7 +596,28 @@ def build_evidence_interpretation(
                     "negative_regime_improvements": negative,
                     "zero_regime_improvements": neutral,
                     "consistency": consistency,
+                    "paired_bootstrap_uncertainty": {
+                        **group_uncertainty,
+                        "status": group_uncertainty_status,
+                        "regimes": regime_uncertainty_rows,
+                    },
                 })
+    mixed_regime_groups = sum(
+        item["consistency"] == "MIXED_BY_VOLATILITY_REGIME" for item in regime_groups
+    )
+    if regime_uncertainty_counts["intervals_evaluated"] == 0:
+        regime_uncertainty_status = "UNCERTAINTY_UNAVAILABLE"
+    elif (
+        regime_uncertainty_counts["intervals_excluding_zero_positive"]
+        and regime_uncertainty_counts["intervals_excluding_zero_negative"]
+    ):
+        regime_uncertainty_status = "MIXED_INTERVAL_EVIDENCE"
+    elif regime_uncertainty_counts["intervals_excluding_zero_positive"]:
+        regime_uncertainty_status = "POSITIVE_INTERVAL_EVIDENCE_PRESENT"
+    elif regime_uncertainty_counts["intervals_excluding_zero_negative"]:
+        regime_uncertainty_status = "NEGATIVE_INTERVAL_EVIDENCE_PRESENT"
+    else:
+        regime_uncertainty_status = "NO_REGIME_INTERVAL_EXCLUDES_ZERO"
     mixed_regime_groups = sum(
         item["consistency"] == "MIXED_BY_VOLATILITY_REGIME" for item in regime_groups
     )
@@ -571,6 +677,16 @@ def build_evidence_interpretation(
             "comparison_group_count": len(regime_groups),
             "mixed_comparison_group_count": mixed_regime_groups,
             "comparisons": regime_groups,
+            "paired_bootstrap_uncertainty": {
+                "status": regime_uncertainty_status,
+                **regime_uncertainty_counts,
+                "interpretation": (
+                    "Summarizes precomputed conditional paired moving-block bootstrap intervals only; positive "
+                    "improvement favors the model, but an interval excluding zero is not a profitability test. "
+                    "Intervals that include zero do not show clear conditional separation. This report does not "
+                    "recompute bootstrap samples, and conditional observations/folds may remain dependent."
+                ),
+            },
             "interpretation": (
                 "Positive baseline-minus-model loss improvement favors the model. Mixed signs across regimes "
                 "indicate conditional heterogeneity; regime summaries are descriptive and may have dependent samples."

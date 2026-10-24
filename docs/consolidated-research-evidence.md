@@ -50,10 +50,10 @@ The consolidated output includes an `evidence_interpretation` object to make the
 
 - `baseline_comparison` recomputes interval classification from each available 95% interval: above zero, below zero, includes zero, or unavailable. The underlying improvement is baseline loss minus model loss. The report does not call an interval that includes zero evidence of a clear separation.
 - `temporal_calibration` summarizes the direction of each first-to-last held-out ECE change. An observed upward ECE change is a descriptive drift finding, not an automatic calibration-failure verdict.
-- `volatility_regime_consistency` records whether baseline-minus-model loss improvements are positive, negative, or mixed across observed regimes for each experiment, baseline, and metric.
+- `volatility_regime_consistency` records whether baseline-minus-model loss improvements are positive, negative, or mixed across observed regimes for each experiment, baseline, and metric. It now also summarizes the source report's conditional paired moving-block bootstrap intervals, including the number that include zero or exclude it on either side, plus regime-level interval summaries. It does not recompute bootstrap samples or convert interval evidence into a profitability or deployment claim.
 - `label_gap_exposure` repeats the gap counts and prediction-horizon exposure already recorded by the temporal-stability report; it does not suppress weekend closures or non-weekend gaps.
 
-These assessments use the already-generated reports and do not recompute model predictions or bootstrap intervals. They preserve each experiment separately, do not calculate a universal "winner" score, and do not change status to authorize model promotion. `promotion_readiness` is deliberately reported as `NOT_ESTABLISHED_BY_THIS_REPORT`; predictive evidence and profitability including transaction costs and execution effects require separate evaluation.
+These assessments use the already-generated reports and do not recompute model predictions or bootstrap intervals. A missing or malformed regime interval is reported as unavailable rather than treated as evidence of no effect. They preserve each experiment separately, do not calculate a universal "winner" score, and do not change status to authorize model promotion. `promotion_readiness` is deliberately reported as `NOT_ESTABLISHED_BY_THIS_REPORT`; predictive evidence and profitability including transaction costs and execution effects require separate evaluation.
 
 ## Interpretation boundaries
 
