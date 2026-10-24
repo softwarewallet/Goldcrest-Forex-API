@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from app.research_data_audit import audit_raw_ohlc_file
+from app.research_data_audit import _gap_pattern_diagnostics, audit_raw_ohlc_file
 
 
 def _write_snapshot(tmp_path: Path, timestamps: list[datetime]) -> tuple[Path, Path]:
@@ -212,3 +212,50 @@ def test_raw_ohlc_audit_requires_manifest_by_default(tmp_path):
 
     assert result["status"] == "FAIL"
     assert "snapshot_manifest_not_found" in result["errors"]
+
+
+
+def test_gap_pattern_diagnostics_summarize_duration_and_repeated_utc_boundaries():
+    gaps = [
+        {
+            "from_utc": "2026-01-05T00:00:00Z",
+            "to_utc": "2026-01-05T09:00:00Z",
+            "gap_hours": 9.0,
+            "gap_category": "non_weekend_long_gap",
+        },
+        {
+            "from_utc": "2026-01-12T00:00:00Z",
+            "to_utc": "2026-01-12T09:00:00Z",
+            "gap_hours": 9.0,
+            "gap_category": "non_weekend_long_gap",
+        },
+        {
+            "from_utc": "2026-01-09T21:45:00Z",
+            "to_utc": "2026-01-11T21:00:00Z",
+            "gap_hours": 47.25,
+            "gap_category": "weekend_closure_like",
+        },
+    ]
+
+    result = _gap_pattern_diagnostics(gaps)
+
+    assert result["gap_count"] == 3
+    assert result["category_counts"] == {
+        "non_weekend_long_gap": 2,
+        "weekend_closure_like": 1,
+    }
+    assert result["duration_buckets"]["greater_than_8_to_12_hours"] == 2
+    assert result["duration_buckets"]["greater_than_24_to_48_hours"] == 1
+    assert sum(result["duration_buckets"].values()) == 3
+    assert result["start_weekday_hour_utc_counts"][0] == {
+        "weekday_utc": "MONDAY", "hour_utc": 0, "count": 2
+    }
+    assert result["repeated_boundary_patterns"] == [{
+        "from_weekday_utc": "MONDAY",
+        "from_hour_utc": 0,
+        "to_weekday_utc": "MONDAY",
+        "to_hour_utc": 9,
+        "count": 2,
+    }]
+    assert result["unparsed_boundary_count"] == 0
+    assert "do not establish an expected market closure" in result["interpretation"]
