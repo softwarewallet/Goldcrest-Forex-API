@@ -609,6 +609,45 @@ def validate_completed_run(
     elif audit.get("status") == "PASS_WITH_WARNINGS":
         warnings.extend(f"integrity:{item}" for item in audit.get("warnings", []))
 
+    temporal_calibration_summary: dict[str, Any] | None = None
+    temporal_path_value = manifest.get("temporal_calibration_audit_path")
+    if temporal_path_value or manifest.get("temporal_calibration_audit_sha256"):
+        temporal_path = _resolve_artifact(temporal_path_value, manifest_path)
+        if temporal_path is not None and temporal_path.is_file():
+            try:
+                temporal_receipt = _read_json(temporal_path)
+                temporal_calibration_summary = {
+                    "status": temporal_receipt.get("status"),
+                    "run_id": temporal_receipt.get("run_id"),
+                    "experiment_matrix_sha256": temporal_receipt.get("experiment_matrix_sha256"),
+                    "experiment_matrix_payload_hash_verified": temporal_receipt.get(
+                        "experiment_matrix_payload_hash_verified"
+                    ),
+                    "comparison_count": temporal_receipt.get("comparison_count"),
+                    "errors": temporal_receipt.get("errors", []),
+                    "warnings": temporal_receipt.get("warnings", []),
+                    "actionable": temporal_receipt.get("actionable") is False,
+                    "execution_connected": temporal_receipt.get("execution_connected") is False,
+                }
+            except (OSError, json.JSONDecodeError, ValueError):
+                temporal_calibration_summary = {
+                    "status": "UNAVAILABLE",
+                    "comparison_count": 0,
+                    "errors": ["temporal_calibration_audit_receipt_unreadable"],
+                    "warnings": [],
+                    "actionable": False,
+                    "execution_connected": False,
+                }
+        else:
+            temporal_calibration_summary = {
+                "status": "UNAVAILABLE",
+                "comparison_count": 0,
+                "errors": ["temporal_calibration_audit_receipt_missing"],
+                "warnings": [],
+                "actionable": False,
+                "execution_connected": False,
+            }
+
     runtime = _runtime_summary()
     if runtime["status"] != "PASS":
         missing = [name for name, present in runtime["required_research_modules"].items() if not present]
@@ -632,6 +671,7 @@ def validate_completed_run(
         "integrity_audit": audit,
         "dataset_quality": dataset_summary,
         "experiment_quality": matrix_summary,
+        "temporal_calibration_stability": temporal_calibration_summary,
         "runtime_preflight": runtime,
         "ctrader_demo_config": cTrader,
         "errors": sorted(set(errors)),
