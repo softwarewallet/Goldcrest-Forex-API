@@ -515,6 +515,31 @@ def _comparison_summary_lines(
                 f"{number(capped.get('brier_score'))}, delta={number(deltas.get('brier_score'))}; "
                 f"accuracy@0.5 delta={number(deltas.get('accuracy_at_fixed_half'))}"
             )
+            stability = experiment.get("fold_direction_stability")
+            stability_metrics = stability.get("metrics") if isinstance(stability, Mapping) else None
+            if isinstance(stability_metrics, Mapping):
+                for metric_name in ("log_loss", "brier_score", "accuracy_at_fixed_half"):
+                    metric_summary = stability_metrics.get(metric_name)
+                    if not isinstance(metric_summary, Mapping):
+                        continue
+                    lines.append(
+                        f"    fold direction {metric_name}: "
+                        f"favorable={number(metric_summary.get('favorable_fold_count'), integer=True)}/"
+                        f"{number(stability.get('fold_count'), integer=True)}, "
+                        f"adverse={number(metric_summary.get('adverse_fold_count'), integer=True)}, "
+                        f"neutral={number(metric_summary.get('neutral_fold_count'), integer=True)}; "
+                        f"median delta={number(metric_summary.get('median_delta'))}, "
+                        f"range=[{number(metric_summary.get('minimum_delta'))}, "
+                        f"{number(metric_summary.get('maximum_delta'))}]"
+                    )
+
+    warning_diff = comparison.get("raw_ohlc_audit_warning_diff")
+    if isinstance(warning_diff, Mapping):
+        for side, label in (("baseline_only", "baseline-only"), ("variant_only", "variant-only")):
+            items = warning_diff.get(side)
+            if isinstance(items, list) and items:
+                lines.append(f"Raw OHLC audit warnings ({label}, {len(items)}):")
+                lines.extend(f"  - {item}" for item in items if isinstance(item, str))
 
     lines.append(
         "Delta = capped minus baseline on identical eligible held-out timestamps; "
