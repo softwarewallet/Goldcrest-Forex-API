@@ -237,7 +237,6 @@ def test_comparison_summary_lines_prints_paired_metrics_and_eligibility(tmp_path
                         },
                     },
                 },
-                },
             }
         ],
     }
