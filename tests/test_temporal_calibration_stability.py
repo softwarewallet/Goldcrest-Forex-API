@@ -154,3 +154,9 @@ def test_cli_refuses_to_overwrite_existing_report(tmp_path):
         ])
     assert error.value.code == 2
     assert report_path.read_text(encoding="utf-8") == "preserve-me"
+
+
+def test_temporal_audit_rejects_invalid_partitions():
+    folds, boundaries = fixture()
+    with pytest.raises(ValueError, match="partitions must contain unique values"):
+        build_temporal_calibration_stability_audit(folds, boundaries, partitions=({},))
