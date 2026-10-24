@@ -388,3 +388,9 @@ def test_consolidated_report_includes_cross_diagnostic_interpretation(tmp_path, 
     assert interpretation["execution_connected"] is False
     assert interpretation["baseline_comparison"]["status"] == "POSITIVE_INTERVAL_EVIDENCE_PRESENT"
     assert interpretation["temporal_calibration"]["status"] == "UPWARD_ECE_DRIFT_OBSERVED_IN_ALL_COMPARISONS"
+
+
+def test_nonfinite_evidence_numbers_are_treated_as_unavailable():
+    assert evidence._number(float("nan")) is None
+    assert evidence._number(float("inf")) is None
+    assert evidence._number(True) is None
