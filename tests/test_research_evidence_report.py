@@ -559,9 +559,10 @@ def test_consolidated_report_withholds_oos_periods_for_invalid_chronology(tmp_pa
     manifest = _build_run(tmp_path, monkeypatch)
     matrix_path = tmp_path / "evidence-run-001_experiment_matrix.json"
     matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
-    first = matrix["experiments"][0]["fold_results"]
-    first[0]["test_start_utc"] = "2026-04-02T00:00:00Z"
-    first[1]["test_start_utc"] = "2026-04-01T00:00:00Z"
+    for experiment in matrix["experiments"]:
+        fold_rows = experiment["fold_results"]
+        fold_rows[0]["test_start_utc"] = "2026-04-02T00:00:00Z"
+        fold_rows[1]["test_start_utc"] = "2026-04-01T00:00:00Z"
     _write_json(matrix_path, matrix)
 
     # Make the manifest and the source matrix agree on the new immutable artifact hash.
