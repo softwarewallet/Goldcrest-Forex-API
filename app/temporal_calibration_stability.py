@@ -47,9 +47,16 @@ def build_temporal_calibration_stability_audit(
             continue
         if index in boundaries:
             raise ValueError("duplicate fold index in temporal calibration boundaries")
-        if start >= end:
+        parsed_start = _parse_utc_boundary(start, "test_start_utc")
+        parsed_end = _parse_utc_boundary(end, "test_end_utc")
+        if parsed_start >= parsed_end:
             raise ValueError("temporal calibration test boundaries must have start before end")
-        boundaries[index] = (start, end)
+        # Canonical UTC strings preserve chronological ordering even when callers
+        # supply equivalent timestamps with different UTC offsets.
+        boundaries[index] = (
+            parsed_start.isoformat().replace("+00:00", "Z"),
+            parsed_end.isoformat().replace("+00:00", "Z"),
+        )
 
     rows: list[dict[str, Any]] = []
     for model_name, folds in sorted(fold_results.items()):
@@ -167,6 +174,11 @@ def build_temporal_calibration_stability_report(
     matrix_file = Path(matrix_path)
     matrix_sha256 = hashlib.sha256(matrix_file.read_bytes()).hexdigest()
 
+    if matrix.get("schema_version") != 1:
+        errors.append("unsupported_or_missing_schema_version")
+    if not isinstance(matrix.get("run_id"), str) or not matrix.get("run_id", "").strip():
+        errors.append("missing_run_id")
+
     for field in ("actionable", "automatic_winner_selection", "test_metrics_used_for_selection"):
         if matrix.get(field) is not False:
             errors.append(f"{field}_must_be_false")
@@ -219,11 +231,21 @@ def build_temporal_calibration_stability_report(
             continue
         normalized = {
             "fold_index": fold_index,
-            "test_start_utc": str(start),
-            "test_end_utc": str(end),
+            "test_start_utc": parsed_start.isoformat().replace("+00:00", "Z"),
+            "test_end_utc": parsed_end.isoformat().replace("+00:00", "Z"),
         }
         boundaries.append(normalized)
         windows_by_index[fold_index] = normalized
+
+    declared_fold_count = matrix.get("fold_count")
+    if (
+        isinstance(declared_fold_count, bool)
+        or not isinstance(declared_fold_count, int)
+        or declared_fold_count < 1
+    ):
+        errors.append("invalid_or_missing_fold_count")
+    elif declared_fold_count != len(windows_by_index):
+        errors.append("declared_fold_count_does_not_match_common_test_windows")
 
     raw_experiments = matrix.get("experiments")
     if not isinstance(raw_experiments, list) or not raw_experiments:
@@ -283,7 +305,38 @@ def build_temporal_calibration_stability_report(
             if not isinstance(metrics, dict):
                 errors.append(f"experiment_{experiment_id}_fold_{fold_index}_test_metrics_missing")
                 continue
+            ece = metrics.get("expected_calibration_error")
+            if (
+                isinstance(ece, bool)
+                or not isinstance(ece, (int, float))
+                or not math.isfinite(float(ece))
+                or not 0 <= float(ece) <= 1
+            ):
+                warnings.append(
+                    f"expected_calibration_error_missing_or_invalid:{experiment_id}:fold_{fold_index}"
+                )
+            uncertainty = metrics.get("calibration_uncertainty")
+            low = uncertainty.get("interval_low") if isinstance(uncertainty, dict) else None
+            high = uncertainty.get("interval_high") if isinstance(uncertainty, dict) else None
+            if (
+                isinstance(low, bool)
+                or not isinstance(low, (int, float))
+                or isinstance(high, bool)
+                or not isinstance(high, (int, float))
+                or not math.isfinite(float(low))
+                or not math.isfinite(float(high))
+                or not 0 <= float(low) <= float(high) <= 1
+            ):
+                warnings.append(
+                    f"calibration_uncertainty_intervals_unavailable:{experiment_id}:fold_{fold_index}"
+                )
             converted_folds.append({"fold_index": fold_index, "test": metrics})
+        if seen_fold_indices != set(windows_by_index):
+            missing = sorted(set(windows_by_index) - seen_fold_indices)
+            extra = sorted(seen_fold_indices - set(windows_by_index))
+            errors.append(
+                f"experiment_{experiment_id}_fold_coverage_mismatch:missing={missing}:extra={extra}"
+            )
         normalized_experiments[experiment_id] = converted_folds
 
     comparisons: list[dict[str, Any]] = []
@@ -338,6 +391,23 @@ def build_temporal_calibration_stability_report(
     }
 
 
+def write_temporal_calibration_stability_report(
+    matrix_path: str | Path,
+    output_path: str | Path,
+) -> dict[str, Any]:
+    """Write a deterministic audit receipt without replacing an existing artifact."""
+    input_path = Path(matrix_path).expanduser()
+    matrix = _read_experiment_matrix(input_path)
+    report = build_temporal_calibration_stability_report(matrix, matrix_path=input_path)
+    destination = Path(output_path).expanduser()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    # Exclusive create enforces the no-overwrite contract even if two processes race.
+    with destination.open("x", encoding="utf-8") as handle:
+        handle.write(rendered)
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -374,7 +444,11 @@ def main(argv: list[str] | None = None) -> int:
     rendered = json.dumps(report, indent=2, sort_keys=True, allow_nan=False)
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(rendered + "\n", encoding="utf-8")
+        try:
+            with output_path.open("x", encoding="utf-8") as handle:
+                handle.write(rendered + "\n")
+        except FileExistsError:
+            parser.error(f"refusing to overwrite existing report: {output_path}")
         print(f"Report written to: {output_path}", file=sys.stderr)
     print(rendered)
     return 3 if report["status"] == "FAIL" else 0
