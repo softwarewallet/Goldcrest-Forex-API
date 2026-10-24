@@ -43,6 +43,18 @@ Missing optional analyses are reported as coverage gaps rather than negative mod
 
 The report emits section status, SHA-256, compact summaries, coverage information, errors, and warnings. The summaries preserve per-experiment and per-regime data without an aggregate score or model ranking. No choice is made on the operator's behalf.
 
+
+## Cross-diagnostic interpretation
+
+The consolidated output includes an `evidence_interpretation` object to make the shape of the evidence easier to review without introducing a composite score or model ranking.
+
+- `baseline_comparison` recomputes interval classification from each available 95% interval: above zero, below zero, includes zero, or unavailable. The underlying improvement is baseline loss minus model loss. The report does not call an interval that includes zero evidence of a clear separation.
+- `temporal_calibration` summarizes the direction of each first-to-last held-out ECE change. An observed upward ECE change is a descriptive drift finding, not an automatic calibration-failure verdict.
+- `volatility_regime_consistency` records whether baseline-minus-model loss improvements are positive, negative, or mixed across observed regimes for each experiment, baseline, and metric.
+- `label_gap_exposure` repeats the gap counts and prediction-horizon exposure already recorded by the temporal-stability report; it does not suppress weekend closures or non-weekend gaps.
+
+These assessments use the already-generated reports and do not recompute model predictions or bootstrap intervals. They preserve each experiment separately, do not calculate a universal "winner" score, and do not change status to authorize model promotion. `promotion_readiness` is deliberately reported as `NOT_ESTABLISHED_BY_THIS_REPORT`; predictive evidence and profitability including transaction costs and execution effects require separate evaluation.
+
 ## Interpretation boundaries
 
 ECE drift, paired bootstrap intervals, fold consistency, volatility-conditioned metrics, and label-gap exposure are descriptive diagnostics. Overlapping windows can be dependent, optional reports may represent different analyses, and none of these measures alone establishes predictive edge, economic profitability, or deployment readiness. Preserve the source reports and the original run artifacts unchanged.
