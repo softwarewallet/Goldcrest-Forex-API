@@ -80,3 +80,16 @@ The event-profile audit found 259 non-nominal raw timestamp intervals: 205 short
 Use the exact report filenames printed by previous runs if collision-safe rerun names were created. The audit independently reconstructs gap-to-label associations and verifies source hashes, duration buckets, and existing threshold-audit counts. It compares the complete eligible row masks for: retaining all labels; applying 1-hour, 1.5-hour, or 8-hour caps; excluding labels crossing any non-nominal raw interval; and excluding labels crossing raw intervals longer than eight hours.
 
 Exact mask equivalence means those policies select the same rows for this particular snapshot and label definition. It does not show that they have equal predictive performance or that a gap is missing data. No training, label rewrite, threshold selection, or execution connection occurs.
+
+
+## Review existing model metrics by unique eligibility mask
+
+After the gap-policy equivalence audit passes, this report-only review reuses the completed threshold sweep rather than retraining. It groups caps by the exact eligible-row mask, checks the threshold audit and sweep hashes, verifies repeated-seed results, confirms whether caps with identical masks also produced identical metrics, and compares the two distinct capped masks.
+
+    python -m app.research_label_gap_policy_performance_review \
+      --gap-policy-equivalence-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_gap_policy_equivalence_audit.json \
+      --threshold-audit-report data/research/runs/eurusd-m15-demo-m365-bas-cap-sweep_threshold_eligibility_audit_report.json
+
+Use the exact equivalence-audit report path printed by the previous command if collision-safe naming produced a rerun filename. The review reports existing per-model/per-feature metric summaries and per-seed paired deltas, and checks whether the uncapped reference metrics match between cap runs. If they do not match, differences between cap-level deltas may include reference-run variability and should not be interpreted as a clean incremental policy effect.
+
+Identical row masks are grouped as one policy for this dataset; therefore the 1.5-hour and 8-hour caps are not treated as independent candidates when their masks are identical. Repeated seeds use the same historical period and overlapping walk-forward windows, so they are optimizer-sensitivity checks rather than independent market replications. The report makes no model selection, profitability, or live-execution decision.
