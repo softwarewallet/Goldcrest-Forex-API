@@ -27,8 +27,11 @@ def build_temporal_calibration_stability_audit(
     requested_partitions = tuple(partitions)
     if (
         not requested_partitions
+        or any(
+            not isinstance(item, str) or item not in {"validation", "test"}
+            for item in requested_partitions
+        )
         or len(set(requested_partitions)) != len(requested_partitions)
-        or any(item not in {"validation", "test"} for item in requested_partitions)
     ):
         raise ValueError("partitions must contain unique values from validation and test")
     if not isinstance(fold_temporal_boundaries, list):
