@@ -571,7 +571,7 @@ def compare_label_eligibility_runs(
                     for timestamp in eligible_timestamps
                 ]
                 eligible_timestamp_fingerprint = _sha256_bytes(
-                    ("\\n".join(eligible_timestamps) + "\\n").encode("utf-8")
+                    ("\n".join(eligible_timestamps) + "\n").encode("utf-8")
                 )
                 paired_fold_results.append({
                     "fold_index": fold_index,
