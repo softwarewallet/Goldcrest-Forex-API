@@ -207,13 +207,24 @@ comparison, so equivalent `+00:00` and `Z` offsets do not create false audit fai
 also prints `provenance_audit_errors` and `provenance_audit_warnings` in its JSON output to make
 future failures diagnosable without copying the entire response.
 
+The pipeline also runs a chronological temporal calibration audit from the persisted experiment
+matrix and writes `<run-id>_temporal_calibration_stability.json`. This receipt verifies the
+matrix's embedded payload hash, validates timezone-aware common test windows, checks that each
+experiment covers every declared fold, and reports held-out ECE by chronological fold with its
+moving-block uncertainty interval where available. It does not refit a calibrator or change model
+metrics. Missing calibration intervals or fewer than three eligible periods are explicit warnings;
+invalid matrix provenance or incomplete fold coverage is a hard audit failure. The path, exact
+file SHA-256, status, errors, and warnings are stored in the pipeline manifest and checked by
+`app.research_run_audit` during consolidated validation.
+
 Every successful pipeline run now emits:
 - raw OHLC audit receipt with status, warnings, and a SHA-256 stored in the pipeline manifest;
 - canonical raw OHLC snapshot (when fetching from cTrader);
 - prepared feature/label dataset and its manifest;
 - experiment matrix with XGBoost and LightGBM fold results;
 - structural provenance audit receipt;
-- pipeline manifest with artifact hashes;
+- temporal calibration stability receipt tied to the exact experiment-matrix file hash;
+- pipeline manifest with artifact hashes for the available run artifacts;
 - consolidated `<run-id>_validation_report.json`.
 
 File names based on an instrument are sanitized separately from the symbol value, and
@@ -301,6 +312,7 @@ The command never ranks or automatically selects a model.
   (for example, class imbalance, overlapping test windows, or unavailable local packages).
 - `FAIL`: an integrity check, data-quality check, or experiment-report validation failed.
 - Pipeline CLI exit code `4`: `--strict-validation` was supplied and consolidated validation failed.
+- Pipeline CLI exit code `5`: `--strict-temporal-calibration-audit` was supplied and the temporal calibration audit failed.
 - Validation CLI exit code `3`: the requested validation failed.
 
 The pipeline still preserves diagnostic artifacts on validation failure. Review errors and
