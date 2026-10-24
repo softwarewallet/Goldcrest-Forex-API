@@ -12,6 +12,7 @@ import csv
 import hashlib
 import json
 import math
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -180,6 +181,64 @@ def _infer_fold_geometry(
     }
 
 
+
+def _variant_run_collisions(
+    output_dir: str | Path,
+    run_id: str,
+    *,
+    symbol: str,
+    timeframe: str,
+) -> list[Path]:
+    """List known pipeline and variant receipts already occupying a run namespace."""
+    destination = Path(output_dir)
+    file_instrument = re.sub(r"[^A-Z0-9_-]+", "_", symbol.strip().upper()).strip("_")
+    filenames = (
+        f"{run_id}_raw_ohlc_audit.json",
+        f"{run_id}_{file_instrument}_{timeframe}_research_dataset.csv",
+        f"{run_id}_{file_instrument}_{timeframe}_research_dataset.manifest.json",
+        f"{run_id}_experiment_matrix.json",
+        f"{run_id}_provenance_audit.json",
+        f"{run_id}_temporal_calibration_stability.json",
+        f"{run_id}_pipeline_manifest.json",
+        f"{run_id}_validation_report.json",
+        f"{run_id}_label_eligibility_comparison.json",
+        f"{run_id}_label_eligibility_variant_setup.json",
+    )
+    return [destination / name for name in filenames if (destination / name).exists()]
+
+
+def _choose_variant_run_id(
+    output_dir: str | Path,
+    requested_run_id: str,
+    *,
+    symbol: str,
+    timeframe: str,
+    allow_auto_versioning: bool,
+) -> tuple[str, bool]:
+    """Never reuse an artifact namespace; auto-version only an implicit default ID."""
+    collisions = _variant_run_collisions(
+        output_dir, requested_run_id, symbol=symbol, timeframe=timeframe
+    )
+    if not collisions:
+        return requested_run_id, False
+    if not allow_auto_versioning:
+        paths = ", ".join(str(path.resolve()) for path in collisions)
+        raise ValueError(
+            "variant_run_id_artifacts_already_exist; refusing to overwrite: "
+            f"{paths}. Pass a different --run-id."
+        )
+
+    for suffix in range(2, 10002):
+        candidate = f"{requested_run_id}-rerun-{suffix}"
+        if not _variant_run_collisions(
+            output_dir, candidate, symbol=symbol, timeframe=timeframe
+        ):
+            return candidate, True
+    raise ValueError(
+        "unable_to_find_free_variant_run_id_after_10000_attempts; "
+        "specify a unique --run-id"
+    )
+
 def build_variant_plan(
     baseline_manifest_path: str | Path,
     *,
@@ -327,11 +386,18 @@ def build_variant_plan(
         raise ValueError("baseline_source_version_missing")
 
     cap_token = format(float(max_label_elapsed_hours), "g").replace(".", "p")
-    derived_run_id = run_id or f"{baseline_run_id}-elapsed-cap-{cap_token}h"
-    if not isinstance(derived_run_id, str) or not derived_run_id:
+    requested_run_id = run_id or f"{baseline_run_id}-elapsed-cap-{cap_token}h"
+    if not isinstance(requested_run_id, str) or not requested_run_id:
         raise ValueError("variant_run_id_missing")
-    if derived_run_id == baseline_run_id:
+    if requested_run_id == baseline_run_id:
         raise ValueError("variant_run_id_must_differ_from_baseline")
+    derived_run_id, run_id_auto_versioned = _choose_variant_run_id(
+        manifest_path.parent,
+        requested_run_id,
+        symbol=str(symbol),
+        timeframe=str(timeframe),
+        allow_auto_versioning=run_id is None,
+    )
 
     # The current pipeline uses these two model types in this stable order.
     # Infer ablation from the actual matrix and reject anything the pipeline cannot reproduce.
@@ -373,6 +439,8 @@ def build_variant_plan(
         "baseline_manifest_path": str(manifest_path),
         "baseline_manifest_sha256": integrity.get("manifest_sha256"),
         "baseline_run_id": baseline_run_id,
+        "requested_variant_run_id": requested_run_id,
+        "run_id_auto_versioned": run_id_auto_versioned,
         "raw_ohlc_path": str(raw_path),
         "raw_ohlc_sha256": raw_digest,
         "dataset_path": str(dataset_path),
@@ -435,6 +503,9 @@ def main(argv: list[str] | None = None) -> int:
         report = {
             "status": "PASS_WITH_WARNINGS" if plan["assumptions"] else "PASS",
             "scope": "GOLDCREST_LABEL_ELIGIBILITY_VARIANT_PLAN",
+            "requested_variant_run_id": plan["requested_variant_run_id"],
+            "variant_run_id": plan["settings"]["run_id"],
+            "run_id_auto_versioned": plan["run_id_auto_versioned"],
             "plan": plan,
             "errors": [],
             "warnings": plan["assumptions"],
@@ -525,6 +596,8 @@ def main(argv: list[str] | None = None) -> int:
             "status": "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS",
             "baseline_run_id": plan["baseline_run_id"],
             "variant_run_id": settings["run_id"],
+            "requested_variant_run_id": plan["requested_variant_run_id"],
+            "run_id_auto_versioned": plan["run_id_auto_versioned"],
             "baseline_manifest_path": plan["baseline_manifest_path"],
             "baseline_manifest_sha256": plan["baseline_manifest_sha256"],
             "variant_manifest_path": str(variant_manifest_path.resolve()),
