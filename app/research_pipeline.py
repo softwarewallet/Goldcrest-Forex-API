@@ -22,6 +22,7 @@ from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
 from app.research_validation import validate_completed_run
+from app.temporal_calibration_stability import write_temporal_calibration_stability_report
 
 
 def _sha256(path: str | Path) -> str:
@@ -68,6 +69,7 @@ def run_research_pipeline(
     include_ablation: bool = True,
     strict_provenance_audit: bool = False,
     strict_validation: bool = False,
+    strict_temporal_calibration_audit: bool = False,
     max_label_elapsed_hours: float | None = None,
 ) -> dict[str, Any]:
     """Run ingestion (optional), dataset preparation, and fixed-fold model comparison."""
@@ -214,6 +216,15 @@ def run_research_pipeline(
     provenance_audit = audit_experiment_matrix_file(matrix_report_path, provenance_audit_path)
     provenance_audit_sha256 = _sha256(provenance_audit_path)
 
+    # The temporal calibration receipt is derived from the exact persisted matrix.
+    # It is separate, hash-addressed, descriptive only, and refuses to replace an
+    # existing receipt. Older pipeline manifests remain readable by the run auditor.
+    temporal_calibration_audit_path = destination / f"{run_id}_temporal_calibration_stability.json"
+    temporal_calibration_audit = write_temporal_calibration_stability_report(
+        matrix_report_path, temporal_calibration_audit_path
+    )
+    temporal_calibration_audit_sha256 = _sha256(temporal_calibration_audit_path)
+
     payload: dict[str, Any] = {
         "schema_version": 1,
         "run_id": run_id,
@@ -245,6 +256,12 @@ def run_research_pipeline(
         "provenance_audit_errors": provenance_audit["errors"],
         "provenance_audit_warnings": provenance_audit["warnings"],
         "strict_provenance_audit": strict_provenance_audit,
+        "temporal_calibration_audit_path": str(temporal_calibration_audit_path),
+        "temporal_calibration_audit_sha256": temporal_calibration_audit_sha256,
+        "temporal_calibration_audit_status": temporal_calibration_audit["status"],
+        "temporal_calibration_audit_errors": temporal_calibration_audit["errors"],
+        "temporal_calibration_audit_warnings": temporal_calibration_audit["warnings"],
+        "strict_temporal_calibration_audit": strict_temporal_calibration_audit,
         "ingestion": ingestion,
         "label_horizon_bars": horizon_bars,
         "class_1_means": class_1_means,
@@ -307,6 +324,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-experiments", type=int, default=20)
     parser.add_argument("--no-ablation", action="store_true", help="Compare only the full causal feature set")
     parser.add_argument("--strict-provenance-audit", action="store_true", help="Return a nonzero exit code if the structural provenance audit fails")
+    parser.add_argument("--strict-temporal-calibration-audit", action="store_true", help="Return a nonzero exit code if the temporal calibration stability audit fails")
     parser.add_argument("--strict-validation", action="store_true", help="Return a nonzero exit code if the consolidated research validation fails")
     return parser
 
@@ -338,6 +356,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_ablation=not args.no_ablation,
             strict_provenance_audit=args.strict_provenance_audit,
             strict_validation=args.strict_validation,
+            strict_temporal_calibration_audit=args.strict_temporal_calibration_audit,
             max_label_elapsed_hours=args.max_label_elapsed_hours,
         )
     except Exception as exc:
@@ -351,6 +370,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.strict_validation and result.get("validation_status") == "FAIL":
         print("research pipeline completed, but consolidated validation failed; inspect validation_errors", file=sys.stderr)
         return 4
+    if args.strict_temporal_calibration_audit and result.get("temporal_calibration_audit_status") == "FAIL":
+        print("research pipeline completed, but temporal calibration audit failed; inspect the audit receipt", file=sys.stderr)
+        return 5
     return 0
 
 
