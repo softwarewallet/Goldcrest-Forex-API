@@ -604,3 +604,79 @@ def test_nonfinite_evidence_numbers_are_treated_as_unavailable():
     assert evidence._number(float("nan")) is None
     assert evidence._number(float("inf")) is None
     assert evidence._number(True) is None
+
+
+def test_oos_period_diagnostic_uses_legacy_metrics_and_matrix_window_timestamps(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    matrix_path = tmp_path / "evidence-run-001_experiment_matrix.json"
+    matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+
+    common_windows = []
+    for fold_index in range(7):
+        common_windows.append({
+            "fold_index": fold_index,
+            "test_start_utc": f"2026-04-{fold_index + 1:02d}T00:00:00Z",
+            "test_end_utc": f"2026-04-{fold_index + 1:02d}T12:00:00Z",
+            "test_rows": 10,
+        })
+    matrix["common_fold_test_windows"] = common_windows
+
+    for experiment in matrix["experiments"]:
+        for fold in experiment["fold_results"]:
+            # Simulate an older matrix schema that records held-out metrics under
+            # test_metrics and keeps canonical timestamps at matrix level.
+            fold.pop("test", None)
+            fold.pop("test_start_utc", None)
+            fold.pop("test_start", None)
+    _write_json(matrix_path, matrix)
+
+    audit, errors, warnings = evidence._derive_oos_period_robustness(
+        matrix_path,
+        expected_run_id="evidence-run-001",
+        expected_matrix_sha256=_sha(matrix_path),
+    )
+
+    assert errors == []
+    assert audit["status"] == "PERIOD_DIAGNOSTIC_AVAILABLE"
+    assert audit["candidate_count"] == 2
+    assert audit["common_test_fold_indices"] == list(range(7))
+    assert audit["chronology_integrity"]["status"] == "VERIFIED_TEST_START_ORDER"
+    assert audit["candidate_fold_coverage"][0]["test_metric_source_counts"] == {
+        "test": 0,
+        "test_metrics": 7,
+        "missing": 0,
+    }
+
+
+def test_evidence_interpretation_keeps_candidate_count_when_periods_are_unavailable():
+    diagnostic = {
+        "status": "NO_COMPLETE_METRIC_FOLDS",
+        "candidate_count": 3,
+        "common_fold_index_count": 5,
+        "complete_test_fold_count": 0,
+        "period_group_count": 0,
+        "candidate_fold_coverage": [
+            {
+                "candidate_name": "candidate-a",
+                "fold_count": 5,
+                "folds_with_both_required_metrics": 0,
+            },
+        ],
+        "common_test_fold_indices": [],
+        "candidates": [],
+    }
+
+    result = evidence.build_evidence_interpretation(
+        baseline=None,
+        calibration=None,
+        regimes=None,
+        temporal_stability=None,
+        oos_period_robustness=diagnostic,
+    )["chronological_oos_robustness"]
+
+    assert result["status"] == "NO_COMPLETE_METRIC_FOLDS"
+    assert result["candidate_count"] == 3
+    assert result["summary_candidate_count"] == 0
+    assert result["common_fold_index_count"] == 5
+    assert result["complete_test_fold_count"] == 0
+    assert result["candidate_fold_coverage"][0]["candidate_name"] == "candidate-a"

@@ -157,3 +157,53 @@ def test_audit_rejects_out_of_domain_test_metrics():
 def test_audit_rejects_invalid_minimum():
     with pytest.raises(ValueError, match="at least 3"):
         build_oos_period_robustness_audit({}, [], minimum_test_folds=2)
+
+
+def test_audit_supports_legacy_test_metrics_field():
+    results = {
+        "legacy-candidate": [
+            {
+                "fold_index": index,
+                "test_metrics": {
+                    "sample_count": 25,
+                    "brier_score": 0.15 + index * 0.01,
+                    "log_loss": 0.40 + index * 0.02,
+                    "expected_calibration_error": 0.06 + index * 0.01,
+                },
+            }
+            for index in range(4)
+        ],
+    }
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["status"] == "PERIOD_DIAGNOSTIC_AVAILABLE"
+    assert audit["candidate_count"] == 1
+    assert audit["common_test_fold_indices"] == [0, 1, 2, 3]
+    assert audit["candidate_fold_coverage"][0]["test_metric_source_counts"] == {
+        "test": 0,
+        "test_metrics": 4,
+        "missing": 0,
+    }
+    assert audit["candidates"][0]["periods"][0]["median_test_brier_score"] == pytest.approx(0.155)
+
+
+def test_audit_explains_when_fold_metrics_are_present_but_incomplete():
+    results = {
+        "candidate": [
+            {"fold_index": index, "test_metrics": {"sample_count": 25}}
+            for index in range(3)
+        ],
+    }
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["status"] == "NO_COMPLETE_METRIC_FOLDS"
+    assert audit["candidate_count"] == 1
+    assert audit["common_fold_index_count"] == 3
+    assert audit["complete_test_fold_count"] == 0
+    coverage = audit["candidate_fold_coverage"][0]
+    assert coverage["fold_count"] == 3
+    assert coverage["folds_with_both_required_metrics"] == 0
+    assert coverage["folds_missing_or_invalid_brier_score"] == 3
+    assert coverage["folds_missing_or_invalid_log_loss"] == 3
