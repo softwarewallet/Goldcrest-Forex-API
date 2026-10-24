@@ -157,6 +157,27 @@ def test_cli_refuses_to_overwrite_existing_report(tmp_path):
     assert report_path.read_text(encoding="utf-8") == "preserve-me"
 
 
+def test_report_rejects_experiment_missing_a_common_temporal_fold(tmp_path):
+    import hashlib
+    import json
+
+    from app.temporal_calibration_stability import build_temporal_calibration_stability_report
+
+    matrix = _matrix_fixture()
+    matrix["experiments"][0]["fold_results"].pop()
+    matrix.pop("report_payload_sha256", None)
+    matrix["report_payload_sha256"] = hashlib.sha256(
+        json.dumps(matrix, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    matrix_path = tmp_path / "incomplete-matrix.json"
+    matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+
+    report = build_temporal_calibration_stability_report(matrix, matrix_path=matrix_path)
+
+    assert report["status"] == "FAIL"
+    assert any("fold_coverage_mismatch" in error for error in report["errors"])
+
+
 def test_experiment_matrix_writer_and_temporal_audit_round_trip_is_reproducible(tmp_path):
     import json
 
