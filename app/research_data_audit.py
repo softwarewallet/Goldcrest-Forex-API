@@ -73,6 +73,90 @@ def _fixed_date_calendar_context(left: datetime, right: datetime) -> list[str]:
         current += timedelta(days=1)
     return contexts
 
+def _gap_pattern_diagnostics(gaps: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize long-gap duration and UTC boundary patterns without reclassifying them."""
+    duration_buckets = {
+        "greater_than_8_to_12_hours": 0,
+        "greater_than_12_to_24_hours": 0,
+        "greater_than_24_to_48_hours": 0,
+        "greater_than_48_to_72_hours": 0,
+        "greater_than_72_hours": 0,
+    }
+    category_counts: dict[str, int] = {}
+    start_windows: dict[tuple[str, int], int] = {}
+    end_windows: dict[tuple[str, int], int] = {}
+    boundary_patterns: dict[tuple[str, int, str, int], int] = {}
+    unparsed_boundary_count = 0
+
+    for gap in gaps:
+        hours = float(gap["gap_hours"])
+        if hours <= 12:
+            duration_bucket = "greater_than_8_to_12_hours"
+        elif hours <= 24:
+            duration_bucket = "greater_than_12_to_24_hours"
+        elif hours <= 48:
+            duration_bucket = "greater_than_24_to_48_hours"
+        elif hours <= 72:
+            duration_bucket = "greater_than_48_to_72_hours"
+        else:
+            duration_bucket = "greater_than_72_hours"
+        duration_buckets[duration_bucket] += 1
+
+        category = str(gap.get("gap_category", "unknown"))
+        category_counts[category] = category_counts.get(category, 0) + 1
+
+        try:
+            left = _parse_utc(str(gap["from_utc"]), field="gap from_utc")
+            right = _parse_utc(str(gap["to_utc"]), field="gap to_utc")
+        except (KeyError, TypeError, ValueError):
+            unparsed_boundary_count += 1
+            continue
+
+        start_key = (left.strftime("%A").upper(), left.hour)
+        end_key = (right.strftime("%A").upper(), right.hour)
+        start_windows[start_key] = start_windows.get(start_key, 0) + 1
+        end_windows[end_key] = end_windows.get(end_key, 0) + 1
+        pattern_key = (*start_key, *end_key)
+        boundary_patterns[pattern_key] = boundary_patterns.get(pattern_key, 0) + 1
+
+    def window_rows(counts: dict[tuple[str, int], int]) -> list[dict[str, Any]]:
+        return [
+            {"weekday_utc": weekday, "hour_utc": hour, "count": count}
+            for (weekday, hour), count in sorted(
+                counts.items(), key=lambda item: (-item[1], item[0])
+            )
+        ]
+
+    repeated_patterns = [
+        {
+            "from_weekday_utc": from_weekday,
+            "from_hour_utc": from_hour,
+            "to_weekday_utc": to_weekday,
+            "to_hour_utc": to_hour,
+            "count": count,
+        }
+        for (from_weekday, from_hour, to_weekday, to_hour), count in sorted(
+            boundary_patterns.items(), key=lambda item: (-item[1], item[0])
+        )
+        if count > 1
+    ]
+
+    return {
+        "threshold_hours_exclusive": 8,
+        "gap_count": len(gaps),
+        "category_counts": dict(sorted(category_counts.items())),
+        "duration_buckets": duration_buckets,
+        "start_weekday_hour_utc_counts": window_rows(start_windows),
+        "end_weekday_hour_utc_counts": window_rows(end_windows),
+        "repeated_boundary_patterns": repeated_patterns,
+        "unparsed_boundary_count": unparsed_boundary_count,
+        "interpretation": (
+            "Descriptive timestamp-pattern summaries only. Repeated windows do not establish an expected "
+            "market closure or prove data loss. The audit does not suppress warnings, alter gap categories, "
+            "repair candles, or replace an instrument/provider-specific session calendar."
+        ),
+    }
+
 
 def audit_raw_ohlc_file(
     csv_path: str | Path,
@@ -302,6 +386,7 @@ def audit_raw_ohlc_file(
             "maximum": max(intervals_seconds) if intervals_seconds else None,
         },
         "large_gap_count_over_8_hours": len(long_gaps),
+        "gap_diagnostics_over_8_hours": _gap_pattern_diagnostics(long_gaps),
         "large_gap_examples": long_gaps[:10],
         "weekend_closure_like_gap_count_over_8_hours": len(weekend_like_gaps),
         "non_weekend_long_gap_count_over_8_hours": len(non_weekend_long_gaps),
