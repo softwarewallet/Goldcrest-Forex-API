@@ -19,7 +19,7 @@ Run from the repository root with the virtual environment active:
 
 The reference report is reused only after checking the cap, seed list, research-only flags, source hash, fold signature, and model/feature matrix. The 1.5-hour and 8-hour caps each run fresh five-seed matched pairs. Existing artifacts are preserved. If your local reference report has a different path, pass the exact path to it.
 
-A new threshold report is written with collision-safe naming, and progress is saved after each threshold. The report compares per-model, per-metric seed deltas and checks that source data, folds, and experiment identities match across thresholds.
+A new threshold report is written with collision-safe naming, and progress is saved after each threshold. The report compares per-model, per-metric seed deltas and checks that source data, chronological fold boundaries, and experiment identities match across thresholds. Eligible-row counts are retained in each cap's fold signature and may differ by design; they are excluded only from the cross-cap boundary comparison.
 
 ## Interpretation
 
