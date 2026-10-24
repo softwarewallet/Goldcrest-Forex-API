@@ -460,6 +460,70 @@ def build_variant_plan(
     }
 
 
+def _comparison_summary_lines(
+    comparison: Mapping[str, Any],
+    comparison_path: str | Path,
+) -> list[str]:
+    """Format a concise terminal summary of the paired offline comparison."""
+    def number(value: object, *, integer: bool = False) -> str:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return "n/a"
+        if not math.isfinite(float(value)):
+            return "n/a"
+        return str(int(value)) if integer and float(value).is_integer() else (
+            "n/a" if integer else f"{float(value):+.6f}"
+        )
+
+    lines = [
+        f"Paired comparison status: {comparison.get('status', 'UNKNOWN')}",
+        f"Paired comparison report: {Path(comparison_path).resolve()}",
+    ]
+    eligibility = comparison.get("eligibility_summary")
+    if isinstance(eligibility, Mapping):
+        lines.append(
+            "Eligibility: "
+            f"{number(eligibility.get('variant_eligible_rows'), integer=True)}/"
+            f"{number(eligibility.get('variant_dataset_rows'), integer=True)} dataset rows eligible; "
+            f"{number(eligibility.get('variant_ineligible_rows'), integer=True)} ineligible"
+        )
+        lines.append(
+            "Paired held-out observations scored across folds: "
+            f"{number(eligibility.get('model_rows_scored_across_experiments_and_folds'), integer=True)}; "
+            "excluded observations across experiments/folds: "
+            f"{number(eligibility.get('model_rows_excluded_across_experiments_and_folds'), integer=True)}"
+        )
+
+    experiments = comparison.get("experiments")
+    if isinstance(experiments, list):
+        for experiment in experiments:
+            if not isinstance(experiment, Mapping):
+                continue
+            aggregate = experiment.get("mean_across_folds")
+            if not isinstance(aggregate, Mapping):
+                continue
+            baseline = aggregate.get("baseline_same_eligible_timestamps_metrics")
+            capped = aggregate.get("variant_eligible_test_metrics")
+            deltas = aggregate.get("paired_variant_minus_baseline_delta_mean_across_folds")
+            if not all(isinstance(item, Mapping) for item in (baseline, capped, deltas)):
+                continue
+            lines.append(
+                f"  {experiment.get('model_type', 'unknown')}/{experiment.get('feature_variant', 'unknown')}: "
+                f"rows-across-folds={number(aggregate.get('test_rows_counted_across_folds'), integer=True)}; "
+                f"log_loss baseline/capped={number(baseline.get('log_loss'))}/"
+                f"{number(capped.get('log_loss'))}, delta={number(deltas.get('log_loss'))}; "
+                f"Brier baseline/capped={number(baseline.get('brier_score'))}/"
+                f"{number(capped.get('brier_score'))}, delta={number(deltas.get('brier_score'))}; "
+                f"accuracy@0.5 delta={number(deltas.get('accuracy_at_fixed_half'))}"
+            )
+
+    lines.append(
+        "Delta = capped minus baseline on identical eligible held-out timestamps; "
+        "negative log-loss/Brier and positive accuracy deltas are directionally favorable. "
+        "Descriptive only; no model selection or execution."
+    )
+    return lines
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -636,6 +700,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Elapsed-time eligibility variant: {setup_report['status']}")
             print(f"Variant manifest: {setup_report['variant_manifest_path']}")
             print(f"Setup report: {output_path.resolve()}")
+            for line in _comparison_summary_lines(comparison, comparison_path):
+                print(line)
             for warning in setup_report["warnings"]:
                 print(f"WARNING: {warning}")
             for error in errors:
