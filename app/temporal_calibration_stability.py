@@ -91,7 +91,10 @@ def build_temporal_calibration_stability_audit(
                     "interval_high": float(high) if high is not None else None,
                     "sample_count": metric.get("sample_count"),
                 })
-            periods.sort(key=lambda row: (row["test_start_utc"], row["fold_index"]))
+            periods.sort(key=lambda row: (
+                _parse_utc_boundary(row["test_start_utc"], "test_start_utc"),
+                row["fold_index"],
+            ))
             eces = [row["expected_calibration_error"] for row in periods]
             if len(periods) < 3:
                 status = "INSUFFICIENT_TEMPORAL_COVERAGE"
