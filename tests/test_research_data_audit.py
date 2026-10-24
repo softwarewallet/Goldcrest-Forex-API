@@ -3,11 +3,14 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+
+import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.research_data_audit import (
     _gap_pattern_diagnostics,
+    _timestamp_coverage_profile,
     _within_session_gap_diagnostics,
     audit_raw_ohlc_file,
 )
@@ -324,4 +327,74 @@ def test_raw_ohlc_audit_reports_sub_8_hour_spacing_without_reclassifying_it(tmp_
     assert diagnostics["frame_multiple_buckets"]["greater_than_1_to_2_frames"] == 1
     assert diagnostics["largest_gap_examples"][0]["interval_minutes"] == 30.0
     assert result["large_gap_count_over_8_hours"] == 0
+    assert result["actionable"] is False
+
+
+def test_timestamp_coverage_profile_counts_observed_and_unobserved_utc_dates():
+    monday = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    wednesday = datetime(2026, 1, 7, 12, 0, tzinfo=timezone.utc)
+    timestamps = [
+        monday,
+        monday + timedelta(minutes=15),
+        monday + timedelta(hours=23, minutes=45),
+        wednesday,
+        wednesday + timedelta(minutes=15),
+    ]
+
+    result = _timestamp_coverage_profile(timestamps)
+
+    assert result["status"] == "AVAILABLE"
+    assert result["timestamp_count"] == 5
+    assert result["calendar_span_days_inclusive"] == 3
+    assert result["observed_utc_dates_count"] == 2
+    assert result["unobserved_utc_dates_within_span_count"] == 1
+    assert result["unobserved_utc_date_examples"] == ["2026-01-06"]
+    assert result["daily_row_count_summary"] == {
+        "minimum": 2, "median": 2.5, "mean": 2.5, "maximum": 3,
+    }
+    assert result["daily_row_counts"][0] == {
+        "date_utc": "2026-01-05",
+        "row_count": 3,
+        "first_timestamp_utc": "2026-01-05T00:00:00Z",
+        "last_timestamp_utc": "2026-01-05T23:45:00Z",
+    }
+    assert result["hour_of_day_utc_counts"][0] == {"hour_utc": 0, "count": 2}
+    assert result["hour_of_day_utc_counts"][12] == {"hour_utc": 12, "count": 2}
+    assert "not automatically classified as missing-data incidents" in result["interpretation"]
+
+
+def test_timestamp_coverage_profile_does_not_summarize_non_monotonic_data():
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+
+    result = _timestamp_coverage_profile([
+        start, start + timedelta(minutes=15), start + timedelta(minutes=10)
+    ])
+
+    assert result["status"] == "UNAVAILABLE_NON_MONOTONIC_TIMESTAMPS"
+    assert result["timestamp_count"] == 3
+    assert result["daily_row_counts"] == []
+    assert result["unobserved_utc_dates_within_span_count"] == 0
+
+
+def test_timestamp_coverage_profile_requires_valid_example_limit():
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError, match="non-negative integer"):
+        _timestamp_coverage_profile([start], unobserved_date_example_limit=-1)
+
+
+def test_raw_ohlc_audit_includes_timestamp_coverage_profile(tmp_path):
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    path, manifest = _write_snapshot(
+        tmp_path, [start, start + timedelta(minutes=15), start + timedelta(days=2)]
+    )
+
+    result = audit_raw_ohlc_file(path, manifest_path=manifest)
+    coverage = result["timestamp_coverage_profile"]
+
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert coverage["status"] == "AVAILABLE"
+    assert coverage["observed_utc_dates_count"] == 2
+    assert coverage["unobserved_utc_dates_within_span_count"] == 1
+    assert coverage["unobserved_utc_date_examples"] == ["2026-01-06"]
     assert result["actionable"] is False

@@ -308,6 +308,108 @@ def _within_session_gap_diagnostics(
     }
 
 
+def _timestamp_coverage_profile(
+    timestamps: Sequence[datetime],
+    *,
+    unobserved_date_example_limit: int = 50,
+) -> dict[str, Any]:
+    """Summarize observed candle rows by UTC calendar date and hour, without inferring completeness."""
+    if (
+        isinstance(unobserved_date_example_limit, bool)
+        or not isinstance(unobserved_date_example_limit, int)
+        or unobserved_date_example_limit < 0
+    ):
+        raise ValueError("unobserved_date_example_limit must be a non-negative integer")
+
+    unavailable = {
+        "status": "NO_VALID_TIMESTAMPS",
+        "timestamp_count": 0,
+        "first_timestamp_utc": None,
+        "last_timestamp_utc": None,
+        "calendar_span_days_inclusive": 0,
+        "observed_utc_dates_count": 0,
+        "unobserved_utc_dates_within_span_count": 0,
+        "unobserved_utc_date_examples": [],
+        "daily_row_count_summary": {
+            "minimum": None, "median": None, "mean": None, "maximum": None,
+        },
+        "daily_row_counts": [],
+        "hour_of_day_utc_counts": [
+            {"hour_utc": hour, "count": 0} for hour in range(24)
+        ],
+        "interpretation": (
+            "No valid timestamps were available for the coverage profile. This profile does not infer "
+            "expected candle counts or market-session completeness."
+        ),
+    }
+    if not timestamps:
+        return unavailable
+
+    normalized = [item.astimezone(timezone.utc) for item in timestamps]
+    if any(right <= left for left, right in zip(normalized, normalized[1:])):
+        result = dict(unavailable)
+        result["status"] = "UNAVAILABLE_NON_MONOTONIC_TIMESTAMPS"
+        result["timestamp_count"] = len(normalized)
+        result["interpretation"] = (
+            "UTC date coverage was not summarized because timestamps are not strictly increasing. "
+            "Resolve chronology before interpreting coverage patterns; no candle completeness is inferred."
+        )
+        return result
+
+    daily: dict[Any, list[datetime]] = {}
+    hour_counts = {hour: 0 for hour in range(24)}
+    for timestamp in normalized:
+        daily.setdefault(timestamp.date(), []).append(timestamp)
+        hour_counts[timestamp.hour] += 1
+
+    first_date, last_date = normalized[0].date(), normalized[-1].date()
+    span_days = (last_date - first_date).days + 1
+    unobserved_dates: list[str] = []
+    current_date = first_date
+    while current_date <= last_date:
+        if current_date not in daily and len(unobserved_dates) < unobserved_date_example_limit:
+            unobserved_dates.append(current_date.isoformat())
+        current_date += timedelta(days=1)
+
+    row_counts = [len(items) for _, items in sorted(daily.items())]
+    daily_rows = [
+        {
+            "date_utc": day.isoformat(),
+            "row_count": len(items),
+            "first_timestamp_utc": items[0].isoformat().replace("+00:00", "Z"),
+            "last_timestamp_utc": items[-1].isoformat().replace("+00:00", "Z"),
+        }
+        for day, items in sorted(daily.items())
+    ]
+    return {
+        "status": "AVAILABLE",
+        "timestamp_count": len(normalized),
+        "first_timestamp_utc": normalized[0].isoformat().replace("+00:00", "Z"),
+        "last_timestamp_utc": normalized[-1].isoformat().replace("+00:00", "Z"),
+        "calendar_span_days_inclusive": span_days,
+        "observed_utc_dates_count": len(daily),
+        "unobserved_utc_dates_within_span_count": span_days - len(daily),
+        "unobserved_utc_date_examples": unobserved_dates,
+        "daily_row_count_summary": {
+            "minimum": min(row_counts),
+            "median": statistics.median(row_counts),
+            "mean": round(statistics.mean(row_counts), 4),
+            "maximum": max(row_counts),
+        },
+        "daily_row_counts": daily_rows,
+        "hour_of_day_utc_counts": [
+            {"hour_utc": hour, "count": hour_counts[hour]} for hour in range(24)
+        ],
+        "interpretation": (
+            "Descriptive UTC calendar-date and hour-of-day coverage only. Unobserved dates may reflect "
+            "weekends, instrument sessions, holidays, provider coverage, or collection choices; they are not "
+            "automatically classified as missing-data incidents. Daily counts are not compared with an "
+            "assumed expected candle count. No market calendar, data repair, model selection, or execution "
+            "decision is applied."
+        ),
+    }
+
+
 def audit_raw_ohlc_file(
     csv_path: str | Path,
     *,
@@ -493,6 +595,7 @@ def audit_raw_ohlc_file(
         non_weekend_long_gaps = [gap for gap in long_gaps if gap["gap_category"] == "non_weekend_long_gap"]
         calendar_context_gaps = [gap for gap in long_gaps if gap["calendar_context"]]
         within_session_gap_diagnostics = _within_session_gap_diagnostics(timestamps, frame_seconds)
+        timestamp_coverage_profile = _timestamp_coverage_profile(timestamps)
         if unaligned_rows == 0 and len(timeframes) == 1 and frame_seconds == 0:
             warnings.append("unknown_timeframe_candle_alignment_not_checked")
         if non_weekend_long_gaps:
@@ -503,6 +606,7 @@ def audit_raw_ohlc_file(
         non_weekend_long_gaps = []
         calendar_context_gaps = []
         within_session_gap_diagnostics = _within_session_gap_diagnostics([], 0)
+        timestamp_coverage_profile = _timestamp_coverage_profile([])
 
     if not manifest:
         pagination_summary = None
@@ -540,6 +644,7 @@ def audit_raw_ohlc_file(
         "large_gap_count_over_8_hours": len(long_gaps),
         "gap_diagnostics_over_8_hours": _gap_pattern_diagnostics(long_gaps),
         "gap_diagnostics_between_one_frame_and_8_hours": within_session_gap_diagnostics,
+        "timestamp_coverage_profile": timestamp_coverage_profile,
         "large_gap_examples": long_gaps[:10],
         "weekend_closure_like_gap_count_over_8_hours": len(weekend_like_gaps),
         "non_weekend_long_gap_count_over_8_hours": len(non_weekend_long_gaps),
