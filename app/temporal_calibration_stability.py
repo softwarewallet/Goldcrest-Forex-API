@@ -177,7 +177,12 @@ def build_temporal_calibration_stability_report(
     matrix_file = Path(matrix_path)
     matrix_sha256 = hashlib.sha256(matrix_file.read_bytes()).hexdigest()
 
-    if matrix.get("schema_version") != 1:
+    schema_version = matrix.get("schema_version")
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version != 1
+    ):
         errors.append("unsupported_or_missing_schema_version")
     if not isinstance(matrix.get("run_id"), str) or not matrix.get("run_id", "").strip():
         errors.append("missing_run_id")
@@ -308,6 +313,15 @@ def build_temporal_calibration_stability_report(
             if not isinstance(metrics, dict):
                 errors.append(f"experiment_{experiment_id}_fold_{fold_index}_test_metrics_missing")
                 continue
+            sample_count = metrics.get("sample_count")
+            if (
+                isinstance(sample_count, bool)
+                or not isinstance(sample_count, int)
+                or sample_count < 1
+            ):
+                warnings.append(
+                    f"sample_count_missing_or_invalid:{experiment_id}:fold_{fold_index}"
+                )
             ece = metrics.get("expected_calibration_error")
             if (
                 isinstance(ece, bool)
