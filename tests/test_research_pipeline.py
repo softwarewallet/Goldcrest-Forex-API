@@ -130,6 +130,36 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert validation_report["actionable"] is False
 
 
+def test_pipeline_refuses_existing_run_id_before_mutating_artifacts(tmp_path, monkeypatch):
+    raw = tmp_path / "ohlc.csv"
+    raw.write_text(
+        "symbol,timeframe,timestamp,open,high,low,close\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "run"
+    output_dir.mkdir()
+    existing = output_dir / "immutable_experiment_matrix.json"
+    existing.write_text("preserve original artifact", encoding="utf-8")
+
+    def should_not_prepare(*args, **kwargs):
+        pytest.fail("pipeline must detect artifact collision before dataset preparation")
+
+    monkeypatch.setattr(research_pipeline, "prepare_research_dataset", should_not_prepare)
+
+    with pytest.raises(ValueError, match="refusing to overwrite artifacts from an existing run"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD", timeframe="M15", horizon_bars=4, class_1_means="UP",
+            terms_reference="actual provider terms", source_version="test-export-v1",
+            output_dir=output_dir, run_id="immutable",
+            retrieved_at_utc="2026-10-23T00:00:00Z", ohlc_csv=raw,
+            initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
+        )
+
+    assert existing.read_text(encoding="utf-8") == "preserve original artifact"
+    assert not (output_dir / "immutable_raw_ohlc_audit.json").exists()
+
+
 def test_pipeline_requires_existing_ohlc_file(tmp_path):
     with pytest.raises(ValueError, match="does not exist"):
         research_pipeline.run_research_pipeline(
