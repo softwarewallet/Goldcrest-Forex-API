@@ -89,6 +89,27 @@ def run_research_pipeline(
     destination = Path(output_dir).resolve()
     destination.mkdir(parents=True, exist_ok=True)
 
+    # A run ID is an immutable artifact namespace. Check all run-scoped outputs before
+    # ingestion/auditing so reusing an ID cannot partially overwrite an earlier receipt.
+    expected_output_names = [
+        f"{run_id}_raw_ohlc_audit.json",
+        f"{run_id}_{file_instrument}_{period}_research_dataset.csv",
+        f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json",
+        f"{run_id}_experiment_matrix.json",
+        f"{run_id}_provenance_audit.json",
+        f"{run_id}_temporal_calibration_stability.json",
+        f"{run_id}_pipeline_manifest.json",
+        f"{run_id}_validation_report.json",
+    ]
+    if fetch_ctrader:
+        expected_output_names.append(f"{run_id}_{file_instrument}_{period}_ctrader_ohlc.csv")
+    existing_outputs = [str(destination / name) for name in expected_output_names if (destination / name).exists()]
+    if existing_outputs:
+        raise ValueError(
+            "refusing to overwrite artifacts from an existing run; use a new run_id: "
+            + ", ".join(existing_outputs)
+        )
+
     if fetch_ctrader:
         raw_csv = destination / f"{run_id}_{file_instrument}_{period}_ctrader_ohlc.csv"
         ingestion = download_ctrader_history(
