@@ -92,6 +92,11 @@ def _fold_signature(report: Mapping[str, Any]) -> list[Any]:
     return signature
 
 
+def _fold_window_signature(report: Mapping[str, Any]) -> list[Any]:
+    """Return chronological fold boundaries, excluding cap-dependent eligible-row counts."""
+    return [fold[:3] for fold in _fold_signature(report)]
+
+
 def _experiment_keys(report: Mapping[str, Any]) -> list[str]:
     aggregate = report.get("aggregate")
     experiments = aggregate.get("experiments") if isinstance(aggregate, dict) else None
@@ -168,6 +173,7 @@ def _cap_record(cap_hours: float, report_path: str | Path, report: Mapping[str, 
         "failed_seed_count": report.get("failed_seed_count"),
         "raw_ohlc_sha256": report.get("raw_ohlc_sha256"),
         "fold_signature": _fold_signature(report),
+        "fold_window_signature": _fold_window_signature(report),
         "experiment_keys": _experiment_keys(report),
         "metrics": metrics_rows,
         "warnings": list(report.get("warnings") or []),
@@ -261,7 +267,7 @@ def run_elapsed_threshold_sweep(
             report["executed_caps_hours"].append(reference_cap)
             report["warnings"].extend(reference_record["warnings"])
             global_hash = reference_record["raw_ohlc_sha256"]
-            global_folds = reference_record["fold_signature"]
+            global_folds = reference_record["fold_window_signature"]
             global_keys = reference_record["experiment_keys"]
 
         for cap in caps_to_run:
@@ -280,11 +286,11 @@ def run_elapsed_threshold_sweep(
                 _validate_seed_sweep_report(cap_report, cap_hours=cap, expected_seeds=seed_values, label=f"cap_{token}h")
                 record = _cap_record(cap, cap_path, cap_report)
                 if global_hash is None:
-                    global_hash, global_folds, global_keys = record["raw_ohlc_sha256"], record["fold_signature"], record["experiment_keys"]
+                    global_hash, global_folds, global_keys = record["raw_ohlc_sha256"], record["fold_window_signature"], record["experiment_keys"]
                 else:
                     if record["raw_ohlc_sha256"] != global_hash:
                         raise ValueError(f"cap_{token}h_raw_ohlc_hash_differs_across_thresholds")
-                    if record["fold_signature"] != global_folds:
+                    if record["fold_window_signature"] != global_folds:
                         raise ValueError(f"cap_{token}h_fold_windows_differ_across_thresholds")
                     if record["experiment_keys"] != global_keys:
                         raise ValueError(f"cap_{token}h_experiment_matrix_differs_across_thresholds")
@@ -301,7 +307,7 @@ def run_elapsed_threshold_sweep(
 
             good = [item for item in report["cap_results"] if item.get("status") in {"PASS", "PASS_WITH_WARNINGS"}]
             report["same_raw_ohlc_snapshot_across_caps"] = bool(global_hash) and all(item.get("raw_ohlc_sha256") == global_hash for item in good)
-            report["same_fold_windows_across_caps"] = bool(global_folds) and all(item.get("fold_signature") == global_folds for item in good)
+            report["same_fold_windows_across_caps"] = bool(global_folds) and all(item.get("fold_window_signature") == global_folds for item in good)
             _write_report(report_path, report)
 
         successful = [item for item in report["cap_results"] if item.get("status") in {"PASS", "PASS_WITH_WARNINGS"}]
@@ -320,7 +326,7 @@ def run_elapsed_threshold_sweep(
             })
 
         report["raw_ohlc_sha256"] = global_hash
-        report["shared_fold_signature"] = global_folds
+        report["shared_fold_signature"] = global_folds  # Chronological boundaries only; eligible-row counts vary by cap.
         report["shared_experiment_keys"] = global_keys
         report["warnings"] = list(dict.fromkeys(str(w) for w in report["warnings"]))
         if len(successful) != len(cap_values):
