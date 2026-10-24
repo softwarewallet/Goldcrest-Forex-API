@@ -527,6 +527,7 @@ def review_gap_policy_performance(
     status = "PASS_WITH_WARNINGS" if warning_list else "PASS"
     destination = Path(output_path).expanduser().resolve() if output_path else _free_output_path(policy_path)
     protected = {policy_path, threshold_audit_path, sweep_path}
+    protected.update(Path(value) for value in seed_report_paths.values())
     if destination in protected:
         raise ValueError("output_path_must_not_overwrite_input_artifact")
     if destination.exists():
