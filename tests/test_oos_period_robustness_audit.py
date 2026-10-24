@@ -34,6 +34,11 @@ def test_audit_reports_chronological_periods_without_model_selection():
     assert [period["period"] for period in candidate["periods"]] == ["EARLY", "MIDDLE", "LATE"]
     assert [period["fold_indices"] for period in candidate["periods"]] == [[0, 1], [2], [3]]
     assert candidate["test_brier_range"] == pytest.approx(0.3)
+    assert candidate["test_expected_calibration_error_range"] == pytest.approx(0.0)
+    assert candidate["expected_calibration_error_fold_count"] == 4
+    assert candidate["periods"][0]["ece_fold_count"] == 2
+    assert candidate["periods"][0]["median_test_expected_calibration_error"] == pytest.approx(0.1)
+    assert candidate["periods"][0]["maximum_test_expected_calibration_error"] == pytest.approx(0.1)
     assert audit["model_selection_performed"] is False
     assert audit["test_metrics_used_for_selection"] is False
     assert audit["actionable"] is False

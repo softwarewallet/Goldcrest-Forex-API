@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from app.research_run_audit import audit_research_run_manifest
+from app.oos_period_robustness_audit import build_oos_period_robustness_audit
 
 _SCHEMA_VERSION = 1
 _REPORT_SCOPE = "GOLDCREST_CONSOLIDATED_RESEARCH_EVIDENCE"
@@ -355,6 +356,7 @@ def build_evidence_interpretation(
     calibration: Mapping[str, Any] | None,
     regimes: Mapping[str, Any] | None,
     temporal_stability: Mapping[str, Any] | None,
+    oos_period_robustness: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Summarize cross-diagnostic patterns without ranking or promoting experiments."""
     baseline_counts = {
@@ -651,7 +653,68 @@ def build_evidence_interpretation(
             ),
         }
 
+    robustness_rows: list[dict[str, Any]] = []
+    if isinstance(oos_period_robustness, Mapping):
+        raw_candidates = oos_period_robustness.get("candidates")
+        for candidate in raw_candidates if isinstance(raw_candidates, list) else []:
+            if not isinstance(candidate, Mapping):
+                continue
+            raw_periods = candidate.get("periods")
+            periods = []
+            for period in raw_periods if isinstance(raw_periods, list) else []:
+                if not isinstance(period, Mapping):
+                    continue
+                periods.append({
+                    "period": period.get("period"),
+                    "fold_indices": period.get("fold_indices"),
+                    "fold_count": period.get("fold_count"),
+                    "median_test_brier_score": period.get("median_test_brier_score"),
+                    "median_test_log_loss": period.get("median_test_log_loss"),
+                    "median_test_expected_calibration_error": period.get(
+                        "median_test_expected_calibration_error"
+                    ),
+                    "ece_fold_count": period.get("ece_fold_count"),
+                })
+            robustness_rows.append({
+                "candidate_name": candidate.get("candidate_name"),
+                "fold_count": candidate.get("fold_count"),
+                "test_brier_range": candidate.get("test_brier_range"),
+                "test_log_loss_range": candidate.get("test_log_loss_range"),
+                "test_expected_calibration_error_range": candidate.get(
+                    "test_expected_calibration_error_range"
+                ),
+                "expected_calibration_error_fold_count": candidate.get(
+                    "expected_calibration_error_fold_count"
+                ),
+                "periods": periods,
+            })
+    if not isinstance(oos_period_robustness, Mapping):
+        robustness_status = "UNAVAILABLE"
+        robustness_fold_indices: list[int] = []
+    else:
+        robustness_status = str(oos_period_robustness.get("status", "UNAVAILABLE"))
+        raw_indices = oos_period_robustness.get("common_test_fold_indices")
+        robustness_fold_indices = raw_indices if isinstance(raw_indices, list) else []
+
     return {
+        "chronological_oos_robustness": {
+            "status": robustness_status,
+            "candidate_count": len(robustness_rows),
+            "common_test_fold_indices": robustness_fold_indices,
+            "period_group_count": (
+                oos_period_robustness.get("period_group_count")
+                if isinstance(oos_period_robustness, Mapping) else 0
+            ),
+            "candidates": robustness_rows,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": (
+                "Early/middle/late summaries are derived from stored chronological walk-forward test-fold metrics. "
+                "They are descriptive diagnostics only, not independent samples, a model ranking, tuning evidence, "
+                "statistical significance, or profitability. Reported ECE summaries help locate calibration drift "
+                "but do not fit or apply a calibration transform."
+            ),
+        },
         "baseline_comparison": {
             "status": baseline_status,
             **baseline_counts,
@@ -697,6 +760,130 @@ def build_evidence_interpretation(
         "actionable": False,
         "execution_connected": False,
     }
+
+
+def _derive_oos_period_robustness(
+    matrix_path: Path,
+    *,
+    expected_run_id: str,
+    expected_matrix_sha256: str | None,
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Derive a chronological period diagnostic from the hash-bound saved matrix."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not matrix_path.is_file():
+        return ({
+            "status": "SOURCE_MATRIX_UNAVAILABLE",
+            "candidate_count": 0,
+            "common_test_fold_indices": [],
+            "period_group_count": 0,
+            "candidates": [],
+            "model_selection_performed": False,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": "The source experiment matrix is not available; no period diagnostic was derived.",
+        }, ["oos_period_robustness_source_matrix_missing"], warnings)
+    digest = _sha256(matrix_path)
+    if expected_matrix_sha256 and digest != expected_matrix_sha256:
+        return ({
+            "status": "SOURCE_MATRIX_HASH_MISMATCH",
+            "source_matrix_path": str(matrix_path.resolve()),
+            "source_matrix_sha256": digest,
+            "candidate_count": 0,
+            "common_test_fold_indices": [],
+            "period_group_count": 0,
+            "candidates": [],
+            "model_selection_performed": False,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": "Matrix fingerprint did not match the manifest; no period diagnostic was derived.",
+        }, ["oos_period_robustness_source_matrix_hash_mismatch"], warnings)
+    try:
+        matrix = _read_json(matrix_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return ({
+            "status": "SOURCE_MATRIX_UNREADABLE",
+            "source_matrix_path": str(matrix_path.resolve()),
+            "source_matrix_sha256": digest,
+            "candidate_count": 0,
+            "common_test_fold_indices": [],
+            "period_group_count": 0,
+            "candidates": [],
+            "model_selection_performed": False,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": "The source experiment matrix could not be parsed; no period diagnostic was derived.",
+        }, [f"oos_period_robustness_source_matrix_unreadable:{type(exc).__name__}"], warnings)
+
+    if matrix.get("run_id") != expected_run_id:
+        return ({
+            "status": "SOURCE_MATRIX_RUN_ID_MISMATCH",
+            "source_matrix_path": str(matrix_path.resolve()),
+            "source_matrix_sha256": digest,
+            "candidate_count": 0,
+            "common_test_fold_indices": [],
+            "period_group_count": 0,
+            "candidates": [],
+            "model_selection_performed": False,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": "The source experiment matrix belongs to another run; no period diagnostic was derived.",
+        }, ["oos_period_robustness_source_matrix_run_id_mismatch"], warnings)
+
+    experiments = matrix.get("experiments")
+    if not isinstance(experiments, list) or not experiments:
+        return ({
+            "status": "SOURCE_MATRIX_STRUCTURE_UNAVAILABLE",
+            "source_matrix_path": str(matrix_path.resolve()),
+            "source_matrix_sha256": digest,
+            "candidate_count": 0,
+            "common_test_fold_indices": [],
+            "period_group_count": 0,
+            "candidates": [],
+            "model_selection_performed": False,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": "The source matrix has no experiment list; no period diagnostic was derived.",
+        }, ["oos_period_robustness_source_matrix_experiments_invalid"], warnings)
+
+    fold_results: dict[str, list[Mapping[str, Any]]] = {}
+    for index, experiment in enumerate(experiments):
+        if not isinstance(experiment, dict):
+            errors.append(f"oos_period_robustness_experiment_{index}_invalid")
+            continue
+        experiment_id = experiment.get("experiment_id")
+        folds = experiment.get("fold_results")
+        if not isinstance(experiment_id, str) or not experiment_id.strip():
+            errors.append(f"oos_period_robustness_experiment_{index}_id_missing")
+            continue
+        if experiment_id in fold_results:
+            errors.append(f"oos_period_robustness_experiment_id_duplicate:{experiment_id}")
+            continue
+        if not isinstance(folds, list) or not folds:
+            errors.append(f"oos_period_robustness_fold_results_missing:{experiment_id}")
+            continue
+        fold_results[experiment_id] = folds
+
+    if errors or not fold_results:
+        return ({
+            "status": "SOURCE_MATRIX_STRUCTURE_INVALID",
+            "source_matrix_path": str(matrix_path.resolve()),
+            "source_matrix_sha256": digest,
+            "candidate_count": len(fold_results),
+            "common_test_fold_indices": [],
+            "period_group_count": 0,
+            "candidates": [],
+            "model_selection_performed": False,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": "The source matrix structure is incomplete; no period diagnostic was derived.",
+        }, errors or ["oos_period_robustness_no_valid_experiments"], warnings)
+
+    audit = build_oos_period_robustness_audit(fold_results, [])
+    audit["source_matrix_path"] = str(matrix_path.resolve())
+    audit["source_matrix_sha256"] = digest
+    audit["source_run_id"] = expected_run_id
+    return audit, errors, warnings
 
 
 def build_research_evidence_report(
@@ -745,6 +932,16 @@ def build_research_evidence_report(
     symbol = str(manifest.get("symbol", "")).strip().upper() or None
     timeframe = str(manifest.get("timeframe", "")).strip().upper() or None
     matrix_hash = manifest.get("experiment_matrix_report_sha256")
+    matrix_path = _resolve_path(manifest.get("experiment_matrix_report"), manifest_file.parent)
+    if matrix_path is None:
+        matrix_path = manifest_file.parent / f"{run_id}_experiment_matrix.json"
+    oos_period_robustness, oos_errors, oos_warnings = _derive_oos_period_robustness(
+        matrix_path,
+        expected_run_id=run_id,
+        expected_matrix_sha256=matrix_hash if isinstance(matrix_hash, str) else None,
+    )
+    errors.extend(oos_errors)
+    warnings.extend(oos_warnings)
     sections: dict[str, dict[str, Any]] = {}
     records: dict[str, dict[str, Any] | None] = {}
 
@@ -900,6 +1097,7 @@ def build_research_evidence_report(
         if records.get("regime_analysis") is not None else None,
         "temporal_stability": _summary_for_temporal_stability(records["temporal_stability"])
         if records.get("temporal_stability") is not None else None,
+        "oos_period_robustness": oos_period_robustness,
     }
 
     evidence_interpretation = build_evidence_interpretation(
@@ -907,6 +1105,7 @@ def build_research_evidence_report(
         calibration=records.get("temporal_calibration"),
         regimes=records.get("regime_analysis"),
         temporal_stability=records.get("temporal_stability"),
+        oos_period_robustness=oos_period_robustness,
     )
 
     validation_status = sections["validation"].get("status")
@@ -962,8 +1161,9 @@ def build_research_evidence_report(
         "test_metrics_used_for_selection": False,
         "interpretation": (
             "Consolidated integrity and descriptive research evidence only. This report does not "
-            "recompute model metrics, claim statistical significance or profitability, rank or select "
-            "models, authorize deployment, or connect to broker execution. Missing optional analyses "
+            "recompute model predictions or rank or select models, claim statistical significance or profitability, "
+            "authorize deployment, or connect to broker execution. The chronological period diagnostic summarizes "
+            "stored per-fold test metrics only. Missing optional analyses "
             "indicate incomplete evidence coverage, not a negative finding."
         ),
     }

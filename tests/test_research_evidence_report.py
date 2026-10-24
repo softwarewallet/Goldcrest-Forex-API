@@ -19,7 +19,72 @@ def _build_run(tmp_path: Path, monkeypatch, *, with_optional: bool = True) -> Pa
     run_id = "evidence-run-001"
     manifest_path = tmp_path / f"{run_id}_pipeline_manifest.json"
     matrix_path = tmp_path / f"{run_id}_experiment_matrix.json"
-    matrix_path.write_text('{"run_id":"evidence-run-001","matrix":true}\n', encoding="utf-8")
+    fold_results = []
+    for fold_index in range(7):
+        fold_results.append({
+            "fold_index": fold_index,
+            "train_end_utc": f"2026-01-{fold_index + 1:02d}T00:00:00Z",
+            "validation_start_utc": f"2026-02-{fold_index + 1:02d}T00:00:00Z",
+            "validation_end_utc": f"2026-03-{fold_index + 1:02d}T00:00:00Z",
+            "test_start_utc": f"2026-04-{fold_index + 1:02d}T00:00:00Z",
+            "test_end_utc": f"2026-04-{fold_index + 1:02d}T12:00:00Z",
+            "test": {
+                "sample_count": 10,
+                "brier_score": 0.20 + 0.01 * fold_index,
+                "log_loss": 0.50 + 0.02 * fold_index,
+                "accuracy_at_fixed_half": 0.50 + 0.01 * fold_index,
+                "expected_calibration_error": 0.10 + 0.005 * fold_index,
+            },
+            "test_metrics": {
+                "sample_count": 10,
+                "positive_count": 5,
+                "negative_count": 5,
+                "brier_score": 0.20 + 0.01 * fold_index,
+                "log_loss": 0.50 + 0.02 * fold_index,
+                "accuracy_at_fixed_half": 0.50 + 0.01 * fold_index,
+                "expected_calibration_error": 0.10 + 0.005 * fold_index,
+            },
+            "actionable": False,
+        })
+    matrix = {
+        "schema_version": 1,
+        "run_id": "evidence-run-001",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "fold_count": 7,
+        "common_fold_test_windows": [],
+        "experiments": [
+            {
+                "experiment_id": "example-xgb",
+                "model_type": "xgboost",
+                "fold_results": fold_results,
+                "actionable": False,
+                "test_metrics_used_for_tuning": False,
+            },
+            {
+                "experiment_id": "example-lgbm",
+                "model_type": "lightgbm",
+                "fold_results": [
+                    {
+                        **fold,
+                        "test": {
+                            **fold["test"],
+                            "brier_score": 0.19 + 0.008 * fold["fold_index"],
+                            "log_loss": 0.48 + 0.015 * fold["fold_index"],
+                            "expected_calibration_error": 0.08 + 0.004 * fold["fold_index"],
+                        },
+                    }
+                    for fold in fold_results
+                ],
+                "actionable": False,
+                "test_metrics_used_for_tuning": False,
+            },
+        ],
+        "actionable": False,
+        "automatic_winner_selection": False,
+        "test_metrics_used_for_selection": False,
+    }
+    matrix_path.write_text(json.dumps(matrix, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     matrix_hash = _sha(matrix_path)
 
     provenance_path = tmp_path / f"{run_id}_provenance_audit.json"
@@ -230,6 +295,33 @@ def test_consolidated_evidence_report_binds_and_summarizes_sources(tmp_path, mon
     assert result["summary"]["baseline_analysis"]["experiments"][0]["ranked_or_selected"] is False
     assert result["summary"]["regime_analysis"]["fold_threshold_count"] == 1
     assert result["summary"]["temporal_stability"]["long_gap_count"] == 3
+    oos = result["summary"]["oos_period_robustness"]
+    assert oos["status"] == "PERIOD_DIAGNOSTIC_AVAILABLE"
+    assert oos["common_test_fold_indices"] == list(range(7))
+    assert oos["model_selection_performed"] is False
+    assert len(oos["candidates"]) == 2
+    early_period = oos["candidates"][0]["periods"][0]
+    assert early_period["period"] == "EARLY"
+    assert early_period["ece_fold_count"] == 3
+    assert early_period["median_test_expected_calibration_error"] is not None
+    interpretation = result["evidence_interpretation"]["chronological_oos_robustness"]
+    assert interpretation["status"] == "PERIOD_DIAGNOSTIC_AVAILABLE"
+    assert interpretation["test_metrics_used_for_selection"] is False
+
+
+def test_oos_period_diagnostic_fails_closed_when_matrix_hash_mismatches(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    matrix_path = tmp_path / "evidence-run-001_experiment_matrix.json"
+    matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+    matrix["run_id"] = "other-run"
+    _write_json(matrix_path, matrix)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "oos_period_robustness_source_matrix_hash_mismatch" in result["errors"]
+    assert result["summary"]["oos_period_robustness"]["status"] == "SOURCE_MATRIX_HASH_MISMATCH"
+    assert result["evidence_interpretation"]["chronological_oos_robustness"]["test_metrics_used_for_selection"] is False
 
 
 def test_consolidated_report_flags_source_matrix_mismatch_and_unsafe_flag(tmp_path, monkeypatch):

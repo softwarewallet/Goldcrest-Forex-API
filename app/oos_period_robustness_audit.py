@@ -91,6 +91,11 @@ def build_oos_period_robustness_audit(
             periods = []
             for label, indices in period_groups:
                 selected = [item for item in per_fold if item["fold_index"] in indices]
+                ece_values = [
+                    item["expected_calibration_error"]
+                    for item in selected
+                    if item["expected_calibration_error"] is not None
+                ]
                 periods.append({
                     "period": label,
                     "fold_indices": indices,
@@ -99,9 +104,17 @@ def build_oos_period_robustness_audit(
                     "median_test_log_loss": float(median(item["log_loss"] for item in selected)),
                     "worst_fold_brier_score": max(item["brier_score"] for item in selected),
                     "worst_fold_log_loss": max(item["log_loss"] for item in selected),
+                    "ece_fold_count": len(ece_values),
+                    "median_test_expected_calibration_error": float(median(ece_values)) if ece_values else None,
+                    "maximum_test_expected_calibration_error": max(ece_values) if ece_values else None,
                 })
             briers = [item["brier_score"] for item in per_fold]
             losses = [item["log_loss"] for item in per_fold]
+            ece_values = [
+                item["expected_calibration_error"]
+                for item in per_fold
+                if item["expected_calibration_error"] is not None
+            ]
             rows.append({
                 "candidate_name": name,
                 "fold_count": len(per_fold),
@@ -109,6 +122,8 @@ def build_oos_period_robustness_audit(
                 "periods": periods,
                 "test_brier_range": max(briers) - min(briers),
                 "test_log_loss_range": max(losses) - min(losses),
+                "test_expected_calibration_error_range": max(ece_values) - min(ece_values) if ece_values else None,
+                "expected_calibration_error_fold_count": len(ece_values),
                 "status": "DESCRIPTIVE_PERIOD_DIAGNOSTIC",
             })
 
