@@ -1,9 +1,10 @@
-# Raw OHLC timestamp-gap diagnostics
+# Raw OHLC timestamp and coverage diagnostics
 
-The local raw OHLC integrity audit provides two complementary descriptive views:
+The local raw OHLC integrity audit provides three complementary descriptive views:
 
 - `gap_diagnostics_between_one_frame_and_8_hours` summarizes timestamp intervals longer than one nominal timeframe and no longer than eight hours. It groups intervals by elapsed timeframe multiples, records repeated UTC weekday/hour boundaries, and lists the largest examples.
 - `gap_diagnostics_over_8_hours` summarizes longer gaps by the audit's existing categories, duration bands, UTC boundary distributions, and repeated boundary patterns.
+- `timestamp_coverage_profile` reports observed rows by UTC calendar date and hour, daily row-count summary statistics, the full observed-date profile, and examples/counts of calendar dates with no rows between the first and last timestamp.
 
 Run the audit from the repository root with the project environment active:
 
@@ -19,6 +20,6 @@ python -m app.research_data_audit \
 
 Replace the placeholder paths with the exact raw OHLC CSV and its integrity manifest for the research run. The audit fingerprints the CSV and validates its manifest; the source snapshot is never modified. If the manifest is next to the CSV under the default `<csv>.manifest.json` name, `--manifest` may be omitted.
 
-The sub-eight-hour report describes timestamp spacing only. An interval spanning two or more timeframe units is not automatically a missing-candle finding: instrument sessions, holidays, provider coverage, and expected market closures are not inferred. The greater-than-eight-hour report uses a conservative UTC weekend heuristic and informational fixed-date holiday tags; neither is authoritative evidence of an expected market closure.
+The interval and calendar-date profiles describe observed timestamp spacing only. An interval spanning two or more timeframe units or a UTC calendar date with no rows is not automatically a missing-candle finding. Unobserved dates can reflect weekends, instrument sessions, holidays, provider coverage, collection choices, or other factors. The report does not assume that each UTC day should contain a fixed number of rows. The greater-than-eight-hour report uses a conservative UTC weekend heuristic and informational fixed-date holiday tags; neither is authoritative evidence of an expected market closure.
 
-Use repeated boundary patterns to prioritize manual comparison against the relevant instrument/provider session calendar, cTrader pagination evidence, and source export. These diagnostics do not reclassify gaps, suppress warnings, repair or impute bars, select or promote models, or authorize execution. Overall status and existing warnings remain governed by the integrity checks; the new sub-eight-hour summaries do not independently alter them.
+Use repeated boundary patterns and daily/hourly coverage profiles to prioritize manual comparison against the relevant instrument/provider session calendar, cTrader pagination evidence, and source export. Non-monotonic timestamps prevent interval coverage summaries. These diagnostics do not reclassify gaps, suppress warnings, repair or impute bars, select or promote models, or authorize execution. Overall status and existing warnings remain governed by the integrity checks; the coverage profiles do not independently alter them.
