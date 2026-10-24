@@ -780,6 +780,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 manifest_path=args.manifest,
                 expected_symbol=expected_symbol,
                 expected_timeframe=expected_timeframe,
+                require_manifest=(
+                    pipeline_manifest.get("source") != "Operator-supplied canonical OHLC CSV"
+                ),
             )
             expected_raw_hash = pipeline_manifest.get("raw_ohlc_sha256")
             actual_raw_hash = report.get("snapshot_sha256")
