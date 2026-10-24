@@ -205,6 +205,11 @@ def run_controlled_paired_replay(
             receipt["uncapped_replay_validation_status"] = uncapped_result.get("validation_status")
             receipt["uncapped_replay_provenance_audit_status"] = uncapped_result.get("provenance_audit_status")
             receipt["uncapped_replay_temporal_calibration_audit_status"] = uncapped_result.get("temporal_calibration_audit_status")
+            receipt_path.write_text(
+                json.dumps(receipt, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+                encoding="utf-8",
+            )
+            receipt["receipt_path"] = str(receipt_path.resolve())
             return receipt
 
         capped_result = run_research_pipeline(
