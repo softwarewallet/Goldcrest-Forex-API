@@ -13,6 +13,7 @@ from app.research_data_audit import (
     _timestamp_coverage_profile,
     _within_session_gap_diagnostics,
     audit_raw_ohlc_file,
+    main as audit_main,
 )
 
 
@@ -398,3 +399,93 @@ def test_raw_ohlc_audit_includes_timestamp_coverage_profile(tmp_path):
     assert coverage["unobserved_utc_dates_within_span_count"] == 1
     assert coverage["unobserved_utc_date_examples"] == ["2026-01-06"]
     assert result["actionable"] is False
+
+
+
+def _write_pipeline_manifest(tmp_path: Path, csv_path: Path) -> Path:
+    payload = {
+        "schema_version": 1,
+        "run_id": "test-run",
+        "scope": "GOLDCREST_OFFLINE_RESEARCH_PIPELINE",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "raw_ohlc_path": str(csv_path.resolve()),
+        "raw_ohlc_sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(),
+        "actionable": False,
+        "execution_connected": False,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    path = tmp_path / "test-run_pipeline_manifest.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+    return path
+
+
+def test_audit_cli_resolves_exact_csv_from_verified_pipeline_manifest(tmp_path, capsys):
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    csv_path, _ = _write_snapshot(
+        tmp_path, [start, start + timedelta(minutes=15), start + timedelta(minutes=30)]
+    )
+    pipeline_manifest = _write_pipeline_manifest(tmp_path, csv_path)
+    output = tmp_path / "audit.json"
+
+    exit_code = audit_main([
+        "--pipeline-manifest", str(pipeline_manifest),
+        "--output", str(output),
+        "--json",
+    ])
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert report["status"] == "PASS"
+    assert report["csv_path"] == str(csv_path.resolve())
+    assert report["symbol"] == "EURUSD"
+    assert report["timeframe"] == "M15"
+    assert report["pipeline_manifest_sha256_verified"] is True
+    assert report["pipeline_manifest_raw_ohlc_sha256_verified"] is True
+    assert output.is_file()
+
+
+def test_audit_cli_rejects_csv_that_differs_from_pipeline_manifest_snapshot_hash(tmp_path, capsys):
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    recorded_csv, _ = _write_snapshot(
+        tmp_path, [start, start + timedelta(minutes=15), start + timedelta(minutes=30)]
+    )
+    pipeline_manifest = _write_pipeline_manifest(tmp_path, recorded_csv)
+
+    other_dir = tmp_path / "other"
+    other_dir.mkdir()
+    other_csv, _ = _write_snapshot(
+        other_dir, [start + timedelta(days=1), start + timedelta(days=1, minutes=15)]
+    )
+
+    exit_code = audit_main([
+        "--csv", str(other_csv),
+        "--pipeline-manifest", str(pipeline_manifest),
+        "--json",
+    ])
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == 3
+    assert report["status"] == "FAIL"
+    assert "pipeline_manifest_raw_ohlc_sha256_mismatch" in report["errors"]
+    assert report["pipeline_manifest_raw_ohlc_sha256_verified"] is False
+
+
+def test_audit_cli_rejects_tampered_pipeline_manifest_fingerprint(tmp_path, capsys):
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    csv_path, _ = _write_snapshot(tmp_path, [start, start + timedelta(minutes=15)])
+    pipeline_manifest = _write_pipeline_manifest(tmp_path, csv_path)
+    payload = json.loads(pipeline_manifest.read_text(encoding="utf-8"))
+    payload["symbol"] = "GBPUSD"
+    pipeline_manifest.write_text(json.dumps(payload) + "\\n", encoding="utf-8")
+
+    exit_code = audit_main([
+        "--pipeline-manifest", str(pipeline_manifest),
+        "--json",
+    ])
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == 3
+    assert report["status"] == "FAIL"
+    assert "pipeline_manifest_sha256_mismatch" in report["errors"]
