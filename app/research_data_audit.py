@@ -679,12 +679,82 @@ def audit_raw_ohlc_file(
     }
 
 
+
+
+def _load_pipeline_manifest(manifest_path: str | Path) -> tuple[dict[str, Any], Path]:
+    """Load a verified research-run manifest and resolve its exact raw OHLC input."""
+    path = Path(manifest_path)
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError("pipeline_manifest_not_found") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("pipeline_manifest_unreadable") from exc
+
+    if not isinstance(loaded, dict):
+        raise ValueError("pipeline_manifest_not_object")
+    if loaded.get("scope") != "GOLDCREST_OFFLINE_RESEARCH_PIPELINE":
+        raise ValueError("unexpected_pipeline_manifest_scope")
+    if loaded.get("actionable") is not False or loaded.get("execution_connected") is not False:
+        raise ValueError("pipeline_manifest_must_be_non_actionable_and_offline")
+
+    declared_hash = loaded.get("pipeline_manifest_sha256")
+    payload = dict(loaded)
+    payload.pop("pipeline_manifest_sha256", None)
+    try:
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        actual_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    except (TypeError, ValueError) as exc:
+        raise ValueError("pipeline_manifest_not_canonical_json") from exc
+    if not isinstance(declared_hash, str) or declared_hash != actual_hash:
+        raise ValueError("pipeline_manifest_sha256_mismatch")
+
+    raw_path_value = loaded.get("raw_ohlc_path")
+    if not isinstance(raw_path_value, str) or not raw_path_value.strip():
+        raise ValueError("pipeline_manifest_raw_ohlc_path_missing")
+    csv_path = Path(raw_path_value).expanduser()
+    if not csv_path.is_absolute():
+        csv_path = (Path.cwd() / csv_path).resolve()
+
+    return loaded, csv_path
+
+
+def _pipeline_manifest_failure(path: str | Path, error: str) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "scope": "CTRADER_RAW_OHLC_INTEGRITY_AUDIT",
+        "status": "FAIL",
+        "csv_path": None,
+        "manifest_path": None,
+        "pipeline_manifest_path": str(Path(path)),
+        "errors": [error],
+        "warnings": [],
+        "actionable": False,
+        "execution_connected": False,
+        "automatic_model_selection": False,
+        "interpretation": (
+            "The pipeline manifest could not be safely used to resolve the exact raw OHLC input. "
+            "No model selection or execution decision was made."
+        ),
+    }
+
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Audit a local OHLC CSV and, when required, its cTrader DEMO integrity manifest.")
-    parser.add_argument("--csv", required=True, help="Downloaded CSV to audit")
-    parser.add_argument("--manifest", help="Manifest path; defaults to <csv>.manifest.json")
-    parser.add_argument("--symbol", help="Optional expected symbol, e.g. EURUSD")
-    parser.add_argument("--timeframe", choices=tuple(_TIMEFRAME_MINUTES), help="Optional expected timeframe")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Audit a local OHLC CSV and optional cTrader DEMO snapshot manifest. "
+            "Use --pipeline-manifest to resolve the exact raw CSV recorded by a completed research run."
+        )
+    )
+    parser.add_argument("--csv", help="CSV to audit; may be omitted when --pipeline-manifest is supplied")
+    parser.add_argument("--manifest", help="cTrader snapshot manifest; defaults to <csv>.manifest.json")
+    parser.add_argument(
+        "--pipeline-manifest",
+        help="Optional completed research pipeline manifest; verifies its fingerprint and recorded raw CSV hash",
+    )
+    parser.add_argument("--symbol", help="Optional expected symbol; defaults to the pipeline manifest symbol")
+    parser.add_argument("--timeframe", choices=tuple(_TIMEFRAME_MINUTES), help="Optional expected timeframe; defaults to the pipeline manifest timeframe")
     parser.add_argument("--output", help="Optional JSON report output path")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     return parser
@@ -692,10 +762,56 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    report = audit_raw_ohlc_file(
-        args.csv, manifest_path=args.manifest,
-        expected_symbol=args.symbol, expected_timeframe=args.timeframe,
-    )
+    pipeline_manifest: dict[str, Any] | None = None
+    csv_path = args.csv
+
+    if args.pipeline_manifest:
+        try:
+            pipeline_manifest, recorded_csv_path = _load_pipeline_manifest(args.pipeline_manifest)
+            if csv_path is None:
+                csv_path = str(recorded_csv_path)
+        except ValueError as exc:
+            report = _pipeline_manifest_failure(args.pipeline_manifest, str(exc))
+        else:
+            expected_symbol = args.symbol or str(pipeline_manifest.get("symbol") or "") or None
+            expected_timeframe = args.timeframe or str(pipeline_manifest.get("timeframe") or "") or None
+            report = audit_raw_ohlc_file(
+                csv_path,
+                manifest_path=args.manifest,
+                expected_symbol=expected_symbol,
+                expected_timeframe=expected_timeframe,
+                require_manifest=(
+                    pipeline_manifest.get("source") != "Operator-supplied canonical OHLC CSV"
+                ),
+            )
+            expected_raw_hash = pipeline_manifest.get("raw_ohlc_sha256")
+            actual_raw_hash = report.get("snapshot_sha256")
+            pipeline_hash_verified = (
+                isinstance(expected_raw_hash, str)
+                and bool(actual_raw_hash)
+                and expected_raw_hash == actual_raw_hash
+            )
+            if not isinstance(expected_raw_hash, str) or not expected_raw_hash:
+                report["errors"].append("pipeline_manifest_raw_ohlc_sha256_missing")
+            elif actual_raw_hash and expected_raw_hash != actual_raw_hash:
+                report["errors"].append("pipeline_manifest_raw_ohlc_sha256_mismatch")
+            report["errors"] = sorted(set(report.get("errors", [])))
+            report["status"] = (
+                "FAIL" if report["errors"]
+                else "PASS_WITH_WARNINGS" if report.get("warnings")
+                else "PASS"
+            )
+            report["pipeline_manifest_path"] = str(Path(args.pipeline_manifest).resolve())
+            report["pipeline_manifest_sha256_verified"] = True
+            report["pipeline_manifest_raw_ohlc_sha256_verified"] = pipeline_hash_verified
+    else:
+        if csv_path is None:
+            _parser().error("provide --csv or --pipeline-manifest")
+        report = audit_raw_ohlc_file(
+            csv_path, manifest_path=args.manifest,
+            expected_symbol=args.symbol, expected_timeframe=args.timeframe,
+        )
+
     if args.output:
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -711,6 +827,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"ERROR: {error}")
         for warning in report["warnings"]:
             print(f"WARNING: {warning}")
+        if report.get("pipeline_manifest_path"):
+            print(f"Pipeline manifest: {report['pipeline_manifest_path']}")
         if report.get("report_path"):
             print(f"Report: {report['report_path']}")
         print("Actionable: false")
