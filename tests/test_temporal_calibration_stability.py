@@ -116,6 +116,8 @@ def _rehash_matrix_fixture(matrix):
 
 
 def test_report_rejects_boolean_schema_version(tmp_path):
+    import json
+
     from app.temporal_calibration_stability import build_temporal_calibration_stability_report
 
     matrix = _rehash_matrix_fixture(_matrix_fixture())
@@ -131,6 +133,8 @@ def test_report_rejects_boolean_schema_version(tmp_path):
 
 
 def test_report_warns_when_sample_count_is_invalid(tmp_path):
+    import json
+
     from app.temporal_calibration_stability import build_temporal_calibration_stability_report
 
     matrix = _matrix_fixture()
