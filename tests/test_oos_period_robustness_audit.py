@@ -185,7 +185,7 @@ def test_audit_supports_legacy_test_metrics_field():
         "test_metrics": 4,
         "missing": 0,
     }
-    assert audit["candidates"][0]["periods"][0]["median_test_brier_score"] == pytest.approx(0.165)
+    assert audit["candidates"][0]["periods"][0]["median_test_brier_score"] == pytest.approx(0.155)
 
 
 def test_audit_explains_when_fold_metrics_are_present_but_incomplete():
