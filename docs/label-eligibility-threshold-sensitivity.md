@@ -80,3 +80,23 @@ The event-profile audit found 259 non-nominal raw timestamp intervals: 205 short
 Use the exact report filenames printed by previous runs if collision-safe rerun names were created. The audit independently reconstructs gap-to-label associations and verifies source hashes, duration buckets, and existing threshold-audit counts. It compares the complete eligible row masks for: retaining all labels; applying 1-hour, 1.5-hour, or 8-hour caps; excluding labels crossing any non-nominal raw interval; and excluding labels crossing raw intervals longer than eight hours.
 
 Exact mask equivalence means those policies select the same rows for this particular snapshot and label definition. It does not show that they have equal predictive performance or that a gap is missing data. No training, label rewrite, threshold selection, or execution connection occurs.
+
+
+## Audit equivalence of elapsed-time caps and raw-gap policies
+
+After the duration profile, duration-gap attribution, and event-level gap profile complete, use the combined audit to compare exact row-level masks rather than comparing cap counts alone. It recomputes gap events from the hashed raw OHLC timeline, checks each event's affected label rows, validates the prior report counts, and compares the eligibility masks for the following policies:
+
+- Keep every label.
+- Exclude labels with elapsed duration above 1 hour.
+- Exclude labels whose forward window crosses any observed non-nominal timestamp interval.
+- Exclude labels above 1.5 hours or 8 hours.
+- Exclude labels whose forward window crosses an observed timestamp interval longer than 8 hours.
+
+    python -m app.research_label_gap_policy_equivalence_audit \
+      --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
+      --duration-profile-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_duration_cap_boundary_profile.json \
+      --duration-gap-attribution-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_duration_gap_attribution.json \
+      --gap-event-profile-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_gap_event_profile.json \
+      --threshold-audit-report data/research/runs/eurusd-m15-demo-m365-bas-cap-sweep_threshold_eligibility_audit_report.json
+
+Use the exact report paths emitted by the preceding commands if collision-safe rerun naming generated different names. The audit is immutable and report-only. Equality is established using row-identity hashes and symmetric differences, not just aggregate eligible counts. It does not evaluate model quality or decide which policy to adopt. An exact mask equality means the corresponding policies are redundant on this raw snapshot and label definition; it is not a general statement about other dates, instruments, timeframes, or data providers.
