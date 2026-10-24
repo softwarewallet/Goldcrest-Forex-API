@@ -300,3 +300,91 @@ def test_legacy_run_accepts_explicit_temporal_calibration_receipt(tmp_path, monk
     assert result["status"] == "PASS"
     assert result["sections"]["temporal_calibration"]["status"] == "PASS"
     assert result["summary"]["temporal_calibration"]["matrix_payload_hash_verified"] is True
+
+
+
+def test_evidence_interpretation_detects_inconclusive_baselines_and_upward_ece():
+    baseline = {
+        "status": "PASS_WITH_WARNINGS",
+        "experiments": [{
+            "experiment_id": "model-a",
+            "probability_loss_comparisons": [
+                {"baseline": "constant_probability_0_5", "metrics": {
+                    "log_loss": {
+                        "improvement_baseline_minus_model": 0.001,
+                        "confidence_interval_95": [-0.002, 0.003],
+                    },
+                    "brier_score": {
+                        "improvement_baseline_minus_model": -0.001,
+                        "confidence_interval_95": [-0.003, 0.001],
+                    },
+                }},
+            ],
+        }],
+    }
+    calibration = {
+        "status": "PASS",
+        "comparisons": [
+            {"model_name": "model-a", "partition": "test", "first_to_last_ece_delta": 0.02},
+            {"model_name": "model-b", "partition": "test", "first_to_last_ece_delta": 0.01},
+        ],
+    }
+
+    result = evidence.build_evidence_interpretation(
+        baseline=baseline, calibration=calibration, regimes=None, temporal_stability=None
+    )
+
+    assert result["baseline_comparison"]["status"] == "NO_CLEAR_INTERVAL_SEPARATION_FROM_TESTED_BASELINES"
+    assert result["baseline_comparison"]["intervals_including_zero"] == 2
+    assert result["baseline_comparison"]["positive_point_estimates"] == 1
+    assert result["temporal_calibration"]["status"] == "UPWARD_ECE_DRIFT_OBSERVED_IN_ALL_COMPARISONS"
+    assert result["temporal_calibration"]["upward_ece_changes"] == 2
+    assert result["promotion_readiness"] == "NOT_ESTABLISHED_BY_THIS_REPORT"
+    assert result["automatic_model_selection"] is False
+
+
+def test_evidence_interpretation_identifies_mixed_regime_improvements():
+    regimes = {
+        "status": "PASS_WITH_WARNINGS",
+        "experiments": [{
+            "experiment_id": "model-a",
+            "model_type": "xgboost",
+            "regime_metrics": {
+                "low_volatility": {"loss_improvements_baseline_minus_model": {
+                    "constant_probability_0_5": {"log_loss": -0.01, "brier_score": -0.02},
+                }},
+                "mid_volatility": {"loss_improvements_baseline_minus_model": {
+                    "constant_probability_0_5": {"log_loss": 0.01, "brier_score": 0.02},
+                }},
+                "high_volatility": {"loss_improvements_baseline_minus_model": {
+                    "constant_probability_0_5": {"log_loss": -0.005, "brier_score": -0.01},
+                }},
+            },
+        }],
+    }
+
+    result = evidence.build_evidence_interpretation(
+        baseline=None, calibration=None, regimes=regimes, temporal_stability=None
+    )
+
+    assert result["volatility_regime_consistency"]["status"] == "MIXED_BY_VOLATILITY_REGIME_OBSERVED"
+    assert result["volatility_regime_consistency"]["mixed_comparison_group_count"] == 2
+    assert all(
+        row["consistency"] == "MIXED_BY_VOLATILITY_REGIME"
+        for row in result["volatility_regime_consistency"]["comparisons"]
+    )
+
+
+def test_consolidated_report_includes_cross_diagnostic_interpretation(tmp_path, monkeypatch):
+    manifest = _build_run(tmp_path, monkeypatch)
+
+    result = evidence.build_research_evidence_report(manifest)
+
+    interpretation = result["evidence_interpretation"]
+    assert interpretation["research_conclusion"] == "DESCRIPTIVE_ONLY_NO_MODEL_SELECTED"
+    assert interpretation["automatic_model_selection"] is False
+    assert interpretation["test_metrics_used_for_selection"] is False
+    assert interpretation["actionable"] is False
+    assert interpretation["execution_connected"] is False
+    assert interpretation["baseline_comparison"]["status"] == "POSITIVE_INTERVAL_EVIDENCE_PRESENT"
+    assert interpretation["temporal_calibration"]["status"] == "UPWARD_ECE_DRIFT_OBSERVED_IN_ALL_COMPARISONS"
