@@ -97,3 +97,27 @@ def test_common_cohort_fails_on_bad_timestamp_fingerprint(tmp_path):
     assert result["status"] == "FAIL"
     assert any("fingerprint mismatch" in error for error in result["errors"])
     assert result["automatic_model_selection"] is False
+
+
+def test_common_cohort_fails_when_labels_disagree_on_shared_timestamp(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    altered = _rows()
+    altered[1]["label"] = 0
+    b = _report(tmp_path / "cap8.json", 8.0, altered)
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("label mismatch" in error for error in result["errors"])
+    assert result["actionable"] is False
+
+
+def test_common_cohort_fails_when_no_timestamp_records_are_present(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, [])
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
