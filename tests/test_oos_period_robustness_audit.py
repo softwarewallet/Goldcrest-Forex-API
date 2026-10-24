@@ -71,6 +71,89 @@ def test_audit_ignores_validation_metrics_and_is_deterministic():
     assert build_oos_period_robustness_audit(changed, []) == audit
 
 
+def test_audit_verifies_timestamps_match_chronological_fold_order():
+    results = {
+        "candidate": [
+            fold(0), fold(1), fold(2),
+        ],
+    }
+    starts = [
+        "2026-04-01T00:00:00Z",
+        "2026-04-02T00:00:00Z",
+        "2026-04-03T00:00:00Z",
+    ]
+    for row, start in zip(results["candidate"], starts):
+        row["test_start_utc"] = start
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["status"] == "PERIOD_DIAGNOSTIC_AVAILABLE"
+    assert audit["chronology_integrity"]["status"] == "VERIFIED_TEST_START_ORDER"
+    assert audit["chronology_integrity"]["observed_candidate_fold_timestamps"] == 3
+    assert audit["chronology_integrity"]["fold_test_starts"][0]["test_start_utc"] == starts[0]
+
+
+def test_audit_withholds_periods_when_timestamps_contradict_fold_order():
+    results = {
+        "candidate": [
+            fold(0), fold(1), fold(2),
+        ],
+    }
+    starts = [
+        "2026-04-02T00:00:00Z",
+        "2026-04-01T00:00:00Z",
+        "2026-04-03T00:00:00Z",
+    ]
+    for row, start in zip(results["candidate"], starts):
+        row["test_start_utc"] = start
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["status"] == "CHRONOLOGY_INVALID"
+    assert audit["chronology_integrity"]["status"] == "FOLD_ORDER_TIMESTAMP_MISMATCH"
+    assert audit["candidates"] == []
+    assert audit["period_group_count"] == 0
+
+
+def test_audit_withholds_periods_when_candidates_disagree_on_fold_windows():
+    results = {
+        "candidate-a": [fold(0), fold(1), fold(2)],
+        "candidate-b": [fold(0), fold(1), fold(2)],
+    }
+    starts = [
+        "2026-04-01T00:00:00Z",
+        "2026-04-02T00:00:00Z",
+        "2026-04-03T00:00:00Z",
+    ]
+    for candidate_rows in results.values():
+        for row, start in zip(candidate_rows, starts):
+            row["test_start_utc"] = start
+    results["candidate-b"][1]["test_start_utc"] = "2026-04-05T00:00:00Z"
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["status"] == "CHRONOLOGY_INVALID"
+    assert audit["chronology_integrity"]["status"] == "CROSS_CANDIDATE_WINDOW_MISMATCH"
+    assert audit["candidates"] == []
+
+
+def test_audit_rejects_out_of_domain_test_metrics():
+    results = {
+        "candidate": [
+            fold(0, brier=0.2),
+            fold(1, brier=1.2),
+            fold(2, brier=0.3),
+            fold(3, brier=0.4, log_loss=-0.2),
+            fold(4, brier=0.5),
+        ],
+    }
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["common_test_fold_indices"] == [0, 2, 4]
+    assert audit["status"] == "PERIOD_DIAGNOSTIC_AVAILABLE"
+
+
 def test_audit_rejects_invalid_minimum():
     with pytest.raises(ValueError, match="at least 3"):
         build_oos_period_robustness_audit({}, [], minimum_test_folds=2)

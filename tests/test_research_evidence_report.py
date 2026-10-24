@@ -555,6 +555,35 @@ def test_evidence_interpretation_marks_missing_regime_intervals_unavailable():
     assert uncertainty["intervals_unavailable"] == 2
 
 
+def test_consolidated_report_withholds_oos_periods_for_invalid_chronology(tmp_path, monkeypatch):
+    manifest = _build_run(tmp_path, monkeypatch)
+    matrix_path = tmp_path / "evidence-run-001_experiment_matrix.json"
+    matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+    first = matrix["experiments"][0]["fold_results"]
+    first[0]["test_start_utc"] = "2026-04-02T00:00:00Z"
+    first[1]["test_start_utc"] = "2026-04-01T00:00:00Z"
+    _write_json(matrix_path, matrix)
+
+    # Make the manifest and the source matrix agree on the new immutable artifact hash.
+    manifest_path = manifest
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    data["experiment_matrix_report_sha256"] = _sha(matrix_path)
+    manifest_payload = dict(data)
+    manifest_payload.pop("pipeline_manifest_sha256", None)
+    data["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, data)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+    oos = result["evidence_interpretation"]["chronological_oos_robustness"]
+
+    assert oos["status"] == "CHRONOLOGY_INVALID"
+    assert oos["chronology_integrity"]["status"] == "FOLD_ORDER_TIMESTAMP_MISMATCH"
+    assert oos["candidates"] == []
+    assert "oos_period_robustness_chronology_invalid_period_summaries_withheld" in result["warnings"]
+
+
 def test_consolidated_report_includes_cross_diagnostic_interpretation(tmp_path, monkeypatch):
     manifest = _build_run(tmp_path, monkeypatch)
 

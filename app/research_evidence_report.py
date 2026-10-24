@@ -705,6 +705,10 @@ def build_evidence_interpretation(
                 oos_period_robustness.get("period_group_count")
                 if isinstance(oos_period_robustness, Mapping) else 0
             ),
+            "chronology_integrity": (
+                oos_period_robustness.get("chronology_integrity")
+                if isinstance(oos_period_robustness, Mapping) else None
+            ),
             "candidates": robustness_rows,
             "test_metrics_used_for_selection": False,
             "actionable": False,
@@ -880,6 +884,8 @@ def _derive_oos_period_robustness(
         }, errors or ["oos_period_robustness_no_valid_experiments"], warnings)
 
     audit = build_oos_period_robustness_audit(fold_results, [])
+    if audit.get("status") == "CHRONOLOGY_INVALID":
+        warnings.append("oos_period_robustness_chronology_invalid_period_summaries_withheld")
     audit["source_matrix_path"] = str(matrix_path.resolve())
     audit["source_matrix_sha256"] = digest
     audit["source_run_id"] = expected_run_id
