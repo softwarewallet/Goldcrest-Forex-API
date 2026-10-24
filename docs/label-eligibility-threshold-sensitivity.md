@@ -64,3 +64,19 @@ After the duration-gap attribution audit reconciles elapsed-time excess, run thi
       --duration-gap-attribution-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_duration_gap_attribution.json
 
 Use the exact report path printed by the previous duration-gap attribution command if collision-safe naming produced a rerun filename. The event profile checks both input hashes, the forward-bar horizon, and exposure counts against the prior audit. Its classifications are descriptive only and do not prove missing candles, provider failure, or an expected session closure. No dataset is rewritten and no model is trained.
+
+
+## Verify gap-policy equivalence without retraining
+
+The event-profile audit found 259 non-nominal raw timestamp intervals: 205 shorter-gap events and 54 long-gap events. Each event was associated with four label windows, for 1,036 unique labels crossing at least one gap. No label window crossed multiple events. The follow-up audit compares row-level masks—not only aggregate counts—between elapsed-time caps and gap-driven exclusion policies.
+
+    python -m app.research_label_gap_policy_equivalence_audit \
+      --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
+      --duration-profile-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_duration_cap_boundary_profile.json \
+      --duration-gap-attribution-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_duration_gap_attribution.json \
+      --gap-event-profile-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_gap_event_profile.json \
+      --threshold-audit-report data/research/runs/eurusd-m15-demo-m365-bas-cap-sweep_threshold_eligibility_audit_report.json
+
+Use the exact report filenames printed by previous runs if collision-safe rerun names were created. The audit independently reconstructs gap-to-label associations and verifies source hashes, duration buckets, and existing threshold-audit counts. It compares the complete eligible row masks for: retaining all labels; applying 1-hour, 1.5-hour, or 8-hour caps; excluding labels crossing any non-nominal raw interval; and excluding labels crossing raw intervals longer than eight hours.
+
+Exact mask equivalence means those policies select the same rows for this particular snapshot and label definition. It does not show that they have equal predictive performance or that a gap is missing data. No training, label rewrite, threshold selection, or execution connection occurs.
