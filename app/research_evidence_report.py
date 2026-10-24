@@ -353,6 +353,7 @@ def build_research_evidence_report(
     regime_analysis_path: str | Path | None = None,
     temporal_stability_path: str | Path | None = None,
     validation_report_path: str | Path | None = None,
+    temporal_calibration_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Validate and summarize evidence artifacts attached to one immutable research run."""
     manifest_file = Path(manifest_path).resolve()
@@ -397,36 +398,80 @@ def build_research_evidence_report(
     # These two receipts are explicitly referenced and hash-bound by the pipeline manifest.
     for name, path_field, hash_field, scope in (
         ("provenance_audit", "provenance_audit_path", "provenance_audit_sha256", None),
-        (
-            "temporal_calibration",
-            "temporal_calibration_audit_path",
-            "temporal_calibration_audit_sha256",
-            "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
-        ),
     ):
         path = _resolve_path(manifest.get(path_field), manifest_file.parent)
+        declared = bool(manifest.get(path_field) or manifest.get(hash_field))
         if path is None:
-            record = {
-                "status": "MISSING", "path": None, "sha256": None, "scope": scope,
+            sections[name] = {
+                "status": "MISSING" if declared else "NOT_PROVIDED",
+                "path": None,
+                "sha256": None,
+                "scope": scope,
             }
-            section_report = None
-            section_errors = [f"{name}_path_missing"]
-            section_warnings: list[str] = []
-        else:
-            record, section_report, section_errors, section_warnings = _artifact_record(
-                section_name=name,
-                path=path,
-                expected_scope=scope,
-                expected_run_id=run_id,
-                expected_symbol=symbol,
-                expected_timeframe=timeframe,
-                expected_manifest=manifest_file,
-                expected_matrix_sha256=matrix_hash if isinstance(matrix_hash, str) else None,
-                expected_sha256=manifest.get(hash_field) if isinstance(manifest.get(hash_field), str) else None,
-                mandatory=True,
-            )
+            records[name] = None
+            (errors if declared else warnings).append(f"{name}_path_missing" if declared else f"{name}_not_recorded_in_legacy_manifest")
+            continue
+        record, section_report, section_errors, section_warnings = _artifact_record(
+            section_name=name,
+            path=path,
+            expected_scope=scope,
+            expected_run_id=run_id,
+            expected_symbol=symbol,
+            expected_timeframe=timeframe,
+            expected_manifest=manifest_file,
+            expected_matrix_sha256=matrix_hash if isinstance(matrix_hash, str) else None,
+            expected_sha256=manifest.get(hash_field) if isinstance(manifest.get(hash_field), str) else None,
+            mandatory=declared,
+        )
         sections[name] = record
         records[name] = section_report
+        errors.extend(section_errors)
+        warnings.extend(section_warnings)
+
+    standard_temporal_path = manifest_file.parent / f"{run_id}_temporal_calibration_stability.json"
+    temporal_path = (
+        Path(temporal_calibration_path).resolve()
+        if temporal_calibration_path is not None
+        else _resolve_path(manifest.get("temporal_calibration_audit_path"), manifest_file.parent)
+    )
+    temporal_declared = bool(
+        temporal_calibration_path is not None
+        or manifest.get("temporal_calibration_audit_path")
+        or manifest.get("temporal_calibration_audit_sha256")
+    )
+    if temporal_path is None and temporal_calibration_path is None and standard_temporal_path.is_file():
+        temporal_path = standard_temporal_path.resolve()
+    if temporal_path is None:
+        sections["temporal_calibration"] = {
+            "status": "MISSING" if temporal_declared else "NOT_PROVIDED",
+            "path": None if not temporal_declared else str(standard_temporal_path),
+            "sha256": None,
+            "scope": "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        }
+        records["temporal_calibration"] = None
+        (errors if temporal_declared else warnings).append(
+            "temporal_calibration_path_missing" if temporal_declared else "temporal_calibration_not_recorded_in_legacy_run"
+        )
+    else:
+        temporal_record, temporal_report, section_errors, section_warnings = _artifact_record(
+            section_name="temporal_calibration",
+            path=temporal_path,
+            expected_scope="GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+            expected_run_id=run_id,
+            expected_symbol=symbol,
+            expected_timeframe=timeframe,
+            expected_manifest=manifest_file,
+            expected_matrix_sha256=matrix_hash if isinstance(matrix_hash, str) else None,
+            expected_sha256=(
+                manifest.get("temporal_calibration_audit_sha256")
+                if temporal_path == _resolve_path(manifest.get("temporal_calibration_audit_path"), manifest_file.parent)
+                and isinstance(manifest.get("temporal_calibration_audit_sha256"), str)
+                else None
+            ),
+            mandatory=temporal_declared,
+        )
+        sections["temporal_calibration"] = temporal_record
+        records["temporal_calibration"] = temporal_report
         errors.extend(section_errors)
         warnings.extend(section_warnings)
 
@@ -444,7 +489,7 @@ def build_research_evidence_report(
         expected_timeframe=timeframe,
         expected_manifest=manifest_file,
         expected_matrix_sha256=matrix_hash if isinstance(matrix_hash, str) else None,
-        mandatory=True,
+        mandatory=validation_report_path is not None,
     )
     sections["validation"] = validation_record
     records["validation"] = validation_report
@@ -508,11 +553,15 @@ def build_research_evidence_report(
     if validation_status == "FAIL":
         _add_issue(errors, "validation_report_failed")
     provenance_status = sections["provenance_audit"].get("status")
-    if provenance_status not in {"PASS", "PASS_WITH_WARNINGS"}:
+    if provenance_status == "FAIL" or provenance_status == "MISSING":
         _add_issue(errors, "provenance_audit_not_pass")
+    elif provenance_status == "NOT_PROVIDED":
+        _add_issue(warnings, "provenance_audit_not_recorded_in_manifest")
     temporal_status = sections["temporal_calibration"].get("status")
-    if temporal_status not in {"PASS", "PASS_WITH_WARNINGS"}:
+    if temporal_status == "FAIL" or temporal_status == "MISSING":
         _add_issue(errors, "temporal_calibration_not_pass")
+    elif temporal_status == "NOT_PROVIDED":
+        _add_issue(warnings, "temporal_calibration_not_recorded_in_manifest")
 
     available_sections = [name for name, section in sections.items() if section.get("status") in _ALLOWED_STATUSES]
     missing_optional_sections = [name for name in _OPTIONAL_REPORTS if sections[name].get("status") == "NOT_PROVIDED"]
@@ -581,6 +630,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", required=True, help="Path to <run-id>_pipeline_manifest.json")
     parser.add_argument("--output", help="Output JSON path; defaults beside the manifest")
     parser.add_argument("--validation-report", help="Validation report path if not using the standard run-scoped name")
+    parser.add_argument("--temporal-calibration-audit", help="Calibration audit report path, useful for a legacy run without an embedded receipt")
     parser.add_argument("--baseline-analysis", help="Existing time-series baseline analysis report")
     parser.add_argument("--regime-analysis", help="Existing volatility-regime analysis report")
     parser.add_argument("--temporal-stability", help="Existing temporal stability / long-gap sensitivity report")
@@ -598,6 +648,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest_file,
             output,
             validation_report_path=args.validation_report,
+            temporal_calibration_path=args.temporal_calibration_audit,
             baseline_analysis_path=args.baseline_analysis,
             regime_analysis_path=args.regime_analysis,
             temporal_stability_path=args.temporal_stability,
