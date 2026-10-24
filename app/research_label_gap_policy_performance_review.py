@@ -491,6 +491,19 @@ def review_gap_policy_performance(
     unique_mask_groups: list[dict[str, Any]] = []
     for mask_hash, caps_in_group in sorted(groups_by_hash.items(), key=lambda item: min(item[1])):
         group_candidates = next(group for group in groups.values() if group["eligible_row_numbers_sha256"] == mask_hash)
+        metric_summary_by_cap = []
+        for cap in sorted(caps_in_group):
+            metric_summary_by_cap.append({
+                "cap_hours": cap,
+                "experiments": [
+                    {
+                        "model_type": key[0],
+                        "feature_variant": key[1],
+                        "metrics": requested_metrics[cap][key],
+                    }
+                    for key in sorted(requested_metrics[cap])
+                ],
+            })
         unique_mask_groups.append({
             "eligible_row_numbers_sha256": mask_hash,
             "ineligible_row_numbers_sha256": group_candidates["ineligible_row_numbers_sha256"],
@@ -500,6 +513,7 @@ def review_gap_policy_performance(
             "eligible_rows": group_candidates["eligible_rows"],
             "ineligible_rows": group_candidates["ineligible_rows"],
             "eligible_fraction": group_candidates["eligible_fraction"],
+            "metric_summary_by_cap": metric_summary_by_cap,
             "metrics_available": bool(caps_in_group),
         })
 
