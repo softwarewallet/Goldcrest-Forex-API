@@ -282,3 +282,21 @@ def test_writer_refuses_to_overwrite_existing_evidence_report(tmp_path, monkeypa
     else:
         raise AssertionError("writer must refuse an existing report")
     assert output.read_text(encoding="utf-8") == "preserve"
+
+
+def test_legacy_run_accepts_explicit_temporal_calibration_receipt(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    temporal_path = Path(manifest["temporal_calibration_audit_path"])
+    manifest.pop("temporal_calibration_audit_path")
+    manifest.pop("temporal_calibration_audit_sha256")
+    manifest.pop("temporal_calibration_audit_status")
+    _write_json(manifest_path, manifest)
+
+    result = evidence.build_research_evidence_report(
+        manifest_path, temporal_calibration_path=temporal_path
+    )
+
+    assert result["status"] == "PASS"
+    assert result["sections"]["temporal_calibration"]["status"] == "PASS"
+    assert result["summary"]["temporal_calibration"]["matrix_payload_hash_verified"] is True
