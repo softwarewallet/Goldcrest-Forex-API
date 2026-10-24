@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.research_label_eligibility_comparison import compare_label_eligibility_runs
 from app.research_pipeline import run_research_pipeline
 from app.research_run_audit import audit_research_run_manifest
 
@@ -493,34 +494,65 @@ def main(argv: list[str] | None = None) -> int:
             errors.append("variant_model_feature_pairs_differ_from_baseline")
         if not raw_hash_match:
             errors.append("variant_raw_ohlc_hash_differs_from_baseline")
+        for status_field, error_name in (
+            ("validation_status", "variant_validation_failed"),
+            ("provenance_audit_status", "variant_provenance_audit_failed"),
+            ("temporal_calibration_audit_status", "variant_temporal_calibration_audit_failed"),
+        ):
+            if result.get(status_field) == "FAIL":
+                errors.append(error_name)
+
+        comparison = compare_label_eligibility_runs(
+            plan["baseline_manifest_path"], str(variant_manifest_path)
+        )
+        comparison_path = (
+            Path(settings["output_dir"])
+            / f"{settings['run_id']}_label_eligibility_comparison.json"
+        )
+        comparison_path.write_text(
+            json.dumps(comparison, indent=2, sort_keys=True, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
+        if comparison.get("status") == "FAIL":
+            errors.append("paired_label_eligibility_comparison_failed")
+
+        result_warnings = result.get("validation_warnings") or []
+        comparison_warnings = comparison.get("warnings") or []
+        warnings = plan["assumptions"] + result_warnings + comparison_warnings
         setup_report = {
             "schema_version": 1,
             "scope": "GOLDCREST_LABEL_ELIGIBILITY_VARIANT_RUN",
-            "status": "FAIL" if errors else "PASS_WITH_WARNINGS" if plan["assumptions"] or result.get("validation_warnings") else "PASS",
+            "status": "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS",
             "baseline_run_id": plan["baseline_run_id"],
             "variant_run_id": settings["run_id"],
             "baseline_manifest_path": plan["baseline_manifest_path"],
             "baseline_manifest_sha256": plan["baseline_manifest_sha256"],
             "variant_manifest_path": str(variant_manifest_path.resolve()),
             "variant_manifest_sha256": variant_manifest.get("pipeline_manifest_sha256"),
+            "paired_comparison_report_path": str(comparison_path.resolve()),
+            "paired_comparison_status": comparison.get("status"),
+            "paired_comparison_errors": comparison.get("errors", []),
+            "paired_comparison_warnings": comparison_warnings,
+            "paired_comparison_eligibility_summary": comparison.get("eligibility_summary"),
             "raw_ohlc_sha256": plan["raw_ohlc_sha256"],
             "raw_ohlc_hash_match": raw_hash_match,
             "common_test_windows_match": windows_match,
             "model_feature_pairs_match": model_pairs_match,
             "variant_label_eligibility": variant_manifest.get("label_eligibility_metadata"),
             "variant_validation_status": result.get("validation_status"),
-            "variant_validation_warnings": result.get("validation_warnings", []),
+            "variant_validation_warnings": result_warnings,
             "replay_settings": settings,
             "assumptions": plan["assumptions"],
             "errors": errors,
-            "warnings": plan["assumptions"] + result.get("validation_warnings", []),
+            "warnings": warnings,
             "actionable": False,
             "execution_connected": False,
             "automatic_model_selection": False,
             "interpretation": (
-                "Offline sensitivity analysis only. This runner preserves the source OHLC hash and verifies "
-                "that baseline and variant use identical chronological test windows and model/feature pairs. "
-                "A one-hour cap is a diagnostic variant, not an automatically preferred dataset or trading model."
+                "Offline sensitivity analysis only. This runner preserves the source OHLC hash, verifies "
+                "identical chronological test windows and model/feature pairs, and writes a paired metric "
+                "comparison on identical eligible held-out timestamps. A capped variant is diagnostic, "
+                "not an automatically preferred dataset or trading model."
             ),
         }
         output_path = Path(settings["output_dir"]) / f"{settings['run_id']}_label_eligibility_variant_setup.json"
