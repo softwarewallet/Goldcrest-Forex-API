@@ -388,7 +388,19 @@ horizon away because of timestamp gaps. For example, an M15 target four rows ahe
 nominal one-hour horizon, but a row sequence may cross a weekend closure. Preserve the original
 run and use a new run ID for a capped eligibility experiment.
 
-Use the same raw OHLC snapshot, model/feature settings, walk-forward sizes, random seed, and
+For an existing baseline, the repository now has a manifest-driven runner that verifies the run's artifact hashes, reconstructs walk-forward partition sizes from the prepared dataset timestamps and persisted test windows, derives the trial count and feature variants from the experiment matrix, and creates a unique capped run ID. From the repository root, run:
+
+```bash
+python -m app.research_label_eligibility_variant \
+  --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
+  --max-label-elapsed-hours 1.0
+```
+
+The runner does not download data, modify the baseline, connect to a broker, or select a model. It reuses the original raw OHLC CSV and requires the variant's raw hash, model/feature pairs, and common test windows to match the baseline. It writes a separate `<variant-run-id>_label_eligibility_variant_setup.json` receipt. If the baseline is an older manifest that did not persist all configuration fields, the runner records explicit assumptions; in particular, a missing original random seed or bootstrap count is not silently claimed as recovered. Supply `--random-seed` and/or `--bootstrap-resamples` to override those values when the original settings are known. Use `--plan-only` to inspect the reconstructed configuration without starting model experiments.
+
+For new runs, the pipeline manifest stores a `research_config` object containing fold sizes, trials per fold, random seed, bootstrap count, ablation configuration, and strict-audit flags so future sensitivity runs need fewer assumptions.
+
+The equivalent manual procedure remains available. Use the same raw OHLC snapshot, model/feature settings, walk-forward sizes, random seed, and
 trial count as the baseline. The optional `--max-label-elapsed-hours 1.0` cap marks labels
 ineligible when the existing row-index target is more than one elapsed UTC hour from the
 prediction timestamp:
