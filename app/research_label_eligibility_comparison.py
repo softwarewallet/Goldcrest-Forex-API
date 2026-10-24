@@ -561,8 +561,22 @@ def compare_label_eligibility_runs(
                     metric: round(float(variant_paired_metrics[metric]) - float(baseline_paired_metrics[metric]), 10)
                     for metric in _DELTA_METRICS
                 }
+                eligible_prediction_pairs = [
+                    {
+                        "timestamp_utc": timestamp,
+                        "label": int(base_pred_map[timestamp]["label"]),
+                        "baseline_probability_class_1": float(base_pred_map[timestamp]["model_probability_class_1"]),
+                        "variant_probability_class_1": float(variant_pred_map[timestamp]["model_probability_class_1"]),
+                    }
+                    for timestamp in eligible_timestamps
+                ]
+                eligible_timestamp_fingerprint = _sha256_bytes(
+                    ("\n".join(sorted(eligible_timestamps)) + "\n").encode("utf-8")
+                )
                 paired_fold_results.append({
                     "fold_index": fold_index,
+                    "eligible_timestamp_fingerprint_sha256": eligible_timestamp_fingerprint,
+                    "eligible_timestamp_predictions": eligible_prediction_pairs,
                     "test_start_utc": start,
                     "test_end_utc": end,
                     "baseline_full_test_metrics": baseline_full_metrics,
