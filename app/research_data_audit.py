@@ -158,6 +158,156 @@ def _gap_pattern_diagnostics(gaps: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _within_session_gap_diagnostics(
+    timestamps: Sequence[datetime],
+    frame_seconds: int,
+    *,
+    max_gap_seconds: int = 8 * 3600,
+) -> dict[str, Any]:
+    """Describe timestamp intervals larger than one timeframe and no longer than eight hours.
+
+    This is a timestamp-spacing report, not an estimate of missing tradable candles:
+    instrument sessions, holidays, provider coverage and expected market closures are not inferred.
+    """
+    bucket_names = (
+        "greater_than_1_to_2_frames",
+        "greater_than_2_to_4_frames",
+        "greater_than_4_to_8_frames",
+        "greater_than_8_to_16_frames",
+        "greater_than_16_frames_to_8_hours",
+    )
+    buckets = {name: 0 for name in bucket_names}
+    if frame_seconds <= 0:
+        return {
+            "status": "UNAVAILABLE_TIMEFRAME_DURATION",
+            "expected_frame_seconds": None,
+            "upper_bound_seconds_inclusive": max_gap_seconds,
+            "gap_count": None,
+            "frame_multiple_buckets": buckets,
+            "start_weekday_hour_utc_counts": [],
+            "end_weekday_hour_utc_counts": [],
+            "repeated_boundary_patterns": [],
+            "largest_gap_examples": [],
+            "interpretation": (
+                "No timeframe-duration diagnostic was computed because the CSV timeframe is unsupported "
+                "or unavailable. No market-closure or missing-candle conclusion is inferred."
+            ),
+        }
+    if len(timestamps) < 2:
+        return {
+            "status": "INSUFFICIENT_INTERVALS",
+            "expected_frame_seconds": frame_seconds,
+            "upper_bound_seconds_inclusive": max_gap_seconds,
+            "gap_count": 0,
+            "frame_multiple_buckets": buckets,
+            "start_weekday_hour_utc_counts": [],
+            "end_weekday_hour_utc_counts": [],
+            "repeated_boundary_patterns": [],
+            "largest_gap_examples": [],
+            "interpretation": (
+                "At least two valid timestamps are needed to describe spacing. No market-closure or "
+                "missing-candle conclusion is inferred."
+            ),
+        }
+
+    intervals = [(right - left).total_seconds() for left, right in zip(timestamps, timestamps[1:])]
+    if any(seconds <= 0 for seconds in intervals):
+        return {
+            "status": "UNAVAILABLE_NON_MONOTONIC_TIMESTAMPS",
+            "expected_frame_seconds": frame_seconds,
+            "upper_bound_seconds_inclusive": max_gap_seconds,
+            "gap_count": None,
+            "frame_multiple_buckets": buckets,
+            "start_weekday_hour_utc_counts": [],
+            "end_weekday_hour_utc_counts": [],
+            "repeated_boundary_patterns": [],
+            "largest_gap_examples": [],
+            "interpretation": (
+                "Timestamp intervals are not strictly increasing, so spacing-pattern summaries were not "
+                "computed. Correct chronology must be reviewed before interpreting intervals."
+            ),
+        }
+
+    gaps: list[dict[str, Any]] = []
+    start_windows: dict[tuple[str, int], int] = {}
+    end_windows: dict[tuple[str, int], int] = {}
+    patterns: dict[tuple[str, int, str, int], int] = {}
+
+    for left, right, seconds in zip(timestamps, timestamps[1:], intervals):
+        if seconds <= frame_seconds or seconds > max_gap_seconds:
+            continue
+        multiple = seconds / frame_seconds
+        if multiple <= 2:
+            bucket = bucket_names[0]
+        elif multiple <= 4:
+            bucket = bucket_names[1]
+        elif multiple <= 8:
+            bucket = bucket_names[2]
+        elif multiple <= 16:
+            bucket = bucket_names[3]
+        else:
+            bucket = bucket_names[4]
+        buckets[bucket] += 1
+
+        start_key = (left.strftime("%A").upper(), left.hour)
+        end_key = (right.strftime("%A").upper(), right.hour)
+        start_windows[start_key] = start_windows.get(start_key, 0) + 1
+        end_windows[end_key] = end_windows.get(end_key, 0) + 1
+        pattern_key = (*start_key, *end_key)
+        patterns[pattern_key] = patterns.get(pattern_key, 0) + 1
+        gaps.append({
+            "from_utc": left.isoformat().replace("+00:00", "Z"),
+            "to_utc": right.isoformat().replace("+00:00", "Z"),
+            "interval_minutes": round(seconds / 60, 3),
+            "elapsed_timeframe_equivalents": round(multiple, 4),
+            "aligned_to_timeframe_multiple": math.isclose(
+                seconds / frame_seconds, round(multiple), rel_tol=0.0, abs_tol=1e-9
+            ),
+        })
+
+    def window_rows(counts: dict[tuple[str, int], int]) -> list[dict[str, Any]]:
+        return [
+            {"weekday_utc": weekday, "hour_utc": hour, "count": count}
+            for (weekday, hour), count in sorted(
+                counts.items(), key=lambda item: (-item[1], item[0])
+            )
+        ]
+
+    repeated_patterns = [
+        {
+            "from_weekday_utc": from_weekday,
+            "from_hour_utc": from_hour,
+            "to_weekday_utc": to_weekday,
+            "to_hour_utc": to_hour,
+            "count": count,
+        }
+        for (from_weekday, from_hour, to_weekday, to_hour), count in sorted(
+            patterns.items(), key=lambda item: (-item[1], item[0])
+        )
+        if count > 1
+    ]
+    largest_examples = sorted(
+        gaps, key=lambda gap: (-gap["interval_minutes"], gap["from_utc"])
+    )[:10]
+    return {
+        "status": "AVAILABLE",
+        "expected_frame_seconds": frame_seconds,
+        "upper_bound_seconds_inclusive": max_gap_seconds,
+        "gap_count": len(gaps),
+        "frame_multiple_buckets": buckets,
+        "start_weekday_hour_utc_counts": window_rows(start_windows),
+        "end_weekday_hour_utc_counts": window_rows(end_windows),
+        "repeated_boundary_patterns": repeated_patterns,
+        "largest_gap_examples": largest_examples,
+        "interpretation": (
+            "Descriptive timestamp-spacing summaries for intervals longer than one nominal timeframe and "
+            "no longer than eight hours. These are not confirmed missing candles: session breaks, holidays, "
+            "provider coverage and instrument-specific trading hours are not inferred. Repeated boundaries "
+            "are clues for review only and do not suppress any audit warning."
+        ),
+    }
+
+
 def audit_raw_ohlc_file(
     csv_path: str | Path,
     *,
@@ -324,7 +474,7 @@ def audit_raw_ohlc_file(
         intervals_seconds = [
             (right - left).total_seconds() for left, right in zip(timestamps, timestamps[1:])
         ]
-        frame = next(iter(timeframes), "")
+        frame = next(iter(timeframes), "") if len(timeframes) == 1 else ""
         frame_seconds = _TIMEFRAME_MINUTES.get(frame, 0) * 60
         long_gaps: list[dict[str, Any]] = []
         for left, right in zip(timestamps, timestamps[1:]):
@@ -342,6 +492,7 @@ def audit_raw_ohlc_file(
         weekend_like_gaps = [gap for gap in long_gaps if gap["gap_category"] == "weekend_closure_like"]
         non_weekend_long_gaps = [gap for gap in long_gaps if gap["gap_category"] == "non_weekend_long_gap"]
         calendar_context_gaps = [gap for gap in long_gaps if gap["calendar_context"]]
+        within_session_gap_diagnostics = _within_session_gap_diagnostics(timestamps, frame_seconds)
         if unaligned_rows == 0 and len(timeframes) == 1 and frame_seconds == 0:
             warnings.append("unknown_timeframe_candle_alignment_not_checked")
         if non_weekend_long_gaps:
@@ -351,6 +502,7 @@ def audit_raw_ohlc_file(
         weekend_like_gaps = []
         non_weekend_long_gaps = []
         calendar_context_gaps = []
+        within_session_gap_diagnostics = _within_session_gap_diagnostics([], 0)
 
     if not manifest:
         pagination_summary = None
@@ -387,6 +539,7 @@ def audit_raw_ohlc_file(
         },
         "large_gap_count_over_8_hours": len(long_gaps),
         "gap_diagnostics_over_8_hours": _gap_pattern_diagnostics(long_gaps),
+        "gap_diagnostics_between_one_frame_and_8_hours": within_session_gap_diagnostics,
         "large_gap_examples": long_gaps[:10],
         "weekend_closure_like_gap_count_over_8_hours": len(weekend_like_gaps),
         "non_weekend_long_gap_count_over_8_hours": len(non_weekend_long_gaps),

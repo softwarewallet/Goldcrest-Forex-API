@@ -6,7 +6,11 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from app.research_data_audit import _gap_pattern_diagnostics, audit_raw_ohlc_file
+from app.research_data_audit import (
+    _gap_pattern_diagnostics,
+    _within_session_gap_diagnostics,
+    audit_raw_ohlc_file,
+)
 
 
 def _write_snapshot(tmp_path: Path, timestamps: list[datetime]) -> tuple[Path, Path]:
@@ -259,3 +263,65 @@ def test_gap_pattern_diagnostics_summarize_duration_and_repeated_utc_boundaries(
     }]
     assert result["unparsed_boundary_count"] == 0
     assert "do not establish an expected market closure" in result["interpretation"]
+
+
+
+def test_within_session_gap_diagnostics_bucket_frame_multiples_and_ignore_over_8_hours():
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    timestamps = [
+        start,
+        start + timedelta(minutes=15),
+        start + timedelta(minutes=45),
+        start + timedelta(minutes=90),
+        start + timedelta(minutes=180),
+        start + timedelta(minutes=420),
+        start + timedelta(minutes=1020),
+    ]
+
+    result = _within_session_gap_diagnostics(timestamps, frame_seconds=15 * 60)
+
+    assert result["status"] == "AVAILABLE"
+    assert result["expected_frame_seconds"] == 900
+    assert result["gap_count"] == 4
+    assert result["frame_multiple_buckets"] == {
+        "greater_than_1_to_2_frames": 1,
+        "greater_than_2_to_4_frames": 1,
+        "greater_than_4_to_8_frames": 1,
+        "greater_than_8_to_16_frames": 1,
+        "greater_than_16_frames_to_8_hours": 0,
+    }
+    assert result["largest_gap_examples"][0]["interval_minutes"] == 240.0
+    assert result["largest_gap_examples"][0]["elapsed_timeframe_equivalents"] == 16.0
+    assert result["largest_gap_examples"][0]["aligned_to_timeframe_multiple"] is True
+    assert "not confirmed missing candles" in result["interpretation"]
+
+
+def test_within_session_gap_diagnostics_refuses_non_monotonic_timestamps():
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+
+    result = _within_session_gap_diagnostics(
+        [start, start + timedelta(minutes=15), start + timedelta(minutes=10)],
+        frame_seconds=15 * 60,
+    )
+
+    assert result["status"] == "UNAVAILABLE_NON_MONOTONIC_TIMESTAMPS"
+    assert result["gap_count"] is None
+    assert result["largest_gap_examples"] == []
+
+
+def test_raw_ohlc_audit_reports_sub_8_hour_spacing_without_reclassifying_it(tmp_path):
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    path, manifest = _write_snapshot(
+        tmp_path, [start, start + timedelta(minutes=15), start + timedelta(minutes=45)]
+    )
+
+    result = audit_raw_ohlc_file(path, manifest_path=manifest)
+
+    diagnostics = result["gap_diagnostics_between_one_frame_and_8_hours"]
+    assert result["status"] == "PASS"
+    assert diagnostics["status"] == "AVAILABLE"
+    assert diagnostics["gap_count"] == 1
+    assert diagnostics["frame_multiple_buckets"]["greater_than_1_to_2_frames"] == 1
+    assert diagnostics["largest_gap_examples"][0]["interval_minutes"] == 30.0
+    assert result["large_gap_count_over_8_hours"] == 0
+    assert result["actionable"] is False
