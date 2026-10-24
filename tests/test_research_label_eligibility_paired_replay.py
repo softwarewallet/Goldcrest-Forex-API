@@ -69,11 +69,14 @@ def test_pair_run_ids_reject_unsafe_prefix(prefix, tmp_path):
         )
 
 
-def test_pair_run_ids_reject_overlong_final_ids(tmp_path):
-    with pytest.raises(ValueError, match="128-character"):
-        choose_paired_replay_run_ids(
-            tmp_path,
-            "p" * 89,
-            symbol="EURUSD",
-            timeframe="M15",
-        )
+def test_pair_run_ids_keep_final_names_within_pipeline_limit(tmp_path):
+    uncapped, capped, versioned = choose_paired_replay_run_ids(
+        tmp_path,
+        "p" * 90,
+        symbol="EURUSD",
+        timeframe="M15",
+    )
+
+    assert len(uncapped) <= 128
+    assert len(capped) <= 128
+    assert versioned is False
