@@ -346,6 +346,243 @@ def _artifact_record(
     return record, report, errors, warnings
 
 
+def build_evidence_interpretation(
+    *,
+    baseline: Mapping[str, Any] | None,
+    calibration: Mapping[str, Any] | None,
+    regimes: Mapping[str, Any] | None,
+    temporal_stability: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Summarize cross-diagnostic patterns without ranking or promoting experiments."""
+    baseline_counts = {
+        "comparisons_evaluated": 0,
+        "intervals_excluding_zero_positive": 0,
+        "intervals_excluding_zero_negative": 0,
+        "intervals_including_zero": 0,
+        "intervals_unavailable": 0,
+        "positive_point_estimates": 0,
+        "negative_point_estimates": 0,
+        "zero_point_estimates": 0,
+    }
+    if isinstance(baseline, dict) and baseline.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+        experiments = baseline.get("experiments")
+        for experiment in experiments if isinstance(experiments, list) else []:
+            if not isinstance(experiment, dict):
+                continue
+            comparisons = experiment.get("probability_loss_comparisons")
+            for comparison in comparisons if isinstance(comparisons, list) else []:
+                if not isinstance(comparison, dict):
+                    continue
+                metrics = comparison.get("metrics")
+                for metric_name in ("log_loss", "brier_score"):
+                    metric = metrics.get(metric_name) if isinstance(metrics, dict) else None
+                    if not isinstance(metric, dict):
+                        continue
+                    improvement = _number(metric.get("improvement_baseline_minus_model"))
+                    if improvement is not None:
+                        if improvement > 0:
+                            baseline_counts["positive_point_estimates"] += 1
+                        elif improvement < 0:
+                            baseline_counts["negative_point_estimates"] += 1
+                        else:
+                            baseline_counts["zero_point_estimates"] += 1
+                    interval = metric.get("confidence_interval_95")
+                    if (
+                        not isinstance(interval, list)
+                        or len(interval) != 2
+                        or _number(interval[0]) is None
+                        or _number(interval[1]) is None
+                        or float(interval[0]) > float(interval[1])
+                    ):
+                        baseline_counts["intervals_unavailable"] += 1
+                        continue
+                    low, high = float(interval[0]), float(interval[1])
+                    baseline_counts["comparisons_evaluated"] += 1
+                    if low > 0:
+                        baseline_counts["intervals_excluding_zero_positive"] += 1
+                    elif high < 0:
+                        baseline_counts["intervals_excluding_zero_negative"] += 1
+                    else:
+                        baseline_counts["intervals_including_zero"] += 1
+    if baseline_counts["comparisons_evaluated"] == 0:
+        baseline_status = "UNAVAILABLE"
+    elif baseline_counts["intervals_excluding_zero_positive"] == 0 and baseline_counts["intervals_excluding_zero_negative"] == 0:
+        baseline_status = "NO_CLEAR_INTERVAL_SEPARATION_FROM_TESTED_BASELINES"
+    elif baseline_counts["intervals_excluding_zero_positive"] and baseline_counts["intervals_excluding_zero_negative"]:
+        baseline_status = "MIXED_INTERVAL_EVIDENCE"
+    elif baseline_counts["intervals_excluding_zero_positive"]:
+        baseline_status = "POSITIVE_INTERVAL_EVIDENCE_PRESENT"
+    else:
+        baseline_status = "NEGATIVE_INTERVAL_EVIDENCE_PRESENT"
+
+    calibration_counts = {
+        "comparisons_evaluated": 0,
+        "upward_ece_changes": 0,
+        "downward_ece_changes": 0,
+        "approximately_flat_ece_changes": 0,
+        "deltas_unavailable": 0,
+    }
+    calibration_rows: list[dict[str, Any]] = []
+    if isinstance(calibration, dict) and calibration.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+        raw_comparisons = calibration.get("comparisons")
+        for row in raw_comparisons if isinstance(raw_comparisons, list) else []:
+            if not isinstance(row, dict) or row.get("partition") not in (None, "test"):
+                continue
+            delta = _number(row.get("first_to_last_ece_delta"))
+            if delta is None:
+                calibration_counts["deltas_unavailable"] += 1
+                continue
+            calibration_counts["comparisons_evaluated"] += 1
+            if delta > 1e-12:
+                calibration_counts["upward_ece_changes"] += 1
+                direction = "UPWARD"
+            elif delta < -1e-12:
+                calibration_counts["downward_ece_changes"] += 1
+                direction = "DOWNWARD"
+            else:
+                calibration_counts["approximately_flat_ece_changes"] += 1
+                direction = "APPROXIMATELY_FLAT"
+            calibration_rows.append({
+                "model_name": row.get("model_name"),
+                "partition": row.get("partition", "test"),
+                "first_to_last_ece_delta": delta,
+                "direction": direction,
+            })
+    if not calibration_counts["comparisons_evaluated"]:
+        calibration_status = "UNAVAILABLE"
+    elif calibration_counts["upward_ece_changes"] == calibration_counts["comparisons_evaluated"]:
+        calibration_status = "UPWARD_ECE_DRIFT_OBSERVED_IN_ALL_COMPARISONS"
+    elif calibration_counts["downward_ece_changes"] == calibration_counts["comparisons_evaluated"]:
+        calibration_status = "DOWNWARD_ECE_CHANGE_OBSERVED_IN_ALL_COMPARISONS"
+    elif calibration_counts["upward_ece_changes"] or calibration_counts["downward_ece_changes"]:
+        calibration_status = "MIXED_OR_NONMONOTONIC_ECE_CHANGES"
+    else:
+        calibration_status = "NO_MATERIAL_FIRST_TO_LAST_ECE_CHANGE_OBSERVED"
+
+    regime_groups: list[dict[str, Any]] = []
+    if isinstance(regimes, dict) and regimes.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+        experiments = regimes.get("experiments")
+        for experiment in experiments if isinstance(experiments, list) else []:
+            if not isinstance(experiment, dict):
+                continue
+            regime_metrics = experiment.get("regime_metrics")
+            if not isinstance(regime_metrics, dict):
+                continue
+            by_baseline_metric: dict[tuple[str, str], list[tuple[str, float]]] = {}
+            for regime_name, regime in regime_metrics.items():
+                if not isinstance(regime, dict):
+                    continue
+                improvements = regime.get("loss_improvements_baseline_minus_model")
+                if not isinstance(improvements, dict):
+                    continue
+                for baseline_name, metric_values in improvements.items():
+                    if not isinstance(metric_values, dict):
+                        continue
+                    for metric_name in ("log_loss", "brier_score"):
+                        value = _number(metric_values.get(metric_name))
+                        if value is not None:
+                            by_baseline_metric.setdefault((str(baseline_name), metric_name), []).append(
+                                (str(regime_name), float(value))
+                            )
+            for (baseline_name, metric_name), rows in sorted(by_baseline_metric.items()):
+                positive = sum(value > 0 for _, value in rows)
+                negative = sum(value < 0 for _, value in rows)
+                neutral = len(rows) - positive - negative
+                if len(rows) < 2:
+                    consistency = "INSUFFICIENT_REGIME_COVERAGE"
+                elif positive and negative:
+                    consistency = "MIXED_BY_VOLATILITY_REGIME"
+                elif positive:
+                    consistency = "POSITIVE_IN_ALL_OBSERVED_REGIMES"
+                elif negative:
+                    consistency = "NEGATIVE_IN_ALL_OBSERVED_REGIMES"
+                else:
+                    consistency = "ZERO_IMPROVEMENT_IN_ALL_OBSERVED_REGIMES"
+                regime_groups.append({
+                    "experiment_id": experiment.get("experiment_id"),
+                    "model_type": experiment.get("model_type"),
+                    "baseline": baseline_name,
+                    "metric": metric_name,
+                    "regimes_evaluated": len(rows),
+                    "positive_regime_improvements": positive,
+                    "negative_regime_improvements": negative,
+                    "zero_regime_improvements": neutral,
+                    "consistency": consistency,
+                })
+    mixed_regime_groups = sum(
+        item["consistency"] == "MIXED_BY_VOLATILITY_REGIME" for item in regime_groups
+    )
+    if not regime_groups:
+        regime_status = "UNAVAILABLE"
+    elif mixed_regime_groups:
+        regime_status = "MIXED_BY_VOLATILITY_REGIME_OBSERVED"
+    elif all(item["consistency"] == "POSITIVE_IN_ALL_OBSERVED_REGIMES" for item in regime_groups):
+        regime_status = "POSITIVE_IMPROVEMENTS_ACROSS_OBSERVED_REGIMES"
+    elif all(item["consistency"] == "NEGATIVE_IN_ALL_OBSERVED_REGIMES" for item in regime_groups):
+        regime_status = "NEGATIVE_IMPROVEMENTS_ACROSS_OBSERVED_REGIMES"
+    else:
+        regime_status = "REGIME_EVIDENCE_INCONCLUSIVE_OR_INCOMPLETE"
+
+    gap_summary: dict[str, Any] = {
+        "status": "UNAVAILABLE",
+        "long_gap_count": None,
+        "weekend_closure_like_gap_count": None,
+        "non_weekend_long_gap_count": None,
+        "prediction_horizon_crosses_long_gap_count": None,
+        "prediction_horizon_crosses_long_gap_fraction": None,
+    }
+    if isinstance(temporal_stability, dict) and temporal_stability.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+        gap_summary = {
+            "status": temporal_stability.get("status"),
+            "long_gap_count": temporal_stability.get("long_gap_count"),
+            "weekend_closure_like_gap_count": temporal_stability.get("weekend_closure_like_gap_count"),
+            "non_weekend_long_gap_count": temporal_stability.get("non_weekend_long_gap_count"),
+            "prediction_horizon_crosses_long_gap_count": temporal_stability.get(
+                "prediction_horizon_crosses_long_gap_count"
+            ),
+            "prediction_horizon_crosses_long_gap_fraction": temporal_stability.get(
+                "prediction_horizon_crosses_long_gap_fraction"
+            ),
+        }
+
+    return {
+        "baseline_comparison": {
+            "status": baseline_status,
+            **baseline_counts,
+            "interpretation": (
+                "Baseline loss improvement is baseline loss minus model loss. A confidence interval that includes zero "
+                "does not show clear separation in this descriptive comparison; it is not a formal profitability test."
+            ),
+        },
+        "temporal_calibration": {
+            "status": calibration_status,
+            **calibration_counts,
+            "comparisons": calibration_rows,
+            "interpretation": (
+                "ECE direction describes first-to-last test-period change only. It is a drift diagnostic, "
+                "not a significance test or proof of calibration failure."
+            ),
+        },
+        "volatility_regime_consistency": {
+            "status": regime_status,
+            "comparison_group_count": len(regime_groups),
+            "mixed_comparison_group_count": mixed_regime_groups,
+            "comparisons": regime_groups,
+            "interpretation": (
+                "Positive baseline-minus-model loss improvement favors the model. Mixed signs across regimes "
+                "indicate conditional heterogeneity; regime summaries are descriptive and may have dependent samples."
+            ),
+        },
+        "label_gap_exposure": gap_summary,
+        "research_conclusion": "DESCRIPTIVE_ONLY_NO_MODEL_SELECTED",
+        "promotion_readiness": "NOT_ESTABLISHED_BY_THIS_REPORT",
+        "automatic_model_selection": False,
+        "test_metrics_used_for_selection": False,
+        "actionable": False,
+        "execution_connected": False,
+    }
+
+
 def build_research_evidence_report(
     manifest_path: str | Path,
     *,
@@ -549,6 +786,13 @@ def build_research_evidence_report(
         if records.get("temporal_stability") is not None else None,
     }
 
+    evidence_interpretation = build_evidence_interpretation(
+        baseline=records.get("baseline_analysis"),
+        calibration=records.get("temporal_calibration"),
+        regimes=records.get("regime_analysis"),
+        temporal_stability=records.get("temporal_stability"),
+    )
+
     validation_status = sections["validation"].get("status")
     if validation_status == "FAIL":
         _add_issue(errors, "validation_report_failed")
@@ -593,6 +837,7 @@ def build_research_evidence_report(
         },
         "sections": sections,
         "summary": summary,
+        "evidence_interpretation": evidence_interpretation,
         "errors": sorted(set(errors)),
         "warnings": sorted(set(warnings)),
         "actionable": False,
