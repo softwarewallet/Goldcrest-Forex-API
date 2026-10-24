@@ -474,7 +474,7 @@ def audit_raw_ohlc_file(
         intervals_seconds = [
             (right - left).total_seconds() for left, right in zip(timestamps, timestamps[1:])
         ]
-        frame = next(iter(timeframes), "")
+        frame = next(iter(timeframes), "") if len(timeframes) == 1 else ""
         frame_seconds = _TIMEFRAME_MINUTES.get(frame, 0) * 60
         long_gaps: list[dict[str, Any]] = []
         for left, right in zip(timestamps, timestamps[1:]):
