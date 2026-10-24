@@ -25,6 +25,8 @@ DEFAULT_CAPS = (1.0, 1.5, 8.0)
 
 def parse_elapsed_caps(value: str | Sequence[float]) -> list[float]:
     if isinstance(value, str):
+        if not value.strip():
+            raise ValueError("at least two elapsed-time caps are required")
         parts = value.split(",")
         if any(not part.strip() for part in parts):
             raise ValueError("caps must be a comma-separated list of positive hours")
