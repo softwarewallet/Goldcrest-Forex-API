@@ -131,6 +131,55 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"raw_ohlc_audit_path_invalid_json:{type(exc).__name__}")
 
+    # Newer runs also include a calibration-stability receipt derived from the
+    # persisted experiment matrix. Keep older schema-v1 manifests readable.
+    if manifest.get("temporal_calibration_audit_path") or manifest.get("temporal_calibration_audit_sha256"):
+        resolved = _resolve_artifact_path(manifest.get("temporal_calibration_audit_path"), manifest_path)
+        expected_hash = manifest.get("temporal_calibration_audit_sha256")
+        if resolved is None:
+            errors.append("temporal_calibration_audit_path_missing")
+        elif not resolved.is_file():
+            errors.append("temporal_calibration_audit_path_not_found")
+        else:
+            actual_hash = _sha256(resolved)
+            checked_artifacts["temporal_calibration_audit_path"] = {
+                "path": str(resolved),
+                "sha256": actual_hash,
+            }
+            if not isinstance(expected_hash, str) or actual_hash != expected_hash:
+                errors.append("temporal_calibration_audit_path_sha256_mismatch")
+            try:
+                related["temporal_calibration_audit_path"] = _read_json(resolved)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"temporal_calibration_audit_path_invalid_json:{type(exc).__name__}")
+
+    temporal_audit = related.get("temporal_calibration_audit_path", {})
+    if temporal_audit:
+        matrix_hash = checked_artifacts.get("experiment_matrix_report", {}).get("sha256")
+        if temporal_audit.get("scope") != "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT":
+            errors.append("temporal_calibration_audit_scope_invalid")
+        if temporal_audit.get("run_id") != manifest.get("run_id"):
+            errors.append("temporal_calibration_audit_run_id_mismatch")
+        if temporal_audit.get("experiment_matrix_sha256") != matrix_hash:
+            errors.append("temporal_calibration_audit_source_matrix_hash_mismatch")
+        if temporal_audit.get("experiment_matrix_payload_hash_verified") is not True:
+            errors.append("temporal_calibration_audit_matrix_payload_hash_unverified")
+        for field in ("actionable", "execution_connected", "automatic_model_selection", "test_metrics_used_for_selection"):
+            if temporal_audit.get(field) is not False:
+                errors.append(f"temporal_calibration_audit_{field}_must_be_false")
+        if temporal_audit.get("status") != manifest.get("temporal_calibration_audit_status"):
+            errors.append("temporal_calibration_audit_status_mismatch")
+        if temporal_audit.get("status") == "PASS_WITH_WARNINGS":
+            warnings.append("temporal_calibration_audit_passed_with_warnings")
+        elif temporal_audit.get("status") != "PASS":
+            errors.append("temporal_calibration_audit_not_pass")
+        comparisons = temporal_audit.get("comparisons")
+        if (
+            not isinstance(comparisons, list)
+            or temporal_audit.get("comparison_count") != len(comparisons)
+        ):
+            errors.append("temporal_calibration_audit_comparison_count_mismatch")
+
     raw_audit = related.get("raw_ohlc_audit_path", {})
     raw_hash = checked_artifacts.get("raw_ohlc_path", {}).get("sha256")
     if "raw_ohlc_audit_path" in related:
