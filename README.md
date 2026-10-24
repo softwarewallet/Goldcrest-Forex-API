@@ -106,6 +106,18 @@ Run a no-network environment preflight with `python -m app.research_validation -
 
 
 
+
+## Consolidated research evidence
+
+After generating the diagnostics available for a run, combine integrity, validation, temporal calibration, baseline analysis, volatility-regime analysis, and label-gap sensitivity into one non-actionable evidence report:
+
+```bash
+python -m app.research_evidence_report \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json
+```
+
+The report is written as `<run-id>_consolidated_evidence.json` beside the manifest and refuses to overwrite an existing output. Optional reports are discovered by their standard run-scoped names or can be supplied with CLI flags. Missing optional diagnostics are explicitly reported as coverage gaps; cross-run/hash mismatches and invalid safety flags fail closed. See [consolidated research evidence](docs/consolidated-research-evidence.md) for schema checks and legacy-run usage.
+
 ## Volatility-regime diagnostics
 
 After reviewing baseline and fold stability, inspect conditional performance by past-only
