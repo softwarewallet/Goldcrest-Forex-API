@@ -30,6 +30,16 @@ After the sweep completes, the saved threshold report can be audited against its
 
 The audit writes a new collision-safe report next to the threshold report. A pair of nested caps with identical eligible/ineligible counts on the same dataset has an unchanged eligibility profile; identical metrics across those caps are then expected rather than evidence that one cap is better.
 
+## Profile exact elapsed-time durations around the caps
+
+The profile audit independently recomputes each row's elapsed duration from `timestamp` to `label_available_at` in the immutable uncapped baseline dataset. It verifies the source dataset and raw OHLC hashes, reports duration quantiles and non-overlapping buckets between the audited caps, and cross-checks the computed eligible counts with the existing eligibility audit. It does not retrain models or rewrite the dataset.
+
+    python -m app.research_label_eligibility_duration_profile \
+      --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
+      --threshold-audit-report data/research/runs/eurusd-m15-demo-m365-bas-cap-sweep_threshold_eligibility_audit_report.json
+
+The output is a new collision-safe report beside the baseline manifest. If the eligibility counts at 1.5 and 8 hours match, inspect the `(1.5, 8]` duration bucket: a zero count confirms no labels mature in that interval for this dataset; labels excluded by the 8-hour cap are all beyond 8 hours. The profile is dataset-specific and does not establish a market-session rule.
+
 ## Interpretation
 
 All caps reuse the same historical OHLC snapshot and chronological test windows. Repeated seeds measure optimizer/retraining sensitivity; they are not independent market observations. The sweep makes no inferential or profitability claims, does not select the best threshold or model, does not promote a model, and does not connect to broker/execution services. A threshold should not be preferred merely because it performs best after trying multiple values; follow-up decisions require a separately prespecified protocol.
