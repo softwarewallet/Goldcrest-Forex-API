@@ -177,6 +177,10 @@ def test_explicit_variant_run_id_collision_fails_without_overwriting(tmp_path):
 def test_comparison_summary_lines_prints_paired_metrics_and_eligibility(tmp_path):
     comparison = {
         "status": "PASS_WITH_WARNINGS",
+        "raw_ohlc_audit_warning_diff": {
+            "baseline_only": ["legacy_gap_rule"],
+            "variant_only": ["new_gap_rule"],
+        },
         "eligibility_summary": {
             "variant_eligible_rows": 900,
             "variant_dataset_rows": 1000,
@@ -204,6 +208,36 @@ def test_comparison_summary_lines_prints_paired_metrics_and_eligibility(tmp_path
                         "accuracy_at_fixed_half": 0.03,
                     },
                 },
+                "fold_direction_stability": {
+                    "fold_count": 3,
+                    "metrics": {
+                        "log_loss": {
+                            "favorable_fold_count": 2,
+                            "adverse_fold_count": 1,
+                            "neutral_fold_count": 0,
+                            "median_delta": -0.01,
+                            "minimum_delta": -0.03,
+                            "maximum_delta": 0.02,
+                        },
+                        "brier_score": {
+                            "favorable_fold_count": 1,
+                            "adverse_fold_count": 2,
+                            "neutral_fold_count": 0,
+                            "median_delta": 0.005,
+                            "minimum_delta": -0.01,
+                            "maximum_delta": 0.02,
+                        },
+                        "accuracy_at_fixed_half": {
+                            "favorable_fold_count": 2,
+                            "adverse_fold_count": 1,
+                            "neutral_fold_count": 0,
+                            "median_delta": 0.01,
+                            "minimum_delta": -0.01,
+                            "maximum_delta": 0.03,
+                        },
+                    },
+                },
+                },
             }
         ],
     }
@@ -216,6 +250,10 @@ def test_comparison_summary_lines_prints_paired_metrics_and_eligibility(tmp_path
     assert "log_loss baseline/capped=+0.710000/+0.690000, delta=-0.020000" in joined
     assert "Brier baseline/capped=+0.260000/+0.240000, delta=-0.020000" in joined
     assert "accuracy@0.5 delta=+0.030000" in joined
+    assert "fold direction log_loss: favorable=2/3, adverse=1, neutral=0" in joined
+    assert "Raw OHLC audit warnings (baseline-only, 1):" in joined
+    assert "legacy_gap_rule" in joined
+    assert "new_gap_rule" in joined
     assert "Descriptive only; no model selection or execution." in joined
 
 
