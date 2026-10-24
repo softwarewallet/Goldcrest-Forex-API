@@ -618,9 +618,6 @@ def build_evidence_interpretation(
         regime_uncertainty_status = "NEGATIVE_INTERVAL_EVIDENCE_PRESENT"
     else:
         regime_uncertainty_status = "NO_REGIME_INTERVAL_EXCLUDES_ZERO"
-    mixed_regime_groups = sum(
-        item["consistency"] == "MIXED_BY_VOLATILITY_REGIME" for item in regime_groups
-    )
     if not regime_groups:
         regime_status = "UNAVAILABLE"
     elif mixed_regime_groups:
