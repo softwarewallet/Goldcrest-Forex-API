@@ -208,6 +208,10 @@ def test_review_groups_existing_metrics_by_unique_masks_without_retraining(tmp_p
     assert result["unique_mask_count_in_policy_audit"] == 3
     assert result["unique_capped_mask_count_in_existing_sweep"] == 2
     assert result["uncapped_baseline_reference_metrics_match_across_caps"] is True
+    # Matching aggregate baselines does not prove the caps were scored on the same rows.
+    assert result["cross_policy_effect_comparison_validated"] is False
+    assert "common_evaluation_cohort" in " ".join(result["warnings"])
+    assert "not establish cohort equality" in result["cross_policy_comparison_limitation"]
     assert result["equivalent_cap_metric_checks"] == [{
         "cap_hours": [1.5, 8.0],
         "same_eligible_row_mask": True,

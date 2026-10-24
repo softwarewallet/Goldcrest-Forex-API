@@ -473,16 +473,23 @@ def review_gap_policy_performance(
                 "median_capped_metric_difference": round(statistics.median(metric_differences), 12),
                 "per_seed": per_seed,
                 "interpretation": (
-                    "Descriptive difference between existing same-seed cap runs on the same history and folds. "
-                    "Use as a clean incremental policy comparison only when the uncapped reference metrics match "
-                    "for the corresponding seed and experiment; no inference or model selection is performed."
+                    "Descriptive difference between within-cap paired deltas on the same history and fold windows. "
+                    "Eligibility caps can change the held-out evaluation cohort, so this is not an isolated policy "
+                    "effect unless the evaluated timestamps are harmonized across policies; no inference or model "
+                    "selection is performed."
                 ),
             })
 
     if not baseline_refs_match:
         warning_list.append(
-            "uncapped_baseline_metrics_differ_across_threshold_runs; cross-policy differences may include reference-run variability"
+            "uncapped_baseline_metrics_differ_across_threshold_runs; each cap's baseline is evaluated on its own eligible timestamps, so metric differences may reflect different evaluation cohorts rather than reference-run variability"
         )
+    # The current artifacts verify common fold boundaries, but they do not establish
+    # that the eligible held-out timestamps are identical across different caps.
+    # Matching aggregate baseline metrics is not proof of a common evaluation cohort.
+    warning_list.append(
+        "cross_policy_effect_comparison_not_validated_on_common_evaluation_cohort; cross-cap deltas are descriptive only and must not be treated as isolated policy effects"
+    )
 
     groups_by_hash: dict[str, list[float]] = {}
     for cap in _REQUIRED_CAPS:
@@ -562,11 +569,17 @@ def review_gap_policy_performance(
         "actionable": False,
         "execution_connected": False,
         "models_trained": False,
+        "cross_policy_effect_comparison_validated": False,
+        "cross_policy_comparison_limitation": (
+            "The sweep verifies shared raw OHLC and chronological fold windows, but does not verify a common "
+            "eligible held-out timestamp cohort across different caps. Uncapped baseline metrics are evaluated "
+            "on each cap's eligible timestamps; matching those metrics alone would not establish cohort equality."
+        ),
         "interpretation": (
             "Caps are grouped by exact eligible row-mask identity. The 1.5-hour and 8-hour cap records are "
-            "not counted as independent policies when they share a mask. Metric summaries are reported from "
-            "existing matched seed sweeps; no reruns occur. Policy differences are descriptive and need matching "
-            "uncapped baseline metrics to isolate cap-dependent effects from reference-run variability."
+            "not counted as independent policies when they share a mask. Metric summaries come from existing "
+            "matched seed sweeps; no reruns occur. Cross-cap delta differences remain descriptive because "
+            "eligible held-out evaluation cohorts have not been harmonized or proven identical."
         ),
         "report_path": str(destination),
     }
@@ -611,6 +624,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "equivalent_cap_metric_checks": report["equivalent_cap_metric_checks"],
         "uncapped_baseline_reference_metrics_match_across_caps": report["uncapped_baseline_reference_metrics_match_across_caps"],
         "uncapped_baseline_reference_differences": report["uncapped_baseline_reference_differences"],
+        "cross_policy_effect_comparison_validated": report["cross_policy_effect_comparison_validated"],
+        "cross_policy_comparison_limitation": report["cross_policy_comparison_limitation"],
         "paired_policy_metric_differences_1_5h_minus_1h": report["paired_policy_metric_differences_1_5h_minus_1h"],
         "warnings": report["warnings"],
         "errors": report["errors"],
