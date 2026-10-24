@@ -32,24 +32,35 @@ The audit writes a new collision-safe report next to the threshold report. A pai
 
 ## Profile exact elapsed-time durations around the caps
 
-The profile audit independently recomputes each row's elapsed duration from \`timestamp\` to \`label_available_at\` in the immutable uncapped baseline dataset. It verifies the source dataset and raw OHLC hashes, reports duration quantiles and non-overlapping buckets between the audited caps, and cross-checks the computed eligible counts with the existing eligibility audit. It does not retrain models or rewrite the dataset.
+The profile audit independently recomputes each row's elapsed duration from `timestamp` to `label_available_at` in the immutable uncapped baseline dataset. It verifies the source dataset and raw OHLC hashes, reports duration quantiles and non-overlapping buckets between the audited caps, and cross-checks the computed eligible counts with the existing eligibility audit. It does not retrain models or rewrite the dataset.
 
     python -m app.research_label_eligibility_duration_profile \
       --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
       --threshold-audit-report data/research/runs/eurusd-m15-demo-m365-bas-cap-sweep_threshold_eligibility_audit_report.json
 
-The output is a new collision-safe report beside the baseline manifest. If the eligibility counts at 1.5 and 8 hours match, inspect the \`(1.5, 8]\` duration bucket: a zero count confirms no labels mature in that interval for this dataset; labels excluded by the 8-hour cap are all beyond 8 hours. The profile is dataset-specific and does not establish a market-session rule.
+The output is a new collision-safe report beside the baseline manifest. If the eligibility counts at 1.5 and 8 hours match, inspect the `(1.5, 8]` duration bucket: a zero count confirms no labels mature in that interval for this dataset; labels excluded by the 8-hour cap are all beyond 8 hours. The profile is dataset-specific and does not establish a market-session rule.
 
 ## Attribute duration extensions to observed OHLC gaps
 
-After generating the duration profile, run this follow-up audit. It checks every labelled row against the immutable raw timeline, confirms that \`label_available_at\` is exactly the configured row-index horizon after \`timestamp\`, and reconciles elapsed time above the nominal horizon with the sum of observed inter-bar intervals above one nominal timeframe. The report groups those findings by the same elapsed-duration buckets and provides a small set of the largest gap-exposure examples.
+After generating the duration profile, run this follow-up audit. It checks every labelled row against the immutable raw timeline, confirms that `label_available_at` is exactly the configured row-index horizon after `timestamp`, and reconciles elapsed time above the nominal horizon with the sum of observed inter-bar intervals above one nominal timeframe. The report groups those findings by the same elapsed-duration buckets and provides a small set of the largest gap-exposure examples.
 
     python -m app.research_label_duration_gap_attribution \
       --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
       --duration-profile-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_duration_cap_boundary_profile.json
 
-Use the exact duration-profile path printed by the previous command if collision-safe naming produced a rerun filename. The follow-up checks both source hashes and refuses to overwrite existing input artifacts. A \`FAIL\` indicates a hash, timestamp alignment, row-index horizon, or elapsed-time decomposition inconsistency that must be investigated before drawing conclusions. A successful reconciliation is arithmetic evidence that elapsed extensions coincide with observed timestamp spacing; it does not prove that an interval represents missing candles, a broken provider feed, or an expected open-market session. No labels are changed and no models are retrained.
+Use the exact duration-profile path printed by the previous command if collision-safe naming produced a rerun filename. The follow-up checks both source hashes and refuses to overwrite existing input artifacts. A `FAIL` indicates a hash, timestamp alignment, row-index horizon, or elapsed-time decomposition inconsistency that must be investigated before drawing conclusions. A successful reconciliation is arithmetic evidence that elapsed extensions coincide with observed timestamp spacing; it does not prove that an interval represents missing candles, a broken provider feed, or an expected open-market session. No labels are changed and no models are retrained.
 
 ## Interpretation
 
 All caps reuse the same historical OHLC snapshot and chronological test windows. Repeated seeds measure optimizer/retraining sensitivity; they are not independent market observations. The sweep makes no inferential or profitability claims, does not select the best threshold or model, does not promote a model, and does not connect to broker/execution services. A threshold should not be preferred merely because it performs best after trying multiple values; follow-up decisions require a separately prespecified protocol.
+
+
+## Profile individual gap events and affected label windows
+
+After the duration-gap attribution audit reconciles elapsed-time excess, run this event-level profile. It enumerates each non-nominal interval in the raw OHLC timeline and maps it to the dataset rows whose configured forward-label window crosses that interval. It reports unique event counts, affected labels per event, overlaps where a label window crosses multiple gaps, duration-cap bucket counts, and descriptive weekend-like/fixed-date context flags for review.
+
+    python -m app.research_label_gap_event_profile \
+      --baseline-manifest data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_pipeline_manifest.json \
+      --duration-gap-attribution-report data/research/runs/eurusd-m15-demo-m365-baseline-validation-20261023_label_duration_gap_attribution.json
+
+Use the exact report path printed by the previous duration-gap attribution command if collision-safe naming produced a rerun filename. The event profile checks both input hashes, the forward-bar horizon, and exposure counts against the prior audit. Its classifications are descriptive only and do not prove missing candles, provider failure, or an expected session closure. No dataset is rewritten and no model is trained.
