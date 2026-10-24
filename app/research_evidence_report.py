@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -62,6 +63,8 @@ def _resolve_path(value: object, base_dir: Path) -> Path | None:
 
 def _number(value: object) -> int | float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if not math.isfinite(float(value)):
         return None
     return value
 
