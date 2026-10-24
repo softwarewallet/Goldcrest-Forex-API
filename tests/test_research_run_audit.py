@@ -130,6 +130,7 @@ def test_audit_verifies_temporal_calibration_receipt_hash_and_matrix_binding(tmp
         "temporal_calibration_audit_sha256": _sha(receipt_path),
         "temporal_calibration_audit_status": "PASS",
     })
+    manifest.pop("pipeline_manifest_sha256", None)
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False)
     manifest["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     _write_json(manifest_path, manifest)
