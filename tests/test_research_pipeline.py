@@ -128,6 +128,7 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert Path(result["validation_report_path"]).is_file()
     validation_report = json.loads(Path(result["validation_report_path"]).read_text(encoding="utf-8"))
     assert validation_report["actionable"] is False
+    assert validation_report["temporal_calibration_stability"]["status"] == "FAIL"
 
 
 def test_pipeline_refuses_existing_run_id_before_mutating_artifacts(tmp_path, monkeypatch):
