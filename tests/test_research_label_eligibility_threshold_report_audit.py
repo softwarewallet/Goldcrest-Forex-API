@@ -103,9 +103,11 @@ def test_audit_reports_added_eligible_rows_between_caps(tmp_path):
 
     result = audit_threshold_report(path)
 
-    assert result["status"] == "PASS"
+    # Identical metric summaries despite changed eligibility counts are flagged for review.
+    assert result["status"] == "PASS_WITH_WARNINGS"
     pair = result["adjacent_cap_comparisons"][0]
     assert pair["same_dataset_eligibility_profile"] is False
+    assert any("identical_aggregate_metric_summaries_despite_different_eligibility_profiles" in warning for warning in result["warnings"])
     assert pair["eligible_rows_delta"] == 75
     assert pair["ineligible_rows_delta"] == -75
     assert pair["eligible_test_rows_fold_deltas"][0]["eligible_test_rows_delta"] == 7
