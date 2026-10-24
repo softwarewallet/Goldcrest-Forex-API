@@ -162,6 +162,27 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             errors.append("temporal_calibration_audit_run_id_mismatch")
         if temporal_audit.get("experiment_matrix_sha256") != matrix_hash:
             errors.append("temporal_calibration_audit_source_matrix_hash_mismatch")
+        matrix_report = related.get("experiment_matrix_report", {})
+        claimed_payload_hash = matrix_report.get("report_payload_sha256")
+        payload_hash_verified = False
+        if isinstance(claimed_payload_hash, str):
+            canonical_payload = dict(matrix_report)
+            canonical_payload.pop("report_payload_sha256", None)
+            try:
+                canonical_matrix = json.dumps(
+                    canonical_payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+                payload_hash_verified = (
+                    hashlib.sha256(canonical_matrix.encode("utf-8")).hexdigest()
+                    == claimed_payload_hash
+                )
+            except (TypeError, ValueError):
+                payload_hash_verified = False
+        if not payload_hash_verified:
+            errors.append("temporal_calibration_audit_source_matrix_payload_hash_invalid")
         if temporal_audit.get("experiment_matrix_payload_hash_verified") is not True:
             errors.append("temporal_calibration_audit_matrix_payload_hash_unverified")
         for field in ("actionable", "execution_connected", "automatic_model_selection", "test_metrics_used_for_selection"):
