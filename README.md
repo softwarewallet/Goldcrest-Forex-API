@@ -63,6 +63,31 @@ Each completed run writes a separate `<run-id>_provenance_audit.json` receipt be
 By default, a failed structural audit is recorded in the receipt and manifest while preserving the research artifacts for inspection. Add `--strict-provenance-audit` to make the CLI return exit code 3 when the audit status is `FAIL`. This mode still writes the audit receipt and pipeline manifest. The research pipeline remains offline unless `--fetch-ctrader` is explicitly selected, and no research output is connected to broker execution.
 
 
+## Temporal calibration stability audit
+
+Every research-pipeline run now creates a separate
+`<run-id>_temporal_calibration_stability.json` receipt from the exact persisted experiment
+matrix. The pipeline manifest records its path, SHA-256, status, errors, and warnings. The
+receipt verifies the matrix's embedded payload hash, UTC-normalizes test-window boundaries,
+requires complete fold coverage, and summarizes chronological out-of-sample expected
+calibration error (ECE) with the stored moving-block uncertainty intervals. Missing ECE or
+uncertainty fields are surfaced as warnings; invalid source structure or incomplete fold
+coverage fails the audit. Existing run IDs are refused before pipeline artifacts are changed.
+
+To run the audit directly against a stored matrix:
+
+```bash
+python -m app.temporal_calibration_stability \
+  --experiment-matrix data/research/runs/<run-id>_experiment_matrix.json \
+  --output data/research/runs/<run-id>_temporal_calibration_stability-manual.json
+```
+
+The standalone command refuses to overwrite an existing output file. Use
+`--strict-temporal-calibration-audit` with `app.research_pipeline` to return exit code 5
+when its generated audit has status `FAIL`. The audit is descriptive only: endpoint interval
+separation is not a significance test, folds may be dependent, and it does not fit a
+calibrator, select a model, estimate profitability, or authorize execution.
+
 ## Research run integrity audit
 
 After a completed offline research run, verify all artifact hashes and cross-file consistency:
