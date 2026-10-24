@@ -93,6 +93,19 @@ def test_audit_verifies_temporal_calibration_receipt_hash_and_matrix_binding(tmp
     manifest_path = _build_valid_run(tmp_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     matrix_path = Path(manifest["experiment_matrix_report"])
+    matrix_payload = json.loads(matrix_path.read_text(encoding="utf-8"))
+    matrix_payload.pop("report_payload_sha256", None)
+    matrix_payload["report_payload_sha256"] = hashlib.sha256(
+        json.dumps(matrix_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(matrix_path, matrix_payload)
+    manifest["experiment_matrix_report_sha256"] = _sha(matrix_path)
+
+    provenance_path = Path(manifest["provenance_audit_path"])
+    provenance_payload = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance_payload["source_report_sha256"] = _sha(matrix_path)
+    _write_json(provenance_path, provenance_payload)
+    manifest["provenance_audit_sha256"] = _sha(provenance_path)
 
     receipt_path = tmp_path / "run-001_temporal_calibration_stability.json"
     receipt = {
