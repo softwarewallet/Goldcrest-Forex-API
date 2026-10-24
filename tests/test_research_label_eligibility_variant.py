@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from app.research_label_eligibility_variant import _infer_fold_geometry
+from app.research_label_eligibility_variant import (
+    _choose_variant_run_id,
+    _infer_fold_geometry,
+    _variant_run_collisions,
+)
 
 
 def _write_dataset_timestamps(path: Path, count: int) -> list[str]:
@@ -108,3 +112,61 @@ def test_infer_fold_geometry_requires_multiple_windows_when_geometry_is_not_pers
 
     with pytest.raises(ValueError, match="without_two_common_test_windows"):
         _infer_fold_geometry(dataset, matrix, horizon_bars=4)
+
+
+
+def test_default_variant_run_id_auto_versions_without_overwriting_existing_artifacts(tmp_path):
+    requested = "baseline-elapsed-cap-1h"
+    existing = tmp_path / f"{requested}_pipeline_manifest.json"
+    existing.write_text('{"original": true}\\n', encoding="utf-8")
+
+    chosen, was_auto_versioned = _choose_variant_run_id(
+        tmp_path,
+        requested,
+        symbol="EURUSD",
+        timeframe="M15",
+        allow_auto_versioning=True,
+    )
+
+    assert chosen == "baseline-elapsed-cap-1h-rerun-2"
+    assert was_auto_versioned is True
+    assert existing.read_text(encoding="utf-8") == '{"original": true}\\n'
+    assert _variant_run_collisions(
+        tmp_path, chosen, symbol="EURUSD", timeframe="M15"
+    ) == []
+
+
+def test_default_variant_run_id_skips_multiple_occupied_namespaces(tmp_path):
+    requested = "baseline-elapsed-cap-1h"
+    (tmp_path / f"{requested}_pipeline_manifest.json").write_text("{}\\n", encoding="utf-8")
+    (tmp_path / f"{requested}-rerun-2_label_eligibility_comparison.json").write_text(
+        "{}\\n", encoding="utf-8"
+    )
+
+    chosen, was_auto_versioned = _choose_variant_run_id(
+        tmp_path,
+        requested,
+        symbol="EURUSD",
+        timeframe="M15",
+        allow_auto_versioning=True,
+    )
+
+    assert chosen == "baseline-elapsed-cap-1h-rerun-3"
+    assert was_auto_versioned is True
+
+
+def test_explicit_variant_run_id_collision_fails_without_overwriting(tmp_path):
+    requested = "operator-selected-cap-run"
+    existing = tmp_path / f"{requested}_label_eligibility_variant_setup.json"
+    existing.write_text('{"keep": "original"}\\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="variant_run_id_artifacts_already_exist"):
+        _choose_variant_run_id(
+            tmp_path,
+            requested,
+            symbol="EURUSD",
+            timeframe="M15",
+            allow_auto_versioning=False,
+        )
+
+    assert existing.read_text(encoding="utf-8") == '{"keep": "original"}\\n'
