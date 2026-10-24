@@ -646,3 +646,37 @@ def test_oos_period_diagnostic_uses_legacy_metrics_and_matrix_window_timestamps(
         "test_metrics": 7,
         "missing": 0,
     }
+
+
+def test_evidence_interpretation_keeps_candidate_count_when_periods_are_unavailable():
+    diagnostic = {
+        "status": "NO_COMPLETE_METRIC_FOLDS",
+        "candidate_count": 3,
+        "common_fold_index_count": 5,
+        "complete_test_fold_count": 0,
+        "period_group_count": 0,
+        "candidate_fold_coverage": [
+            {
+                "candidate_name": "candidate-a",
+                "fold_count": 5,
+                "folds_with_both_required_metrics": 0,
+            },
+        ],
+        "common_test_fold_indices": [],
+        "candidates": [],
+    }
+
+    result = evidence.build_evidence_interpretation(
+        baseline=None,
+        calibration=None,
+        regimes=None,
+        temporal_stability=None,
+        oos_period_robustness=diagnostic,
+    )["chronological_oos_robustness"]
+
+    assert result["status"] == "NO_COMPLETE_METRIC_FOLDS"
+    assert result["candidate_count"] == 3
+    assert result["summary_candidate_count"] == 0
+    assert result["common_fold_index_count"] == 5
+    assert result["complete_test_fold_count"] == 0
+    assert result["candidate_fold_coverage"][0]["candidate_name"] == "candidate-a"
