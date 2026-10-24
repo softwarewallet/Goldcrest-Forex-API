@@ -691,15 +691,33 @@ def build_evidence_interpretation(
     if not isinstance(oos_period_robustness, Mapping):
         robustness_status = "UNAVAILABLE"
         robustness_fold_indices: list[int] = []
+        robustness_candidate_count = len(robustness_rows)
+        robustness_common_fold_index_count = 0
+        robustness_complete_test_fold_count = 0
+        robustness_candidate_coverage: list[dict[str, Any]] = []
     else:
         robustness_status = str(oos_period_robustness.get("status", "UNAVAILABLE"))
         raw_indices = oos_period_robustness.get("common_test_fold_indices")
         robustness_fold_indices = raw_indices if isinstance(raw_indices, list) else []
+        raw_candidate_count = oos_period_robustness.get("candidate_count")
+        robustness_candidate_count = (
+            raw_candidate_count
+            if isinstance(raw_candidate_count, int) and not isinstance(raw_candidate_count, bool)
+            else len(robustness_rows)
+        )
+        robustness_common_fold_index_count = oos_period_robustness.get("common_fold_index_count", len(robustness_fold_indices))
+        robustness_complete_test_fold_count = oos_period_robustness.get("complete_test_fold_count", len(robustness_fold_indices))
+        raw_coverage = oos_period_robustness.get("candidate_fold_coverage")
+        robustness_candidate_coverage = raw_coverage if isinstance(raw_coverage, list) else []
 
     return {
         "chronological_oos_robustness": {
             "status": robustness_status,
-            "candidate_count": len(robustness_rows),
+            "candidate_count": robustness_candidate_count,
+            "summary_candidate_count": len(robustness_rows),
+            "candidate_fold_coverage": robustness_candidate_coverage,
+            "common_fold_index_count": robustness_common_fold_index_count,
+            "complete_test_fold_count": robustness_complete_test_fold_count,
             "common_test_fold_indices": robustness_fold_indices,
             "period_group_count": (
                 oos_period_robustness.get("period_group_count")
@@ -867,6 +885,43 @@ def _derive_oos_period_robustness(
             errors.append(f"oos_period_robustness_fold_results_missing:{experiment_id}")
             continue
         fold_results[experiment_id] = folds
+
+    # Some legacy matrix writers stored fold starts only in this matrix-level table.
+    # Join those immutable boundaries by fold_index so the chronology audit can verify
+    # ordering without altering metric values or inventing timestamps.
+    raw_windows = matrix.get("common_fold_test_windows")
+    window_starts: dict[int, object] = {}
+    if isinstance(raw_windows, list):
+        for window in raw_windows:
+            if not isinstance(window, dict):
+                continue
+            index = window.get("fold_index")
+            start = window.get("test_start_utc", window.get("test_start"))
+            if (
+                isinstance(index, int)
+                and not isinstance(index, bool)
+                and index >= 0
+                and isinstance(start, str)
+                and start.strip()
+            ):
+                if index in window_starts and window_starts[index] != start:
+                    errors.append(
+                        f"oos_period_robustness_conflicting_common_fold_window:{index}"
+                    )
+                else:
+                    window_starts[index] = start
+
+    for folds in fold_results.values():
+        for fold in folds:
+            if not isinstance(fold, dict):
+                continue
+            if fold.get("test_start_utc") is not None or fold.get("test_start") is not None:
+                continue
+            index = fold.get("fold_index")
+            if isinstance(index, int) and not isinstance(index, bool):
+                start = window_starts.get(index)
+                if start is not None:
+                    fold["test_start_utc"] = start
 
     if errors or not fold_results:
         return ({
