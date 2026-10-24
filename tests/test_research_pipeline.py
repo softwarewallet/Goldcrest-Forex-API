@@ -114,6 +114,16 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert stored["provenance_audit_errors"] == audit["errors"]
     assert stored["provenance_audit_warnings"] == audit["warnings"]
     assert stored["strict_provenance_audit"] is False
+    temporal_audit_path = Path(stored["temporal_calibration_audit_path"])
+    assert temporal_audit_path.is_file()
+    temporal_audit = json.loads(temporal_audit_path.read_text(encoding="utf-8"))
+    assert temporal_audit["scope"] == "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT"
+    assert temporal_audit["experiment_matrix_sha256"] == stored["experiment_matrix_report_sha256"]
+    assert stored["temporal_calibration_audit_sha256"] == research_pipeline._sha256(temporal_audit_path)
+    assert stored["temporal_calibration_audit_status"] == temporal_audit["status"] == "FAIL"
+    assert stored["temporal_calibration_audit_errors"] == temporal_audit["errors"]
+    assert stored["temporal_calibration_audit_warnings"] == temporal_audit["warnings"]
+    assert stored["strict_temporal_calibration_audit"] is False
     assert result["validation_status"] == "FAIL"  # deliberately incomplete mocked experiment report
     assert Path(result["validation_report_path"]).is_file()
     validation_report = json.loads(Path(result["validation_report_path"]).read_text(encoding="utf-8"))
