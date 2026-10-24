@@ -417,7 +417,7 @@ def _write_pipeline_manifest(tmp_path: Path, csv_path: Path) -> Path:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
     payload["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     path = tmp_path / "test-run_pipeline_manifest.json"
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
 
 
@@ -478,7 +478,7 @@ def test_audit_cli_rejects_tampered_pipeline_manifest_fingerprint(tmp_path, caps
     pipeline_manifest = _write_pipeline_manifest(tmp_path, csv_path)
     payload = json.loads(pipeline_manifest.read_text(encoding="utf-8"))
     payload["symbol"] = "GBPUSD"
-    pipeline_manifest.write_text(json.dumps(payload) + "\\n", encoding="utf-8")
+    pipeline_manifest.write_text(json.dumps(payload) + "\n", encoding="utf-8")
 
     exit_code = audit_main([
         "--pipeline-manifest", str(pipeline_manifest),
