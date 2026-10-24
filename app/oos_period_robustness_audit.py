@@ -13,8 +13,33 @@ from statistics import median
 from typing import Any, Mapping, Sequence
 
 
-def _finite_metric(fold: Mapping[str, Any], key: str) -> float | None:
+_TEST_METRIC_KEYS = (
+    "brier_score",
+    "log_loss",
+    "accuracy_at_fixed_half",
+    "expected_calibration_error",
+)
+
+
+def _test_metrics_with_source(
+    fold: Mapping[str, Any],
+) -> tuple[Mapping[str, Any] | None, str | None]:
+    """Read current test metrics, with a compatibility fallback for older matrices."""
     test = fold.get("test")
+    if isinstance(test, Mapping) and any(key in test for key in _TEST_METRIC_KEYS):
+        return test, "test"
+
+    legacy = fold.get("test_metrics")
+    if isinstance(legacy, Mapping) and legacy:
+        return legacy, "test_metrics"
+
+    if isinstance(test, Mapping):
+        return test, "test"
+    return None, None
+
+
+def _finite_metric(fold: Mapping[str, Any], key: str) -> float | None:
+    test, _ = _test_metrics_with_source(fold)
     if not isinstance(test, Mapping):
         return None
     value = test.get(key)
@@ -140,8 +165,10 @@ def build_oos_period_robustness_audit(
     }
     candidates = sorted(name for name in fold_results if name not in baseline_names)
     indexed: dict[str, dict[int, Mapping[str, Any]]] = {}
+    coverage: list[dict[str, Any]] = []
+
     for name in candidates:
-        indexed[name] = {
+        indexed_rows = {
             int(row["fold_index"]): row
             for row in fold_results[name]
             if isinstance(row, Mapping)
@@ -149,10 +176,42 @@ def build_oos_period_robustness_audit(
             and not isinstance(row.get("fold_index"), bool)
             and row["fold_index"] >= 0
         }
+        indexed[name] = indexed_rows
+        indices = sorted(indexed_rows)
+        valid_brier = [
+            index for index, row in indexed_rows.items()
+            if _finite_metric(row, "brier_score") is not None
+        ]
+        valid_log_loss = [
+            index for index, row in indexed_rows.items()
+            if _finite_metric(row, "log_loss") is not None
+        ]
+        valid_both = sorted(set(valid_brier) & set(valid_log_loss))
+        valid_ece = [
+            index for index, row in indexed_rows.items()
+            if _finite_metric(row, "expected_calibration_error") is not None
+        ]
+        source_counts = {"test": 0, "test_metrics": 0, "missing": 0}
+        for row in indexed_rows.values():
+            _, source = _test_metrics_with_source(row)
+            source_counts[source if source in {"test", "test_metrics"} else "missing"] += 1
+        coverage.append({
+            "candidate_name": name,
+            "fold_count": len(indexed_rows),
+            "fold_indices": indices,
+            "folds_with_valid_brier_score": len(valid_brier),
+            "folds_with_valid_log_loss": len(valid_log_loss),
+            "folds_with_both_required_metrics": len(valid_both),
+            "folds_with_valid_ece": len(valid_ece),
+            "folds_missing_or_invalid_brier_score": len(indexed_rows) - len(valid_brier),
+            "folds_missing_or_invalid_log_loss": len(indexed_rows) - len(valid_log_loss),
+            "test_metric_source_counts": source_counts,
+        })
 
     common = set.intersection(*(set(indexed[name]) for name in candidates)) if candidates else set()
+    common_indices = sorted(common)
     complete = [
-        index for index in sorted(common)
+        index for index in common_indices
         if all(
             _finite_metric(indexed[name][index], "brier_score") is not None
             and _finite_metric(indexed[name][index], "log_loss") is not None
@@ -165,6 +224,11 @@ def build_oos_period_robustness_audit(
         "CROSS_CANDIDATE_WINDOW_MISMATCH",
         "FOLD_ORDER_TIMESTAMP_MISMATCH",
     }
+    common_coverage = {
+        "candidate_fold_coverage": coverage,
+        "common_fold_index_count": len(common_indices),
+        "complete_test_fold_count": len(complete),
+    }
     if invalid_chronology:
         return {
             "protocol": "CHRONOLOGICAL_EARLY_MIDDLE_LATE_TEST_FOLD_DIAGNOSTIC",
@@ -174,6 +238,7 @@ def build_oos_period_robustness_audit(
             "period_group_count": 0,
             "candidates": [],
             "chronology_integrity": chronology,
+            **common_coverage,
             "status": "CHRONOLOGY_INVALID",
             "model_selection_performed": False,
             "test_metrics_used_for_selection": False,
@@ -201,7 +266,7 @@ def build_oos_period_robustness_audit(
             per_fold = []
             for index in complete:
                 fold = indexed[name][index]
-                test = fold.get("test")
+                test, _ = _test_metrics_with_source(fold)
                 per_fold.append({
                     "fold_index": index,
                     "sample_count": test.get("sample_count") if isinstance(test, Mapping) else None,
@@ -249,6 +314,17 @@ def build_oos_period_robustness_audit(
                 "status": "DESCRIPTIVE_PERIOD_DIAGNOSTIC",
             })
 
+    if not candidates:
+        status = "NO_CANDIDATES"
+    elif not common_indices:
+        status = "NO_COMMON_FOLD_INDICES"
+    elif not complete:
+        status = "NO_COMPLETE_METRIC_FOLDS"
+    elif enough:
+        status = "PERIOD_DIAGNOSTIC_AVAILABLE"
+    else:
+        status = "INSUFFICIENT_COMMON_TEST_FOLDS"
+
     return {
         "protocol": "CHRONOLOGICAL_EARLY_MIDDLE_LATE_TEST_FOLD_DIAGNOSTIC",
         "minimum_test_folds": minimum_test_folds,
@@ -257,9 +333,8 @@ def build_oos_period_robustness_audit(
         "period_group_count": len(period_groups),
         "candidates": rows,
         "chronology_integrity": chronology,
-        "status": "PERIOD_DIAGNOSTIC_AVAILABLE" if enough and candidates else (
-            "NO_CANDIDATES" if not candidates else "INSUFFICIENT_COMMON_TEST_FOLDS"
-        ),
+        **common_coverage,
+        "status": status,
         "model_selection_performed": False,
         "test_metrics_used_for_selection": False,
         "actionable": False,
