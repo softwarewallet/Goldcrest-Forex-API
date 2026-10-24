@@ -20,7 +20,7 @@ def _write_signals(path, signals=None):
         close = 1.10 + index * 0.002
         rows.append({
             "timestamp": pd.Timestamp("2026-01-01T00:00:00Z")
-                + pd.Timedelta(minutes=15 * index),
+                + pd.Timedelta(15 * index, unit="min"),
             "open": close - 0.0005,
             "high": close + 0.001,
             "low": close - 0.001,
