@@ -104,6 +104,47 @@ def _matrix_fixture():
     return payload
 
 
+def _rehash_matrix_fixture(matrix):
+    import hashlib
+    import json
+
+    matrix.pop("report_payload_sha256", None)
+    matrix["report_payload_sha256"] = hashlib.sha256(
+        json.dumps(matrix, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    return matrix
+
+
+def test_report_rejects_boolean_schema_version(tmp_path):
+    from app.temporal_calibration_stability import build_temporal_calibration_stability_report
+
+    matrix = _rehash_matrix_fixture(_matrix_fixture())
+    matrix["schema_version"] = True
+    matrix = _rehash_matrix_fixture(matrix)
+    matrix_path = tmp_path / "boolean-schema-matrix.json"
+    matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+
+    report = build_temporal_calibration_stability_report(matrix, matrix_path=matrix_path)
+
+    assert report["status"] == "FAIL"
+    assert "unsupported_or_missing_schema_version" in report["errors"]
+
+
+def test_report_warns_when_sample_count_is_invalid(tmp_path):
+    from app.temporal_calibration_stability import build_temporal_calibration_stability_report
+
+    matrix = _matrix_fixture()
+    matrix["experiments"][0]["fold_results"][0]["test_metrics"]["sample_count"] = 0
+    matrix = _rehash_matrix_fixture(matrix)
+    matrix_path = tmp_path / "invalid-sample-count-matrix.json"
+    matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+
+    report = build_temporal_calibration_stability_report(matrix, matrix_path=matrix_path)
+
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert "sample_count_missing_or_invalid:xgboost-all_features:fold_0" in report["warnings"]
+
+
 def test_cli_help_is_available(capsys):
     from app.temporal_calibration_stability import main
 
