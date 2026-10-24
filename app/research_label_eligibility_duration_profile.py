@@ -167,7 +167,7 @@ def audit_duration_cap_boundaries(
     if baseline.get("max_label_elapsed_hours") is not None:
         raise ValueError("baseline_must_have_no_elapsed_time_cap")
     for flag in ("actionable", "execution_connected", "automatic_winner_selection"):
-        if baseline.get(flag) is True:
+        if baseline.get(flag) is not False:
             raise ValueError(f"baseline_research_only_flag_invalid:{flag}")
 
     audit_path = Path(threshold_audit_report_path).expanduser().resolve()
@@ -287,6 +287,8 @@ def audit_duration_cap_boundaries(
     destination = Path(output_path).expanduser().resolve() if output_path else _free_output_path(manifest_path, run_id)
     if destination == manifest_path or destination == dataset_path or destination == audit_path:
         raise ValueError("output_path_must_not_overwrite_an_input_artifact")
+    if destination.exists():
+        raise ValueError("output_path_already_exists_refusing_to_overwrite")
     destination.parent.mkdir(parents=True, exist_ok=True)
     result = {
         "schema_version": 1,
