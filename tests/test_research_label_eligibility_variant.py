@@ -8,6 +8,7 @@ import pytest
 
 from app.research_label_eligibility_variant import (
     _choose_variant_run_id,
+    _comparison_summary_lines,
     _infer_fold_geometry,
     _variant_run_collisions,
 )
@@ -170,3 +171,56 @@ def test_explicit_variant_run_id_collision_fails_without_overwriting(tmp_path):
         )
 
     assert existing.read_text(encoding="utf-8") == '{"keep": "original"}\\n'
+
+
+
+def test_comparison_summary_lines_prints_paired_metrics_and_eligibility(tmp_path):
+    comparison = {
+        "status": "PASS_WITH_WARNINGS",
+        "eligibility_summary": {
+            "variant_eligible_rows": 900,
+            "variant_dataset_rows": 1000,
+            "variant_ineligible_rows": 100,
+            "model_rows_scored_across_experiments_and_folds": 5000,
+            "model_rows_excluded_across_experiments_and_folds": 600,
+        },
+        "experiments": [
+            {
+                "model_type": "xgboost",
+                "feature_variant": "all_features",
+                "mean_across_folds": {
+                    "test_rows_counted_across_folds": 700,
+                    "baseline_same_eligible_timestamps_metrics": {
+                        "log_loss": 0.71,
+                        "brier_score": 0.26,
+                    },
+                    "variant_eligible_test_metrics": {
+                        "log_loss": 0.69,
+                        "brier_score": 0.24,
+                    },
+                    "paired_variant_minus_baseline_delta_mean_across_folds": {
+                        "log_loss": -0.02,
+                        "brier_score": -0.02,
+                        "accuracy_at_fixed_half": 0.03,
+                    },
+                },
+            }
+        ],
+    }
+
+    lines = _comparison_summary_lines(comparison, tmp_path / "paired.json")
+    joined = "\\n".join(lines)
+
+    assert "Paired comparison status: PASS_WITH_WARNINGS" in joined
+    assert "900/1000 dataset rows eligible; 100 ineligible" in joined
+    assert "log_loss baseline/capped=+0.710000/+0.690000, delta=-0.020000" in joined
+    assert "Brier baseline/capped=+0.260000/+0.240000, delta=-0.020000" in joined
+    assert "accuracy@0.5 delta=+0.030000" in joined
+    assert "Descriptive only; no model selection or execution." in joined
+
+
+def test_comparison_summary_lines_handles_missing_optional_sections(tmp_path):
+    lines = _comparison_summary_lines({"status": "FAIL", "errors": ["bad report"]}, tmp_path / "missing.json")
+
+    assert lines[0] == "Paired comparison status: FAIL"
+    assert any("Descriptive only" in line for line in lines)
