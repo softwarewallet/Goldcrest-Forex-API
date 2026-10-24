@@ -812,7 +812,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.output:
         output = Path(args.output)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\\n", encoding="utf-8")
+        output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
         report["report_path"] = str(output.resolve())
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True, allow_nan=False))
