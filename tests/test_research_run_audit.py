@@ -125,7 +125,7 @@ def test_audit_verifies_temporal_calibration_receipt_hash_and_matrix_binding(tmp
     assert valid["status"] == "PASS"
     assert "temporal_calibration_audit_path" in valid["checked_artifacts"]
 
-    receipt_path.write_text(receipt_path.read_text(encoding="utf-8") + "\\n", encoding="utf-8")
+    receipt_path.write_text(receipt_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     tampered = audit_research_run_manifest(manifest_path)
     assert tampered["status"] == "FAIL"
     assert "temporal_calibration_audit_path_sha256_mismatch" in tampered["errors"]
