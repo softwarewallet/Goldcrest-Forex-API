@@ -10,6 +10,7 @@ import pytest
 
 from app.research_label_eligibility_comparison import (
     compare_label_eligibility_runs,
+    _fold_direction_stability,
     _metric_summary,
 )
 
@@ -293,6 +294,33 @@ def test_compares_models_on_exact_same_eligible_held_out_timestamps(tmp_path):
     assert report["execution_connected"] is False
 
 
+def test_fold_direction_stability_reports_direction_counts_and_range():
+    folds = [
+        {"paired_variant_minus_baseline_delta": {
+            "log_loss": -0.01, "brier_score": 0.002, "accuracy_at_fixed_half": 0.01
+        }},
+        {"paired_variant_minus_baseline_delta": {
+            "log_loss": 0.02, "brier_score": -0.001, "accuracy_at_fixed_half": -0.02
+        }},
+        {"paired_variant_minus_baseline_delta": {
+            "log_loss": 0.0, "brier_score": 0.0, "accuracy_at_fixed_half": 0.0
+        }},
+    ]
+
+    report = _fold_direction_stability(folds)
+
+    assert report["fold_count"] == 3
+    assert report["metrics"]["log_loss"]["favorable_fold_count"] == 1
+    assert report["metrics"]["log_loss"]["adverse_fold_count"] == 1
+    assert report["metrics"]["log_loss"]["neutral_fold_count"] == 1
+    assert report["metrics"]["log_loss"]["minimum_delta"] == -0.01
+    assert report["metrics"]["log_loss"]["maximum_delta"] == 0.02
+    assert report["metrics"]["brier_score"]["favorable_fold_count"] == 1
+    assert report["metrics"]["accuracy_at_fixed_half"]["favorable_fold_count"] == 1
+    assert report["inferential"] is False
+    assert report["automatic_model_selection"] is False
+
+
 def test_comparison_warns_but_continues_when_audit_warning_sets_differ(tmp_path):
     baseline = _build_run(
         tmp_path / "baseline", "baseline-run", capped=False,
@@ -312,6 +340,10 @@ def test_comparison_warns_but_continues_when_audit_warning_sets_differ(tmp_path)
     assert report["variant_raw_ohlc_audit_warnings"] == [
         "non_weekend_long_gap_detected_review_data_coverage"
     ]
+    assert report["raw_ohlc_audit_warning_diff"] == {
+        "baseline_only": ["legacy_long_gap_warning"],
+        "variant_only": ["non_weekend_long_gap_detected_review_data_coverage"],
+    }
     assert any(
         "raw_ohlc_audit_warning_sets_differ_between_runs" in warning
         for warning in report["warnings"]

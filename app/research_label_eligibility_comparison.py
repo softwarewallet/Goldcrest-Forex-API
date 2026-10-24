@@ -303,6 +303,65 @@ def _experiments_by_key(matrix: Mapping[str, Any], run_label: str) -> dict[tuple
     return result
 
 
+def _fold_direction_stability(
+    fold_results: Sequence[Mapping[str, Any]],
+    *,
+    neutral_tolerance: float = 1e-12,
+) -> dict[str, Any]:
+    """Summarize fold-wise direction consistency without treating folds as independent."""
+    if not math.isfinite(neutral_tolerance) or neutral_tolerance < 0:
+        raise ValueError("neutral_tolerance must be finite and non-negative")
+
+    metric_directions = {
+        "log_loss": "lower_is_better",
+        "brier_score": "lower_is_better",
+        "accuracy_at_fixed_half": "higher_is_better",
+    }
+    metrics: dict[str, Any] = {}
+    for metric, direction in metric_directions.items():
+        deltas: list[float] = []
+        for fold in fold_results:
+            delta_payload = fold.get("paired_variant_minus_baseline_delta")
+            if not isinstance(delta_payload, Mapping):
+                raise ValueError(f"fold direction summary missing delta payload for {metric}")
+            value = delta_payload.get(metric)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError(f"fold direction summary has invalid delta for {metric}")
+            deltas.append(float(value))
+
+        if direction == "lower_is_better":
+            favorable = sum(value < -neutral_tolerance for value in deltas)
+            adverse = sum(value > neutral_tolerance for value in deltas)
+        else:
+            favorable = sum(value > neutral_tolerance for value in deltas)
+            adverse = sum(value < -neutral_tolerance for value in deltas)
+        neutral = len(deltas) - favorable - adverse
+        metrics[metric] = {
+            "direction": direction,
+            "favorable_fold_count": favorable,
+            "adverse_fold_count": adverse,
+            "neutral_fold_count": neutral,
+            "mean_delta": round(statistics.fmean(deltas), 10) if deltas else None,
+            "median_delta": round(statistics.median(deltas), 10) if deltas else None,
+            "minimum_delta": round(min(deltas), 10) if deltas else None,
+            "maximum_delta": round(max(deltas), 10) if deltas else None,
+        }
+
+    return {
+        "fold_count": len(fold_results),
+        "neutral_tolerance": neutral_tolerance,
+        "metrics": metrics,
+        "interpretation": (
+            "Direction counts and ranges are descriptive fold-level diagnostics only. Fold test windows "
+            "may overlap, so folds are not assumed independent; no p-values, confidence claims, or model "
+            "selection are produced."
+        ),
+        "inferential": False,
+        "automatic_model_selection": False,
+        "actionable": False,
+    }
+
+
 def compare_label_eligibility_runs(
     baseline_manifest_path: str | Path,
     variant_manifest_path: str | Path,
@@ -517,6 +576,7 @@ def compare_label_eligibility_runs(
                     "actionable": False,
                 })
 
+            fold_stability = _fold_direction_stability(paired_fold_results)
             aggregate: dict[str, Any] = {}
             for partition_name in ("baseline_same_eligible_timestamps_metrics", "variant_eligible_test_metrics"):
                 aggregate[partition_name] = {
@@ -540,6 +600,7 @@ def compare_label_eligibility_runs(
                 "feature_names": list(base_exp["feature_names"]),
                 "fold_count": len(paired_fold_results),
                 "fold_results": paired_fold_results,
+                "fold_direction_stability": fold_stability,
                 "mean_across_folds": aggregate,
                 "automatically_selected": False,
                 "actionable": False,
@@ -575,6 +636,10 @@ def compare_label_eligibility_runs(
             "raw_ohlc_audit_warning_sets_identical": raw_audit_warning_sets_identical,
             "baseline_raw_ohlc_audit_warnings": list(baseline_raw_audit_warnings),
             "variant_raw_ohlc_audit_warnings": list(variant_raw_audit_warnings),
+            "raw_ohlc_audit_warning_diff": {
+                "baseline_only": sorted(set(baseline_raw_audit_warnings) - set(variant_raw_audit_warnings)),
+                "variant_only": sorted(set(variant_raw_audit_warnings) - set(baseline_raw_audit_warnings)),
+            },
             "baseline_dataset_sha256": _sha256_file(baseline["artifacts"]["dataset_path"]),
             "variant_dataset_sha256": _sha256_file(variant["artifacts"]["dataset_path"]),
             "raw_ohlc_snapshots_identical": True,
