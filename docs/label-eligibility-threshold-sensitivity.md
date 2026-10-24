@@ -21,6 +21,15 @@ The reference report is reused only after checking the cap, seed list, research-
 
 A new threshold report is written with collision-safe naming, and progress is saved after each threshold. The report compares per-model, per-metric seed deltas and checks that source data, chronological fold boundaries, and experiment identities match across thresholds. Eligible-row counts are retained in each cap's fold signature and may differ by design; they are excluded only from the cross-cap boundary comparison.
 
+## Audit a completed sweep without retraining
+
+After the sweep completes, the saved threshold report can be audited against its existing seed-sweep and pipeline manifests. This checks dataset-level eligible/ineligible row counts for each cap, verifies that each seed used the recorded cap and same raw OHLC hash, compares fold-level eligible test counts, and flags threshold pairs with identical eligibility profiles. It does not retrain models or overwrite the original report.
+
+    python -m app.research_label_eligibility_threshold_report_audit \
+      --threshold-report data/research/runs/eurusd-m15-demo-m365-bas-cap-sweep_threshold_sweep_report.json
+
+The audit writes a new collision-safe report next to the threshold report. A pair of nested caps with identical eligible/ineligible counts on the same dataset has an unchanged eligibility profile; identical metrics across those caps are then expected rather than evidence that one cap is better.
+
 ## Interpretation
 
 All caps reuse the same historical OHLC snapshot and chronological test windows. Repeated seeds measure optimizer/retraining sensitivity; they are not independent market observations. The sweep makes no inferential or profitability claims, does not select the best threshold or model, does not promote a model, and does not connect to broker/execution services. A threshold should not be preferred merely because it performs best after trying multiple values; follow-up decisions require a separately prespecified protocol.
