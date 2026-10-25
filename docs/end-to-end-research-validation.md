@@ -493,3 +493,10 @@ independent; do not pool them as independent observations or interpret the means
 significance. The comparator is not a model-selection tool and does not establish profitability.
 All outputs remain `actionable=false` and `execution_connected=false`.
 
+
+
+## Feature-source fingerprint gate before model training
+
+Every newly prepared research dataset manifest now records both a canonical feature-schema SHA-256 and the SHA-256 of `app/causal_ta_features.py`. Before loading the prepared dataset into the experiment runner, the pipeline independently checks the manifest self-hash, the dataset bytes and row count, the ordered feature columns, the schema fingerprint, and the current feature implementation hash. A mismatch writes a non-actionable audit receipt and stops the run before model training begins.
+
+Existing prepared datasets created before these fields were added do not satisfy this gate. Regenerate them from the immutable raw OHLC snapshot using a new run ID; do not edit an old manifest to claim a source fingerprint that was not captured at preparation time. This fingerprint check complements, but does not replace, the point-in-time feature invariance audit. Matching source hashes alone do not prove that feature code is causally correct.
