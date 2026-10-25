@@ -143,6 +143,8 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
             parsed_times: dict[str, datetime] = {}
             for field in _TIMESTAMP_FIELDS:
                 if field not in fold:
+                    error("fold_timestamp_missing", f"{fold_loc}.{field}",
+                          "Every fold must record all train, validation, and test boundaries.")
                     continue
                 parsed = _parse_timestamp(fold.get(field))
                 if parsed is None:
