@@ -343,7 +343,7 @@ def test_invalid_inventory_spec_returns_consolidated_failure(monkeypatch, tmp_pa
 
 
 def test_invalid_provenance_manifest_returns_consolidated_failure(monkeypatch, tmp_path):
-    report = call(monkeypatch, tmp_path, provenance={"audit_name": "wrong_manifest"}, include_seal=False)
+    report = call(monkeypatch, tmp_path, provenance={"audit_name": "wrong_manifest", "artifacts": [{"artifact_id": "metrics", "path": "metrics.csv"}]}, include_seal=False)
     assert report["status"] == "FAIL"
     assert report["provenance_verification"]["status"] == "FAIL"
     assert any(item["code"] == "PROVENANCE_AUDIT_EXECUTION_FAILED"
