@@ -84,3 +84,6 @@ The consolidated evidence reader validates that receipt-level `errors` and `warn
 ## Phase 17: Effective section-status propagation
 
 The consolidated report now publishes a `summary.section_statuses` inventory using the effective integrity-adjusted status for every section. Detailed summaries distinguish that effective status from the receipt's own `reported_status`. A receipt that claims `PASS` but fails a hash, scope, identity, or schema check is therefore shown as `FAIL` in the summary rather than leaving a contradictory apparent pass for downstream consumers.
+
+
+The consolidated `integrity_summary` also counts malformed diagnostic-schema sections and sections whose effective status differs from the receipt's reported status. These counters make integrity defects visible in a compact inventory without changing or hiding the underlying receipt.
