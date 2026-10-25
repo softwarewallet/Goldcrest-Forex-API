@@ -43,7 +43,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False):
     import app.research_unified_provenance_certification as module
 
     if repo_path is None:
@@ -70,7 +70,10 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
     if provenance and provenance.get("source_revision") != REV:
         provenance_report["status"] = "FAIL"
         provenance_report["stale_or_invalid_count"] = 1
-    monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: provenance_report)
+    if provenance_error:
+        monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: (_ for _ in ()).throw(ValueError("invalid_provenance_manifest")))
+    else:
+        monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: provenance_report)
     if fingerprint_error:
         monkeypatch.setattr(module, "fingerprint_path", lambda path: (_ for _ in ()).throw(FileNotFoundError("missing_input")) if str(path).endswith("config.json") else DATASET_HASH)
     else:
@@ -85,10 +88,13 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         "errors": [],
         **FLAGS,
     })
-    monkeypatch.setattr(module, "run_final_certification", lambda *a, **k: (
-        {"audit_name": "evidence_bundle_verification", "status": "PASS", "reports_verified": 6, "errors": [], **FLAGS},
-        {"audit_name": "research_final_certification_chain", "status": "PASS", "readiness": "FINAL_CERTIFICATION_CHAIN_VERIFIED", "errors": [], **FLAGS},
-    ))
+    if final_certification_error:
+        monkeypatch.setattr(module, "run_final_certification", lambda *a, **k: (_ for _ in ()).throw(ValueError("invalid_evidence_bundle")))
+    else:
+        monkeypatch.setattr(module, "run_final_certification", lambda *a, **k: (
+            {"audit_name": "evidence_bundle_verification", "status": "PASS", "reports_verified": 6, "errors": [], **FLAGS},
+            {"audit_name": "research_final_certification_chain", "status": "PASS", "readiness": "FINAL_CERTIFICATION_CHAIN_VERIFIED", "errors": [], **FLAGS},
+        ))
     monkeypatch.setattr(module, "gate_freshness_certification", lambda fresh, cert: {
         "status": gate_status,
         "errors": [] if gate_status == "PASS" else [{"code": "gate_failed"}],
@@ -131,6 +137,7 @@ def test_provenance_failure_blocks_overall_certification(monkeypatch, tmp_path):
 def test_freshness_gate_failure_blocks_overall_certification(monkeypatch, tmp_path):
     report = call(monkeypatch, tmp_path, gate_status="FAIL")
     assert report["status"] == "FAIL"
+    assert any(item["code"] == "FRESHNESS_CERTIFICATION_GATE_FAILED" for item in report["errors"])
     assert any(item["code"] == "FRESHNESS_CERTIFICATION_GATE_FAILED" for item in report["errors"])
 
 
@@ -327,3 +334,30 @@ def test_missing_current_config_fails_closed_with_consolidated_report(monkeypatc
     assert any(item["code"] == "CURRENT_INPUT_FINGERPRINT_FAILED" and item["input"] == "config"
                for item in report["errors"])
     assert report["deployment_authorized"] is False
+
+
+
+def test_invalid_inventory_spec_returns_consolidated_failure(monkeypatch, tmp_path):
+    invalid_spec = {"audit_name": "wrong_spec", "schema_version": 999, "required_artifacts": []}
+    report = call(monkeypatch, tmp_path, inventory_override=invalid_spec, include_inventory_seal=False)
+    assert report["status"] == "FAIL"
+    assert report["artifact_inventory_completeness"]["status"] == "FAIL"
+    assert any(item["code"] == "INVENTORY_AUDIT_EXECUTION_FAILED"
+               for item in report["artifact_inventory_completeness"]["errors"])
+
+
+def test_invalid_provenance_manifest_returns_consolidated_failure(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path, provenance={"audit_name": "wrong_manifest", "artifacts": [{"artifact_id": "metrics", "path": "metrics.csv"}]}, include_seal=False, provenance_error=True)
+    assert report["status"] == "FAIL"
+    assert report["provenance_verification"]["status"] == "FAIL"
+    assert any(item["code"] == "PROVENANCE_AUDIT_EXECUTION_FAILED"
+               for item in report["provenance_verification"]["errors"])
+
+
+def test_final_certification_exception_returns_consolidated_failure(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path, final_certification_error=True)
+    assert report["status"] == "FAIL"
+    assert report["final_certification_chain"]["status"] == "FAIL"
+    assert any(item["code"] == "FINAL_CERTIFICATION_EXECUTION_FAILED"
+               for item in report["final_certification_chain"]["errors"])
+    assert any(item["code"] == "FINAL_CERTIFICATION_CHAIN_FAILED" for item in report["errors"])
