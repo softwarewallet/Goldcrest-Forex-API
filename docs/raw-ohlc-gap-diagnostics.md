@@ -34,3 +34,13 @@ In both modes, the audit fingerprints the CSV and does not modify the source sna
 The interval and calendar-date profiles describe observed timestamp spacing only. An interval spanning two or more timeframe units or a UTC calendar date with no rows is not automatically a missing-candle finding. Unobserved dates can reflect weekends, instrument sessions, holidays, provider coverage, collection choices, or other factors. The report does not assume that each UTC day should contain a fixed number of rows. The greater-than-eight-hour report uses a conservative UTC weekend heuristic and informational fixed-date holiday tags; neither is authoritative evidence of an expected market closure.
 
 Use repeated boundary patterns and daily/hourly coverage profiles to prioritize manual comparison against the relevant instrument/provider session calendar, cTrader pagination evidence, and source export. Non-monotonic timestamps prevent interval coverage summaries. These diagnostics do not reclassify gaps, suppress warnings, repair or impute bars, select or promote models, or authorize execution. Overall status and existing warnings remain governed by the integrity checks; the coverage profiles do not independently alter them.
+
+
+## Gap-policy audit diagnostic-schema integrity
+
+The gap-policy equivalence audit treats a passing input report as structurally inconsistent if its
+optional `errors` or `warnings` field is not a list of non-empty strings, or if a report marked
+`PASS` / `PASS_WITH_WARNINGS` still contains errors. Gap-event affected-label row identities are
+validated as dataset row numbers before comparing exact membership; malformed members are not
+silently filtered out. These checks fail closed and do not alter the underlying OHLC, dataset,
+eligibility policies, or model results.

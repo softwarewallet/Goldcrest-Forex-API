@@ -173,3 +173,44 @@ def test_gap_policy_audit_rejects_changed_dataset_bytes(tmp_path):
         assert "baseline_dataset_file_hash_mismatch" in str(exc)
     else:
         raise AssertionError("Expected changed dataset SHA-256 to be rejected")
+
+
+
+def test_gap_policy_audit_rejects_malformed_event_row_membership(tmp_path):
+    parts = _fixture(tmp_path)
+    event_profile = json.loads(parts[3].read_text(encoding="utf-8"))
+    event_profile["gap_events"][0]["affected_label_rows"] = [2, "3", 4, 5]
+    _json(parts[3], event_profile)
+
+    result = _run(parts)
+
+    assert result["status"] == "FAIL"
+    assert any(error.startswith("gap_event_exposure_mismatch:") for error in result["errors"])
+
+
+def test_gap_policy_audit_rejects_malformed_warning_schema(tmp_path):
+    parts = _fixture(tmp_path)
+    profile = json.loads(parts[1].read_text(encoding="utf-8"))
+    profile["warnings"] = "not-a-list"
+    _json(parts[1], profile)
+
+    try:
+        _run(parts)
+    except ValueError as exc:
+        assert "duration_profile_warnings_schema_invalid" in str(exc)
+    else:
+        raise AssertionError("Expected malformed warning schema to be rejected")
+
+
+def test_gap_policy_audit_rejects_pass_status_with_errors(tmp_path):
+    parts = _fixture(tmp_path)
+    profile = json.loads(parts[1].read_text(encoding="utf-8"))
+    profile["errors"] = ["unresolved_integrity_error"]
+    _json(parts[1], profile)
+
+    try:
+        _run(parts)
+    except ValueError as exc:
+        assert "duration_profile_reports_errors_despite_pass_status" in str(exc)
+    else:
+        raise AssertionError("Expected contradictory report status to be rejected")
