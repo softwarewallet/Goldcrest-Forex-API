@@ -186,9 +186,10 @@ def audit_cross_cap_stability(
         first_audit = loaded[0]["audit"]
         for item in loaded[1:]:
             audit = item["audit"]
+            seed_id = item["seed"]
             for field in ("symbol", "timeframe", "label_horizon_bars", "raw_ohlc_sha256", "caps_hours"):
                 if audit.get(field) != first_audit.get(field):
-                    raise ValueError(f"seed {item[\u0027seed\u0027]}: cross-seed provenance mismatch for {field}")
+                    raise ValueError(f"seed {seed_id}: cross-seed provenance mismatch for {field}")
         # baseline_dataset_sha256 and baseline_run_ids are intentionally validated within
         # each seed only; they are not required to match across independently seeded runs.
 
