@@ -11,7 +11,7 @@ python -m app.research_model_evaluation_gate \
   --json
 ```
 
-The output path must not already exist. Exit code `0` means the checked report passed; exit code `3` means it failed. The source matrix is read-only.
+The output path must not already exist. Exit code `0` means the checked report passed; exit code `3` means it failed. The source matrix is read-only. The offline research pipeline generates this receipt automatically as `<run-id>_model_evaluation_gate.json` and records its SHA-256 and status in the pipeline manifest. Add `--strict-model-evaluation-gate` to `app.research_pipeline` to return exit code `6` when this gate fails.
 
 ## Checks
 

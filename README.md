@@ -191,3 +191,6 @@ cross-seed aggregation and does not authorize model selection or trading. See
 ## Offline model evaluation integrity gate
 
 Validate persisted walk-forward experiment matrices for metric arithmetic, fold coverage, timezone-aware temporal boundaries, and explicit non-actionable/no-test-selection safeguards without changing the source report. See `docs/research-model-evaluation-gate.md` and run `python -m app.research_model_evaluation_gate --experiment-matrix data/research/runs/<run-id>_experiment_matrix.json --json`.
+
+
+The offline pipeline also writes a hash-addressed `<run-id>_model_evaluation_gate.json` receipt from the exact persisted experiment matrix. Use `--strict-model-evaluation-gate` to return exit code 6 if that independent structural/metric-integrity gate fails. The receipt is diagnostic only and does not select a model or authorize execution. See `docs/research-model-evaluation-gate.md`.
