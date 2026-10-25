@@ -728,6 +728,58 @@ def build_evidence_interpretation(
         raw_coverage = oos_period_robustness.get("candidate_fold_coverage")
         robustness_candidate_coverage = raw_coverage if isinstance(raw_coverage, list) else []
 
+    # The report aggregates several diagnostic families and may contain many
+    # unadjusted interval/period comparisons. Make that multiplicity visible
+    # rather than allowing isolated interval exclusions to read as confirmation.
+    baseline_interval_count = (
+        baseline_counts["comparisons_evaluated"]
+        + baseline_counts["intervals_dependence_limited"]
+        + baseline_counts["intervals_unavailable"]
+    )
+    regime_interval_count = (
+        regime_uncertainty_counts["intervals_evaluated"]
+        + regime_uncertainty_counts["intervals_unavailable"]
+    )
+    multiplicity_families = {
+        "baseline_probability_loss_intervals": {
+            "comparison_count": baseline_interval_count,
+            "intervals_classified": baseline_counts["comparisons_evaluated"],
+            "intervals_dependence_limited": baseline_counts["intervals_dependence_limited"],
+            "intervals_unavailable": baseline_counts["intervals_unavailable"],
+            "adjustment_applied": False,
+        },
+        "temporal_calibration_test_period_changes": {
+            "comparison_count": calibration_counts["comparisons_evaluated"]
+            + calibration_counts["deltas_unavailable"],
+            "deltas_available": calibration_counts["comparisons_evaluated"],
+            "deltas_unavailable": calibration_counts["deltas_unavailable"],
+            "adjustment_applied": False,
+        },
+        "volatility_regime_intervals": {
+            "comparison_count": regime_interval_count,
+            "comparison_groups": len(regime_groups),
+            "adjustment_applied": False,
+        },
+        "chronological_oos_candidates": {
+            "comparison_count": robustness_candidate_count,
+            "period_group_count": (
+                oos_period_robustness.get("period_group_count")
+                if isinstance(oos_period_robustness, Mapping) else 0
+            ),
+            "adjustment_applied": False,
+        },
+    }
+    family_comparison_counts = [
+        row["comparison_count"] for row in multiplicity_families.values()
+        if isinstance(row.get("comparison_count"), int) and row["comparison_count"] > 0
+    ]
+    total_diagnostic_comparisons = sum(family_comparison_counts)
+    multiplicity_status = (
+        "MULTIPLE_DIAGNOSTIC_COMPARISONS_UNADJUSTED"
+        if total_diagnostic_comparisons > 1
+        else "SINGLE_OR_NO_DIAGNOSTIC_COMPARISON"
+    )
+
     return {
         "chronological_oos_robustness": {
             "status": robustness_status,
@@ -793,6 +845,20 @@ def build_evidence_interpretation(
             ),
         },
         "label_gap_exposure": gap_summary,
+        "multiplicity_context": {
+            "status": multiplicity_status,
+            "diagnostic_family_count": sum(count > 0 for count in family_comparison_counts),
+            "total_diagnostic_comparison_count": total_diagnostic_comparisons,
+            "families": multiplicity_families,
+            "adjustment_applied": False,
+            "confirmatory_inference_supported": False,
+            "interpretation": (
+                "Counts are an audit inventory across distinct descriptive diagnostic families, not a single "
+                "statistical testing family. No multiplicity correction is applied. Confidence intervals and "
+                "period/regime summaries are exploratory and must not be treated as confirmatory significance "
+                "claims; an appropriate pre-specified testing family and method would be needed for that."
+            ),
+        },
         "research_conclusion": "DESCRIPTIVE_ONLY_NO_MODEL_SELECTED",
         "promotion_readiness": "NOT_ESTABLISHED_BY_THIS_REPORT",
         "automatic_model_selection": False,
