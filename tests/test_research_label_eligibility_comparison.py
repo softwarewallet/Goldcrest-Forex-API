@@ -271,6 +271,7 @@ def test_compares_models_on_exact_same_eligible_held_out_timestamps(tmp_path):
     report = compare_label_eligibility_runs(baseline, variant)
 
     assert report["status"] == "PASS"
+    assert report["inferential"] is False
     assert report["raw_ohlc_snapshots_identical"] is True
     assert report["dataset_timestamps_identical"] is True
     assert report["common_fold_windows_identical"] is True
