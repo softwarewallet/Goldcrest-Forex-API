@@ -1,6 +1,6 @@
 """Research-only point-in-time feature integrity audit for causal OHLC features.
 
-Accepts a JSON object with a "bars" array or a bare array of OHLC records. This audit
+Accepts CSV OHLC data or a JSON object with a "bars" array / a bare array of OHLC records. This audit
 checks the repository's causal feature builder, reproducibility, prefix invariance,
 future perturbation invariance, and chronological split isolation. It does not certify
 downstream model pipelines, label construction, session calendars, or execution behavior.
@@ -50,7 +50,7 @@ def _read_bars(
         if not isinstance(row, dict):
             raise ValueError(f"bar_record_invalid:{index}")
         try:
-            stamp = next(row[key] for key in ("timestamp", "timestamp_utc", "datetime", "time") if key in row)
+            stamp = next((row[key] for key in ("timestamp", "timestamp_utc", "datetime", "time") if key in row), None)
             if not isinstance(stamp, str):
                 raise TypeError
             timestamp = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
