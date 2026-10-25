@@ -4,7 +4,11 @@ import hashlib
 import json
 from pathlib import Path
 
-from app.research_label_eligibility_common_cohort import audit_common_heldout_cohort
+from app.research_label_eligibility_common_cohort import (
+    _write_report_no_clobber,
+    audit_common_heldout_cohort,
+    main,
+)
 
 
 def _report(
@@ -236,3 +240,53 @@ def test_common_cohort_requires_explicit_non_inferential_flag(tmp_path):
     assert any("inferential must be false" in error for error in result["errors"])
     assert result["automatic_model_selection"] is False
     assert result["actionable"] is False
+
+
+def test_common_cohort_cli_refuses_output_that_aliases_input(tmp_path, capsys):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    original = a.read_bytes()
+
+    result = main([
+        "--comparison-report", str(a),
+        "--comparison-report", str(b),
+        "--output", str(a),
+    ])
+
+    assert result == 2
+    assert a.read_bytes() == original
+    assert "output_must_not_alias_input" in capsys.readouterr().err
+
+
+def test_common_cohort_cli_refuses_existing_output_without_overwrite(tmp_path, capsys):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    output = tmp_path / "audit.json"
+    output.write_text("preserve existing report", encoding="utf-8")
+
+    result = main([
+        "--comparison-report", str(a),
+        "--comparison-report", str(b),
+        "--output", str(output),
+    ])
+
+    assert result == 2
+    assert output.read_text(encoding="utf-8") == "preserve existing report"
+    assert "output_already_exists" in capsys.readouterr().err
+
+
+def test_common_cohort_output_does_not_clobber_concurrent_destination(tmp_path, monkeypatch):
+    import app.research_label_eligibility_common_cohort as module
+
+    output = tmp_path / "audit.json"
+    real_link = module.os.link
+
+    def create_destination_then_link(source, destination):
+        Path(destination).write_text("created by another process", encoding="utf-8")
+        return real_link(source, destination)
+
+    monkeypatch.setattr(module.os, "link", create_destination_then_link)
+    with pytest.raises(FileExistsError):
+        _write_report_no_clobber(output, {"status": "PASS"}, [])
+    assert output.read_text(encoding="utf-8") == "created by another process"
+    assert list(tmp_path.glob(".audit.json.*.tmp")) == []
