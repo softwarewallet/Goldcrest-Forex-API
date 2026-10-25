@@ -28,6 +28,7 @@ def _report(
         "label_horizon_bars": 4,
         "raw_ohlc_sha256": "a" * 64,
         "max_label_elapsed_hours": cap,
+        "inferential": False,
         "automatic_model_selection": False,
         "actionable": False,
         "execution_connected": False,
