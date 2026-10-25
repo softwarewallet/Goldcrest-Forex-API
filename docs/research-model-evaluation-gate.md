@@ -17,6 +17,7 @@ The output path must not already exist. Exit code `0` means the checked report p
 
 - Explicit non-actionable and no-test-selection/no-test-tuning flags.
 - Unique experiment IDs and unique fold indices.
+- Cross-experiment common-fold consistency: shared fold indices must use identical timezone-normalized train, validation, and test boundaries and the same held-out sample count.
 - Declared fold count agrees with each experiment's recorded folds.
 - Complete timezone-aware train, validation, and test boundaries, with each window's start preceding its end.
 - Finite metric values and expected ranges for sample counts, prevalence, Brier score, log loss, fixed-threshold accuracy, mean probability, and expected calibration error.
@@ -25,3 +26,6 @@ The output path must not already exist. Exit code `0` means the checked report p
 ## Interpretation and limits
 
 A `PASS` means the listed structure and arithmetic checks are internally consistent. It does **not** prove that the features are point-in-time correct, that all data leakage is absent, that model results are statistically significant, or that any strategy is profitable. The gate does not compare models, select a winner, fit a calibrator, alter persisted artifacts, connect to a broker, or authorize execution. Treat it as one independent integrity layer alongside provenance, temporal calibration, and research-run audits.
+
+
+The common-fold check detects mismatched candidate windows before paired or comparative summaries are trusted. It is a structural consistency check only; identical windows do not establish independent observations, statistical significance, or a fair experimental design by themselves.

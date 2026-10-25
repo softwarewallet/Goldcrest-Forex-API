@@ -108,6 +108,36 @@ def test_evaluation_gate_rejects_naive_timestamps_and_reversed_windows(tmp_path:
     assert "invalid_fold_window" in codes
 
 
+def test_evaluation_gate_rejects_cross_experiment_fold_window_mismatch(tmp_path: Path) -> None:
+    report = _report()
+    second_experiment = {
+        **report["experiments"][0],
+        "experiment_id": "fixture-lightgbm",
+        "fold_results": [
+            {
+                **report["experiments"][0]["fold_results"][0],
+                "test_start_utc": "2026-01-01T01:46:00Z",
+            }
+        ],
+    }
+    report["experiments"].append(second_experiment)
+    result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
+    assert result["status"] == "FAIL"
+    assert "common_fold_evaluation_mismatch" in {
+        item["code"] for item in result["errors"]
+    }
+
+
+def test_evaluation_gate_accepts_identical_common_fold_windows(tmp_path: Path) -> None:
+    report = _report()
+    report["experiments"].append({
+        **report["experiments"][0],
+        "experiment_id": "fixture-lightgbm",
+    })
+    result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
+    assert result["status"] == "PASS"
+
+
 def test_evaluation_gate_reports_unreadable_json(tmp_path: Path) -> None:
     source = tmp_path / "broken.json"
     source.write_text("{", encoding="utf-8")
