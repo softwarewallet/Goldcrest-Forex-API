@@ -95,7 +95,11 @@ def audit_experiment_reproducibility(
         unhashed_manifest = dict(manifest)
         unhashed_manifest.pop("pipeline_manifest_sha256", None)
         try:
-            actual_manifest_hash = hashlib.sha256(canonical_json(unhashed_manifest)).hexdigest()
+            actual_manifest_hash = hashlib.sha256(
+                json.dumps(
+                    unhashed_manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+                ).encode("utf-8")
+            ).hexdigest()
         except ValueError:
             actual_manifest_hash = None
             errors.append("pipeline_manifest_not_canonicalizable")
