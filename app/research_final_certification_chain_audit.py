@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -183,38 +186,89 @@ def _read_object(path: Path) -> dict[str, Any]:
     return payload
 
 
-def main() -> int:
+def _write_report_no_clobber(
+    output_path: str | Path,
+    payload: dict[str, Any],
+    input_paths: list[str | Path],
+) -> Path:
+    """Publish a certification report without replacing inputs or concurrent outputs."""
+    output = Path(output_path).expanduser().resolve()
+    inputs = {Path(path).expanduser().resolve() for path in input_paths}
+    if output in inputs:
+        raise ValueError("output_must_not_alias_input")
+    if output.exists():
+        raise ValueError(f"output_already_exists:{output}")
+
+    serialized = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    temporary: Path | None = None
+    published_identity: tuple[int, int] | None = None
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            stream.write(serialized)
+            stream.flush()
+            os.fsync(stream.fileno())
+            temporary = Path(stream.name)
+        os.link(temporary, output)
+        stat = output.stat()
+        published_identity = (stat.st_dev, stat.st_ino)
+        temporary.unlink()
+        temporary = None
+        return output
+    except Exception:
+        if published_identity is not None:
+            try:
+                current = output.stat()
+                if (current.st_dev, current.st_ino) == published_identity:
+                    output.unlink()
+            except OSError:
+                pass
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--readiness-report", required=True, type=Path)
     parser.add_argument("--evidence-bundle", required=True, type=Path)
     parser.add_argument("--bundle-verification-report", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    input_paths = [args.readiness_report, args.evidence_bundle, args.bundle_verification_report]
     try:
         report = audit_final_certification_chain(
             _read_object(args.readiness_report),
             _read_object(args.evidence_bundle),
             _read_object(args.bundle_verification_report),
         )
-        if args.output.exists():
-            raise ValueError(f"output_already_exists:{args.output}")
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
-            encoding="utf-8",
-        )
+        output = _write_report_no_clobber(args.output, report, input_paths)
         print(json.dumps({
             "status": report["status"],
             "readiness": report["readiness"],
             "reports_declared": report["reports_declared"],
             "reports_verified": report["reports_verified"],
             "error_count": len(report["errors"]),
-            "report_path": str(args.output.resolve()),
+            "report_path": str(output),
             "deployment_authorized": False,
         }, indent=2))
         return 0 if report["status"] in PASS_STATUSES else 1
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        print(json.dumps({"status": "FAIL", "error": f"{type(exc).__name__}:{exc}"}, indent=2))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        print(json.dumps({
+            "status": "FAIL",
+            "error": f"{type(exc).__name__}:{exc}",
+            "deployment_authorized": False,
+        }, indent=2), file=sys.stderr)
         return 2
 
 
