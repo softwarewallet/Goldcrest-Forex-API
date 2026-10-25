@@ -4,6 +4,7 @@ import hashlib
 
 from app.research_unified_provenance_certification import run_unified_certification
 from app.research_provenance_manifest_seal import create_manifest_seal
+from app.research_artifact_inventory_spec_seal import create_inventory_spec_seal
 
 REV = "a" * 40
 CONFIG_HASH = hashlib.sha256(b"config").hexdigest()
@@ -42,7 +43,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True):
     import app.research_unified_provenance_certification as module
 
     provenance_report = {
@@ -87,6 +88,7 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
         provenance_seal=create_manifest_seal(selected_manifest) if include_seal else None,
         inventory_spec=inventory_spec,
+        inventory_seal=create_inventory_spec_seal(inventory_spec) if include_inventory_seal else None,
         evidence_root=tmp_path, artifact_root=tmp_path,
         current_source_revision=REV, repo_path=repo_path, config_path=tmp_path / "config.json",
         dataset_path=tmp_path / "dataset",
@@ -99,6 +101,7 @@ def test_unified_certification_passes_when_all_components_pass(monkeypatch, tmp_
     assert report["readiness"] == "CERTIFIED_CURRENT"
     assert report["provenance_verification"]["status"] == "PASS"
     assert report["provenance_manifest_seal_verification"]["status"] == "PASS"
+    assert report["artifact_inventory_completeness"]["inventory_spec_sha256"] == report["artifact_inventory_spec_seal_verification"]["inventory_spec_sha256"]
     assert report["freshness_audit"]["status"] == "PASS"
     assert report["deployment_authorized"] is False
 
@@ -118,7 +121,7 @@ def test_freshness_gate_failure_blocks_overall_certification(monkeypatch, tmp_pa
 def test_unified_report_retains_all_component_reports(monkeypatch, tmp_path):
     report = call(monkeypatch, tmp_path)
     assert {
-        "artifact_inventory_completeness", "provenance_manifest_seal_verification", "provenance_verification", "bundle_verification", "final_certification_chain",
+        "artifact_inventory_spec_seal_verification", "artifact_inventory_completeness", "provenance_manifest_seal_verification", "provenance_verification", "bundle_verification", "final_certification_chain",
         "freshness_audit", "freshness_certification_gate",
     }.issubset(report)
 
@@ -196,3 +199,51 @@ def test_inventory_incompleteness_blocks_unified_certification(monkeypatch, tmp_
     assert report["artifact_inventory_completeness"]["status"] == "FAIL"
     assert any(item["code"] == "ARTIFACT_INVENTORY_COMPLETENESS_FAILED" for item in report["errors"])
     assert report["deployment_authorized"] is False
+
+
+def test_missing_inventory_spec_seal_blocks_certification(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path, include_inventory_seal=False)
+    assert report["status"] == "FAIL"
+    assert report["artifact_inventory_spec_seal_verification"]["status"] == "FAIL"
+    assert any(item["code"] == "INVENTORY_SPEC_SEAL_FAILED" for item in report["errors"])
+
+
+def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, tmp_path):
+    import sys
+    import app.research_unified_provenance_certification as module
+
+    output = tmp_path / "out" / "certification.json"
+    monkeypatch.setattr(sys, "argv", [
+        "research_unified_provenance_certification",
+        "--readiness-report", str(tmp_path / "readiness.json"),
+        "--evidence-bundle", str(tmp_path / "bundle.json"),
+        "--evidence-root", str(tmp_path),
+        "--provenance-manifest", str(tmp_path / "provenance.json"),
+        "--provenance-seal", str(tmp_path / "provenance-seal.json"),
+        "--inventory-spec", str(tmp_path / "inventory.json"),
+        "--inventory-seal", str(tmp_path / "inventory-seal.json"),
+        "--artifact-root", str(tmp_path),
+        "--repo-path", str(tmp_path),
+        "--config-path", str(tmp_path / "config.json"),
+        "--dataset-path", str(tmp_path / "dataset"),
+        "--output", str(output),
+    ])
+    import pathlib
+    monkeypatch.setattr(module, "_read_object", lambda path: {"source": pathlib.Path(path).name})
+    captured = {}
+    def fake_runner(*args, **kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "PASS", "readiness": "CERTIFIED_CURRENT", "artifact_count": 1,
+            "stale_or_invalid_artifact_count": 0,
+            "provenance_manifest_seal_verification": {"status": "PASS"},
+            "artifact_inventory_completeness": {"status": "PASS"},
+            "artifact_inventory_spec_seal_verification": {"status": "PASS"},
+            "regeneration_required_count": 0, "errors": [], "deployment_authorized": False,
+        }
+    monkeypatch.setattr(module, "run_unified_certification", fake_runner)
+    assert module.main() == 0
+    assert captured["provenance_seal"]["source"] == "provenance-seal.json"
+    assert captured["inventory_spec"]["source"] == "inventory.json"
+    assert captured["inventory_seal"]["source"] == "inventory-seal.json"
+    assert output.is_file()

@@ -13,6 +13,7 @@ from typing import Any
 
 from app.research_artifact_freshness_audit import audit_artifact_freshness, fingerprint_path
 from app.research_artifact_inventory_completeness import audit_artifact_inventory_completeness
+from app.research_artifact_inventory_spec_seal import verify_inventory_spec_seal
 from app.research_artifact_provenance import verify_provenance
 from app.research_freshness_certification_gate import gate_freshness_certification
 from app.research_git_source_provenance import inspect_git_provenance
@@ -38,6 +39,7 @@ def run_unified_certification(
     *,
     provenance_seal: dict[str, Any] | None = None,
     inventory_spec: dict[str, Any] | None = None,
+    inventory_seal: dict[str, Any] | None = None,
     evidence_root: Path,
     artifact_root: Path,
     current_source_revision: str | None = None,
@@ -69,6 +71,12 @@ def run_unified_certification(
         "expected_artifact_count": None,
         "missing_or_mislocated_artifacts": [],
         "unexpected_or_mislocated_artifacts": [],
+    }
+    inventory_seal_report = verify_inventory_spec_seal(inventory_spec, inventory_seal) if inventory_spec is not None and inventory_seal is not None else {
+        "audit_name": "research_artifact_inventory_specification_seal_verification",
+        "status": "FAIL",
+        "inventory_spec_sha256": None,
+        "errors": [{"code": "INVENTORY_SPEC_SEAL_REQUIRED"}],
     }
     provenance_report = verify_provenance(
         provenance_manifest,
@@ -116,6 +124,11 @@ def run_unified_certification(
             "dirty_path_count": git_report.get("dirty_path_count") if git_report else None,
             "error": git_error,
         })
+    if inventory_seal_report["status"] != "PASS":
+        errors.append({
+            "code": "INVENTORY_SPEC_SEAL_FAILED",
+            "error_count": len(inventory_seal_report["errors"]),
+        })
     if inventory_report["status"] != "PASS":
         errors.append({
             "code": "ARTIFACT_INVENTORY_COMPLETENESS_FAILED",
@@ -156,6 +169,7 @@ def run_unified_certification(
             "status": "NOT_CHECKED",
             "errors": ([{"code": "GIT_SOURCE_PROVENANCE_ERROR", "error": git_error}] if git_error else []),
         },
+        "artifact_inventory_spec_seal_verification": inventory_seal_report,
         "artifact_inventory_completeness": inventory_report,
         "provenance_manifest_seal_verification": seal_report,
         "provenance_verification": provenance_report,
@@ -195,6 +209,7 @@ def main() -> int:
     parser.add_argument("--provenance-manifest", required=True, type=Path)
     parser.add_argument("--provenance-seal", required=True, type=Path, help="Detached seal created by app.research_provenance_manifest_seal")
     parser.add_argument("--inventory-spec", required=True, type=Path, help="Independently curated research artifact inventory contract")
+    parser.add_argument("--inventory-seal", required=True, type=Path, help="Detached seal created by app.research_artifact_inventory_spec_seal")
     parser.add_argument("--artifact-root", required=True, type=Path)
     parser.add_argument("--repo-path", required=True, type=Path, help="Local Git checkout; certification requires a clean working tree")
     parser.add_argument("--config-path", required=True, type=Path)
@@ -206,6 +221,9 @@ def main() -> int:
             _read_object(args.readiness_report),
             _read_object(args.evidence_bundle),
             _read_object(args.provenance_manifest),
+            provenance_seal=_read_object(args.provenance_seal),
+            inventory_spec=_read_object(args.inventory_spec),
+            inventory_seal=_read_object(args.inventory_seal),
             evidence_root=args.evidence_root,
             artifact_root=args.artifact_root,
             repo_path=args.repo_path,
@@ -223,6 +241,7 @@ def main() -> int:
             "stale_or_invalid_artifact_count": report["stale_or_invalid_artifact_count"],
             "provenance_seal_status": report["provenance_manifest_seal_verification"]["status"],
             "inventory_completeness_status": report["artifact_inventory_completeness"]["status"],
+            "inventory_seal_status": report["artifact_inventory_spec_seal_verification"]["status"],
             "regeneration_required_count": report["regeneration_required_count"],
             "error_count": len(report["errors"]),
             "report_path": str(args.output.resolve()),
