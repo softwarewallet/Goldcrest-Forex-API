@@ -254,7 +254,7 @@ def run_research_pipeline(
     model_evaluation_gate_path = destination / f"{run_id}_model_evaluation_gate.json"
     model_evaluation_gate = audit_model_evaluation_report(matrix_report_path)
     model_evaluation_gate_path.write_text(
-        json.dumps(model_evaluation_gate, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+        json.dumps(model_evaluation_gate, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     model_evaluation_gate_sha256 = _sha256(model_evaluation_gate_path)
