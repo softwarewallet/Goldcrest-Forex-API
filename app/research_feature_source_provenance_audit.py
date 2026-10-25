@@ -80,7 +80,11 @@ def audit_feature_source_provenance(
     declared_manifest_hash = manifest.get("manifest_sha256")
     unhashed_manifest = dict(manifest)
     unhashed_manifest.pop("manifest_sha256", None)
-    actual_manifest_hash = hashlib.sha256(_canonical_json(unhashed_manifest)).hexdigest()
+    try:
+        actual_manifest_hash = hashlib.sha256(_canonical_json(unhashed_manifest)).hexdigest()
+    except (TypeError, ValueError):
+        actual_manifest_hash = None
+        errors.append("manifest_canonicalization_failed")
     if not _is_sha256(declared_manifest_hash) or declared_manifest_hash != actual_manifest_hash:
         errors.append("manifest_sha256_mismatch")
 
