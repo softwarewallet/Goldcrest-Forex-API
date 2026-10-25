@@ -156,7 +156,9 @@ def _cap_equivalence_diagnostics(
                     "paired_variant_minus_baseline_delta",
                 )
                 metrics_match = all(
-                    _nested_equal(left.get(field), right.get(field))
+                    isinstance(left.get(field), Mapping)
+                    and isinstance(right.get(field), Mapping)
+                    and _nested_equal(left[field], right[field])
                     for field in metric_fields
                 )
                 if labels_match and baseline_predictions_match and variant_predictions_match and metrics_match:
