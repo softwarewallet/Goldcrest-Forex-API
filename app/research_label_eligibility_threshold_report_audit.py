@@ -87,25 +87,34 @@ def _free_report_path(source_path: Path) -> Path:
 
 
 def _fold_eligibility_profile(cap_record: Mapping[str, Any], label: str) -> list[dict[str, Any]]:
+    """Normalize both legacy signatures (with row counts) and window-only signatures.
+
+    Seed-sweep fold signatures intentionally identify test windows only. Eligible-row counts
+    are cap-dependent diagnostics, not fold identity, and newer threshold reports may omit
+    them from the signature. Do not fabricate counts when they are unavailable.
+    """
     signature = cap_record.get("fold_signature")
     if not isinstance(signature, list) or not signature:
         raise ValueError(f"{label}_fold_signature_missing")
     profile: list[dict[str, Any]] = []
     seen_indices: set[int] = set()
     for row in signature:
-        if not isinstance(row, list) or len(row) < 4:
+        if not isinstance(row, list) or len(row) not in (3, 4):
             raise ValueError(f"{label}_fold_signature_entry_invalid")
         index = _count(row[0], f"{label}_fold_index")
         if index in seen_indices:
             raise ValueError(f"{label}_fold_index_duplicate")
         seen_indices.add(index)
-        if not isinstance(row[1], str) or not row[1] or not isinstance(row[2], str) or not row[2]:
+        if not isinstance(row[1], str) or not row[1].strip() or not isinstance(row[2], str) or not row[2].strip():
             raise ValueError(f"{label}_fold_window_boundary_missing")
+        eligible_rows = (
+            _count(row[3], f"{label}_eligible_test_rows") if len(row) == 4 else None
+        )
         profile.append({
             "fold_index": index,
             "test_start_utc": row[1],
             "test_end_utc": row[2],
-            "eligible_test_rows": _count(row[3], f"{label}_eligible_test_rows"),
+            "eligible_test_rows": eligible_rows,
         })
     return sorted(profile, key=lambda item: item["fold_index"])
 
@@ -193,7 +202,11 @@ def _dataset_eligibility_for_cap(
         "eligible_rows": common[1],
         "ineligible_rows": common[2],
         "eligible_fraction": round(common[1] / common[0], 10) if common[0] else None,
-        "eligible_test_rows_across_fold_windows": sum(row["eligible_test_rows"] for row in fold_profile),
+        "eligible_test_rows_across_fold_windows": (
+            sum(row["eligible_test_rows"] for row in fold_profile)
+            if all(row["eligible_test_rows"] is not None for row in fold_profile)
+            else None
+        ),
         "eligible_test_rows_by_fold": fold_profile,
         "seed_profiles": sorted(by_seed, key=lambda item: item["seed"]),
         "metric_summary": cap_record.get("metrics", []),
@@ -220,7 +233,10 @@ def _compare_profiles(low: Mapping[str, Any], high: Mapping[str, Any]) -> dict[s
         for row in high_folds
     ]
     fold_deltas: list[dict[str, Any]] = []
-    if same_fold_shape:
+    fold_counts_available = same_fold_shape and all(
+        row["eligible_test_rows"] is not None for row in low_folds + high_folds
+    )
+    if fold_counts_available:
         for low_fold, high_fold in zip(low_folds, high_folds):
             fold_deltas.append({
                 "fold_index": low_fold["fold_index"],
@@ -230,12 +246,15 @@ def _compare_profiles(low: Mapping[str, Any], high: Mapping[str, Any]) -> dict[s
                     high_fold["eligible_test_rows"] - low_fold["eligible_test_rows"]
                 ),
             })
-    same_fold_counts = same_fold_shape and all(row["eligible_test_rows_delta"] == 0 for row in fold_deltas)
+    same_fold_counts = (
+        all(row["eligible_test_rows_delta"] == 0 for row in fold_deltas)
+        if fold_counts_available else None
+    )
     same_dataset_eligibility_profile = (
         same_dataset_rows
         and eligible_delta == 0
         and ineligible_delta == 0
-        and same_fold_counts
+        and same_fold_counts is not False
     )
     return {
         "lower_cap_hours": low_cap,
@@ -329,11 +348,15 @@ def audit_threshold_report(
                 f"eligibility_counts_not_monotonic_between_caps:{low['cap_hours']:g}h_and_{high['cap_hours']:g}h"
             )
         fold_deltas = pair["eligible_test_rows_fold_deltas"]
-        if pair["same_fold_window_shape"] and any(
+        if pair["same_fold_window_shape"] and fold_deltas and any(
             item["eligible_test_rows_delta"] < 0 for item in fold_deltas
         ):
             errors.append(
                 f"fold_eligibility_counts_not_monotonic_between_caps:{low['cap_hours']:g}h_and_{high['cap_hours']:g}h"
+            )
+        if pair["same_fold_window_shape"] and pair["same_fold_eligible_test_counts"] is None:
+            warnings.append(
+                f"fold_level_eligibility_counts_unavailable_for_{low['cap_hours']:g}h_and_{high['cap_hours']:g}h"
             )
         if pair["same_dataset_eligibility_profile"]:
             warnings.append(

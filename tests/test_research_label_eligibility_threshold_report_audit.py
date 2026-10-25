@@ -176,3 +176,32 @@ def test_threshold_audit_rejects_seed_report_with_errors_despite_pass_status(tmp
 
     assert result["status"] == "FAIL"
     assert any("reports_errors_despite_pass_status" in error for error in result["errors"])
+
+
+
+def test_audit_accepts_window_only_fold_signatures_without_inventing_row_counts(tmp_path):
+    from pathlib import Path
+
+    source = Path(_threshold_fixture(tmp_path, [
+        (1.5, 800, 200, 80),
+        (8.0, 800, 200, 80),
+    ]))
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    for cap_record in payload["cap_results"]:
+        cap_record["fold_signature"] = [
+            row[:3] for row in cap_record["fold_signature"]
+        ]
+    source.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = audit_threshold_report(source)
+
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert all(
+        profile["eligible_test_rows_across_fold_windows"] is None
+        for profile in result["cap_profiles"]
+    )
+    assert any(
+        warning.startswith("fold_level_eligibility_counts_unavailable_for_")
+        for warning in result["warnings"]
+    )
+    assert result["adjacent_cap_comparisons"][0]["same_fold_eligible_test_counts"] is None
