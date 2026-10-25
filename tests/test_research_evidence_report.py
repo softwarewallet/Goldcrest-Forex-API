@@ -1121,3 +1121,63 @@ def test_summary_uses_effective_section_status_when_receipt_hash_fails(tmp_path,
     assert gate_summary["reported_status"] == "PASS"
     assert result["summary"]["section_statuses"]["model_evaluation_gate"] == "FAIL"
     assert result["integrity_summary"]["effective_status_mismatch_section_count"] >= 1
+
+
+
+def test_artifact_record_warns_when_required_matrix_hash_is_missing(tmp_path):
+    artifact = tmp_path / "receipt.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "run_id": "run-1",
+        "status": "PASS",
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="model_evaluation_gate",
+        path=artifact,
+        expected_scope="GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        expected_run_id="run-1",
+        expected_symbol=None,
+        expected_timeframe=None,
+        expected_manifest=manifest,
+        expected_matrix_sha256="a" * 64,
+    )
+
+    assert report is not None
+    assert errors == []
+    assert "model_evaluation_gate_source_matrix_hash_not_reported" in warnings
+
+
+def test_artifact_record_rejects_malformed_source_matrix_hash(tmp_path):
+    artifact = tmp_path / "receipt.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "run_id": "run-1",
+        "status": "PASS",
+        "source_matrix_sha256": "not-a-sha256",
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="model_evaluation_gate",
+        path=artifact,
+        expected_scope="GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        expected_run_id="run-1",
+        expected_symbol=None,
+        expected_timeframe=None,
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert record["status"] == "FAIL"
+    assert "model_evaluation_gate_source_matrix_hash_invalid" in errors
