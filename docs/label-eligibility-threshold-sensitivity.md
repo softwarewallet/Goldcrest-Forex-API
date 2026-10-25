@@ -111,3 +111,8 @@ on the source sweep, cap records, seed-sweep reports, and per-seed records. Diag
 be lists of non-empty strings; reports marked passing cannot carry unresolved errors. Malformed
 inputs become explicit audit failures instead of being silently converted (for example, treating a
 warning string as a list of individual characters). No model is retrained or selected by these checks.
+
+
+## Common-cohort report output safety
+
+The common held-out cohort audit refuses an output path that resolves to any supplied comparison-report input, and it never replaces an existing report. It stages JSON in the destination directory and publishes with a no-clobber filesystem link; if another process creates the destination during publication, the audit fails and preserves that file. Choose a fresh output path for each audit run. This protects the original comparison reports and keeps rerun outputs distinct.
