@@ -39,3 +39,8 @@ The early/middle/late OOS period diagnostic cross-checks every available train, 
 ## Dependence-qualified baseline uncertainty
 
 The consolidated evidence interpretation does not classify paired bootstrap intervals as positive or negative interval evidence when the baseline-analysis receipt reports repeated held-out timestamps across walk-forward folds. It preserves the point estimates and reports how many intervals were withheld from classification. The numeric intervals remain in the source receipt for auditability, but overlapping/repeated held-out observations can make fold-level forecast errors dependent; this guard prevents the summary from implying that the interval evidence is independent or stronger than the diagnostics support. This is a conservative interpretation guard, not a new significance test and not proof of independence when no repeated timestamps are detected.
+
+
+## Phase 9: Multiplicity context ledger
+
+The consolidated evidence report now inventories the number of comparisons represented by baseline probability-loss intervals, temporal calibration changes, volatility-regime intervals, and chronological out-of-sample candidate summaries. It explicitly records that no multiplicity adjustment has been applied and that confirmatory inference is not supported by this report. Counts across these diagnostic families are an audit inventory, not a claim that all comparisons form one statistical testing family. Any confirmatory analysis requires a pre-specified hypothesis family and an appropriate method; the ledger does not perform that correction.

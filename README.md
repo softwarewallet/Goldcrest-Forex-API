@@ -208,3 +208,6 @@ The chronological OOS robustness diagnostic now cross-checks all available train
 ## Dependence-qualified comparative evidence
 
 The consolidated research evidence report withholds positive/negative bootstrap-interval classifications when the baseline analysis detects repeated held-out timestamps across folds. Point estimates remain visible, while those intervals are counted as dependence-limited rather than treated as independent evidence. This is a conservative reporting guard; it does not establish statistical significance, model quality, or profitability.
+
+
+The consolidated evidence report also includes a **multiplicity context ledger**: it counts comparisons across baseline-loss intervals, calibration changes, regime intervals, and chronological OOS summaries, and states that no multiplicity adjustment is applied. These summaries remain exploratory and do not support confirmatory significance claims.

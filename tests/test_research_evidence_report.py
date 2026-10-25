@@ -644,6 +644,48 @@ def test_consolidated_report_withholds_oos_periods_for_invalid_chronology(tmp_pa
     assert "oos_period_robustness_chronology_invalid_period_summaries_withheld" in result["warnings"]
 
 
+def test_evidence_interpretation_exposes_unadjusted_multiplicity_context():
+    baseline = {
+        "status": "PASS",
+        "experiments": [{
+            "experiment_id": "model-a",
+            "probability_loss_comparisons": [{
+                "baseline": "constant_probability_0_5",
+                "metrics": {
+                    "log_loss": {
+                        "improvement_baseline_minus_model": 0.01,
+                        "confidence_interval_95": [0.001, 0.02],
+                    },
+                    "brier_score": {
+                        "improvement_baseline_minus_model": 0.02,
+                        "confidence_interval_95": [0.001, 0.03],
+                    },
+                },
+            }],
+        }],
+    }
+    calibration = {
+        "status": "PASS",
+        "comparisons": [
+            {"model_name": "model-a", "partition": "test", "first_to_last_ece_delta": 0.01},
+            {"model_name": "model-b", "partition": "test", "first_to_last_ece_delta": 0.02},
+        ],
+    }
+
+    result = evidence.build_evidence_interpretation(
+        baseline=baseline, calibration=calibration, regimes=None, temporal_stability=None
+    )
+
+    context = result["multiplicity_context"]
+    assert context["status"] == "MULTIPLE_DIAGNOSTIC_COMPARISONS_UNADJUSTED"
+    assert context["diagnostic_family_count"] == 2
+    assert context["total_diagnostic_comparison_count"] == 4
+    assert context["adjustment_applied"] is False
+    assert context["confirmatory_inference_supported"] is False
+    assert context["families"]["baseline_probability_loss_intervals"]["comparison_count"] == 2
+    assert context["families"]["temporal_calibration_test_period_changes"]["comparison_count"] == 2
+
+
 def test_consolidated_report_includes_cross_diagnostic_interpretation(tmp_path, monkeypatch):
     manifest = _build_run(tmp_path, monkeypatch)
 
