@@ -14,6 +14,7 @@ from app.research_experiment_fingerprint import (
 
 
 def _manifest_and_paths(tmp_path: Path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     dataset = tmp_path / "dataset.csv"
     dataset.write_text("timestamp,label,ret_1\n2026-01-01T00:00:00Z,1,0.2\n", encoding="utf-8")
     source = tmp_path / "causal_features.py"
