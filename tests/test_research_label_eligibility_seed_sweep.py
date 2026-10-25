@@ -5,6 +5,7 @@ import json
 import pytest
 
 from app.research_label_eligibility_seed_sweep import (
+    _fold_eligibility_counts,
     _fold_signature,
     aggregate_seed_results,
     choose_seed_sweep_report_path,
@@ -176,3 +177,48 @@ def test_fold_signature_rejects_duplicate_fold_indices():
 
     with pytest.raises(ValueError, match="fold_index_duplicate"):
         _fold_signature(comparison)
+
+
+
+def test_fold_eligibility_counts_are_preserved_separately_from_window_identity():
+    comparison = {
+        "experiments": [
+            {"fold_results": [
+                {"fold_index": 0, "test_start_utc": "2026-01-01T00:00:00Z",
+                 "test_end_utc": "2026-01-07T00:00:00Z", "eligible_test_rows": 80},
+                {"fold_index": 1, "test_start_utc": "2026-01-07T00:00:00Z",
+                 "test_end_utc": "2026-01-14T00:00:00Z", "eligible_test_rows": 92},
+            ]},
+            {"fold_results": [
+                {"fold_index": 0, "test_start_utc": "2026-01-01T00:00:00Z",
+                 "test_end_utc": "2026-01-07T00:00:00Z", "eligible_test_rows": 80},
+                {"fold_index": 1, "test_start_utc": "2026-01-07T00:00:00Z",
+                 "test_end_utc": "2026-01-14T00:00:00Z", "eligible_test_rows": 92},
+            ]},
+        ]
+    }
+
+    assert _fold_eligibility_counts(comparison) == [
+        {"fold_index": 0, "test_start_utc": "2026-01-01T00:00:00Z",
+         "test_end_utc": "2026-01-07T00:00:00Z", "eligible_test_rows": 80},
+        {"fold_index": 1, "test_start_utc": "2026-01-07T00:00:00Z",
+         "test_end_utc": "2026-01-14T00:00:00Z", "eligible_test_rows": 92},
+    ]
+
+
+def test_fold_eligibility_counts_reject_disagreement_between_experiments():
+    comparison = {
+        "experiments": [
+            {"fold_results": [
+                {"fold_index": 0, "test_start_utc": "2026-01-01T00:00:00Z",
+                 "test_end_utc": "2026-01-07T00:00:00Z", "eligible_test_rows": 80},
+            ]},
+            {"fold_results": [
+                {"fold_index": 0, "test_start_utc": "2026-01-01T00:00:00Z",
+                 "test_end_utc": "2026-01-07T00:00:00Z", "eligible_test_rows": 79},
+            ]},
+        ]
+    }
+
+    with pytest.raises(ValueError, match="differ_between_experiments"):
+        _fold_eligibility_counts(comparison)
