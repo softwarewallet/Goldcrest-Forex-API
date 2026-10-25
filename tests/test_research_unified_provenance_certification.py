@@ -243,6 +243,7 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
         "--config-path", str(tmp_path / "config.json"),
         "--dataset-path", str(tmp_path / "dataset"),
         "--output", str(output),
+        "--report-seal-output", str(tmp_path / "out" / "certification.seal.json"),
     ])
     import pathlib
     monkeypatch.setattr(module, "_read_object", lambda path: {"source": pathlib.Path(path).name})
@@ -250,6 +251,8 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
     def fake_runner(*args, **kwargs):
         captured.update(kwargs)
         return {
+            "audit_name": "research_unified_provenance_certification",
+            "source_revision": REV,
             "status": "PASS", "readiness": "CERTIFIED_CURRENT", "artifact_count": 1,
             "stale_or_invalid_artifact_count": 0,
             "provenance_manifest_seal_verification": {"status": "PASS"},
@@ -263,6 +266,11 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
     assert captured["inventory_spec"]["source"] == "inventory.json"
     assert captured["inventory_seal"]["source"] == "inventory-seal.json"
     assert output.is_file()
+    seal_path = tmp_path / "out" / "certification.seal.json"
+    assert seal_path.is_file()
+    import json
+    from app.research_certification_report_seal import verify_report_seal
+    assert verify_report_seal(json.loads(output.read_text()), json.loads(seal_path.read_text()))["status"] == "PASS"
 
 
 
