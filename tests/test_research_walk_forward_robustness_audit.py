@@ -46,7 +46,8 @@ def run_audit(manifest, minimum_unique_seeds=3):
 def test_complete_repeated_seed_fold_bundle_passes_descriptively():
     report = run_audit(valid_manifest())
 
-    assert report["status"] == "PASS"
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert any("small_seed_count" in warning for warning in report["warnings"])
     assert report["evaluations_supplied"] == 6
     assert report["evaluations_validated"] == 6
     assert report["unique_seed_count"] == 3
