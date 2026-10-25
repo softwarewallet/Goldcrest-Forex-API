@@ -20,7 +20,6 @@ Create a provenance seal after reviewing the captured manifest:
 python -m app.research_provenance_manifest_seal \
   --mode create \
   --manifest /path/to/provenance_manifest.json \
-  --seal /separate/trusted/location/provenance_manifest.seal.json \
   --output /separate/trusted/location/provenance_manifest.seal.json
 ```
 
@@ -30,11 +29,10 @@ Create an inventory specification seal after the inventory has been independentl
 python -m app.research_artifact_inventory_spec_seal \
   --mode create \
   --inventory-spec /path/to/inventory_spec.json \
-  --seal /separate/trusted/location/inventory_spec.seal.json \
   --output /separate/trusted/location/inventory_spec.seal.json
 ```
 
-For each command, the `--seal` argument is required by the shared CLI parser even in create mode; the output file must not already exist. Supply a placeholder path for `--seal` if it is not used in create mode.
+The output seal file must not already exist. The `--seal` argument is only needed in verify mode.
 
 ## Run unified certification
 
