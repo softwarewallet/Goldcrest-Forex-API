@@ -18,6 +18,7 @@ from typing import Any, Sequence
 from app.ctrader_history_ingest import download_ctrader_history
 from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
+from app.research_feature_source_provenance_audit import audit_feature_source_provenance
 from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
@@ -97,6 +98,7 @@ def run_research_pipeline(
         f"{run_id}_raw_ohlc_audit.json",
         f"{run_id}_{file_instrument}_{period}_research_dataset.csv",
         f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json",
+        f"{run_id}_feature_source_audit.json",
         f"{run_id}_experiment_matrix.json",
         f"{run_id}_provenance_audit.json",
         f"{run_id}_temporal_calibration_stability.json",
@@ -212,6 +214,23 @@ def run_research_pipeline(
         terms_reference=terms_reference,
         max_label_elapsed_hours=max_label_elapsed_hours,
     )
+    # Bind the exact dataset to the current causal feature source and declared schema
+    # before model training. Missing/stale fingerprints fail closed at this boundary.
+    feature_source_audit_path = destination / f"{run_id}_feature_source_audit.json"
+    feature_source_audit = audit_feature_source_provenance(
+        dataset_csv, dataset_manifest_path
+    )
+    feature_source_audit_path.write_text(
+        json.dumps(feature_source_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    feature_source_audit_sha256 = _sha256(feature_source_audit_path)
+    if feature_source_audit["status"] != "PASS":
+        raise ValueError(
+            "feature source provenance audit failed before model training: "
+            + ", ".join(feature_source_audit["errors"])
+        )
+
     feature_names = _feature_names_from_dataset(dataset_csv)
     bars, examples, dataset_sha256 = load_historical_dataset(dataset_csv, feature_names)
     report = run_experiment_matrix(
@@ -278,6 +297,12 @@ def run_research_pipeline(
         "dataset_sha256": _sha256(dataset_csv),
         "dataset_manifest_path": str(dataset_manifest_path),
         "dataset_manifest_sha256": _sha256(dataset_manifest_path),
+        "feature_source_audit_path": str(feature_source_audit_path),
+        "feature_source_audit_sha256": feature_source_audit_sha256,
+        "feature_source_audit_status": feature_source_audit["status"],
+        "feature_source_audit_errors": feature_source_audit["errors"],
+        "feature_schema_sha256": dataset_manifest.get("feature_schema_sha256"),
+        "feature_implementation_sha256": dataset_manifest.get("feature_implementation_sha256"),
         "feature_count": len(feature_names),
         "feature_names": feature_names,
         "fold_count": report.fold_count,

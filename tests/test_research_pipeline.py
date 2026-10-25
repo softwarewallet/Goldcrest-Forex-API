@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,8 +47,33 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
             "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.1\n",
             encoding="utf-8",
         )
-        Path(manifest_path).write_text('{"actionable":false}\n', encoding="utf-8")
-        return {"feature_names": ["ret_1"], "actionable": False}
+        manifest = {
+            "schema_version": 1,
+            "scope": "OFFLINE_RESEARCH_DATASET_PREPARATION",
+            "actionable": False,
+            "output_dataset_sha256": research_pipeline._sha256(output_csv),
+            "output_rows": 1,
+            "feature_names": ["ret_1"],
+            "feature_schema_sha256": hashlib.sha256(
+                json.dumps(
+                    {"feature_names": ["ret_1"]},
+                    sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+                ).encode("utf-8")
+            ).hexdigest(),
+            "feature_implementation_file": "app/causal_ta_features.py",
+            "feature_implementation_sha256": research_pipeline._sha256(
+                Path(research_pipeline.__file__).with_name("causal_ta_features.py")
+            ),
+        }
+        manifest["manifest_sha256"] = hashlib.sha256(
+            json.dumps(
+                manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest()
+        Path(manifest_path).write_text(
+            json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return manifest
 
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
     monkeypatch.setattr(
@@ -105,6 +131,14 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert "snapshot_manifest_missing_provenance_hash_unverified" in raw_audit["warnings"]
     assert stored["raw_ohlc_audit_sha256"]
     assert stored["dataset_sha256"]
+    assert stored["feature_source_audit_status"] == "PASS"
+    assert stored["feature_source_audit_errors"] == []
+    feature_source_audit_path = Path(stored["feature_source_audit_path"])
+    feature_source_audit = json.loads(feature_source_audit_path.read_text(encoding="utf-8"))
+    assert feature_source_audit["status"] == "PASS"
+    assert stored["feature_source_audit_sha256"] == research_pipeline._sha256(feature_source_audit_path)
+    assert stored["feature_schema_sha256"] == feature_source_audit["feature_schema_sha256_declared"]
+    assert stored["feature_implementation_sha256"] == feature_source_audit["feature_implementation_sha256_declared"]
     audit_path = tmp_path / "run" / "unit-test_provenance_audit.json"
     assert audit_path.exists()
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
@@ -275,3 +309,61 @@ def test_pipeline_reuses_ctrader_manifest_provenance_for_local_snapshot(tmp_path
 
     assert captured["data_source"] == "cTrader Open API (DEMO historical snapshot)"
     assert captured["retrieved_at_utc"] == retrieved_at
+
+
+def test_pipeline_stops_before_training_when_feature_source_audit_fails(tmp_path, monkeypatch):
+    raw = tmp_path / "ohlc.csv"
+    raw.write_text(
+        "symbol,timeframe,timestamp,open,high,low,close\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
+        encoding="utf-8",
+    )
+
+    def fake_prepare(input_csv, output_csv, manifest_path, **kwargs):
+        Path(output_csv).write_text(
+            "symbol,timeframe,timestamp,open,high,low,close,label,label_available_at,ret_1\n"
+            "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05,1,2026-01-01T01:00:00Z,0.1\n",
+            encoding="utf-8",
+        )
+        Path(manifest_path).write_text("{}", encoding="utf-8")
+        return {}
+
+    monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
+    monkeypatch.setattr(
+        research_pipeline,
+        "audit_feature_source_provenance",
+        lambda *args, **kwargs: {
+            "status": "FAIL",
+            "errors": ["feature_implementation_sha256_mismatch"],
+            "actionable": False,
+            "execution_connected": False,
+            "model_training_performed": False,
+            "automatic_model_selection": False,
+        },
+    )
+    monkeypatch.setattr(
+        research_pipeline,
+        "run_experiment_matrix",
+        lambda *args, **kwargs: pytest.fail("training must not start after a failed feature-source audit"),
+    )
+
+    with pytest.raises(ValueError, match="feature source provenance audit failed before model training"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD",
+            timeframe="M15",
+            horizon_bars=4,
+            class_1_means="UP",
+            terms_reference="actual provider terms",
+            source_version="test-export-v1",
+            output_dir=tmp_path / "run",
+            run_id="feature-source-gate",
+            retrieved_at_utc="2026-10-21T00:00:00Z",
+            ohlc_csv=raw,
+            initial_train_bars=100,
+            validation_bars=20,
+            test_bars=20,
+            step_bars=20,
+            include_ablation=False,
+        )
+
+    assert not (tmp_path / "run" / "feature-source-gate_experiment_matrix.json").exists()
