@@ -25,6 +25,7 @@ def fixtures():
         "plan_sha256": "a" * 64,
         "expected_runs": 2,
         "run_matrix": [{"run_id": "r1"}, {"run_id": "r2"}],
+        **FALSE_FLAGS,
     }
     registry = {
         "audit_name": "research_experiment_registry",
