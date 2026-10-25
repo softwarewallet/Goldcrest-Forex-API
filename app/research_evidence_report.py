@@ -1486,6 +1486,38 @@ def build_research_evidence_report(
     available_sections = [name for name, section in sections.items() if section.get("status") in _ALLOWED_STATUSES]
     missing_optional_sections = [name for name in _OPTIONAL_REPORTS if sections[name].get("status") == "NOT_PROVIDED"]
     status = "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS"
+    section_status_counts: dict[str, int] = {}
+    identity_complete_count = 0
+    identity_partial_count = 0
+    declared_count_mismatch_count = 0
+    for section in sections.values():
+        section_status = str(section.get("status", "UNKNOWN"))
+        section_status_counts[section_status] = section_status_counts.get(section_status, 0) + 1
+        identity_metadata = section.get("identity_metadata")
+        if isinstance(identity_metadata, dict):
+            if identity_metadata.get("status") == "COMPLETE":
+                identity_complete_count += 1
+            elif identity_metadata.get("status") == "PARTIAL":
+                identity_partial_count += 1
+        count_integrity = section.get("declared_count_integrity")
+        if isinstance(count_integrity, dict) and count_integrity.get("status") == "MISMATCH":
+            declared_count_mismatch_count += 1
+
+    integrity_summary = {
+        "artifact_section_count": len(sections),
+        "section_status_counts": section_status_counts,
+        "identity_metadata_complete_section_count": identity_complete_count,
+        "identity_metadata_partial_section_count": identity_partial_count,
+        "declared_count_mismatch_section_count": declared_count_mismatch_count,
+        "run_integrity_status": integrity.get("status"),
+        "matrix_payload_integrity_status": matrix_payload_integrity.get("status"),
+        "has_integrity_errors": bool(errors),
+        "has_warnings": bool(warnings),
+        "interpretation": (
+            "Aggregated integrity inventory only. Section counts and metadata completeness do not "
+            "establish model quality, leakage absence, statistical significance, or profitability."
+        ),
+    }
     return {
         "schema_version": _SCHEMA_VERSION,
         "scope": _REPORT_SCOPE,
@@ -1498,6 +1530,7 @@ def build_research_evidence_report(
         "manifest_sha256": _sha256(manifest_file),
         "source_matrix_sha256": matrix_hash,
         "matrix_payload_integrity": matrix_payload_integrity,
+        "integrity_summary": integrity_summary,
         "run_integrity": {
             "status": integrity.get("status"),
             "checked_artifact_count": integrity.get("checked_artifact_count"),
