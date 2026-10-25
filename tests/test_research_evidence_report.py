@@ -923,3 +923,74 @@ def test_verify_matrix_payload_hash_marks_legacy_payload_unverified(tmp_path):
 
     assert result["status"] == "LEGACY_UNVERIFIED"
     assert result["declared_payload_sha256"] is None
+
+
+
+def test_artifact_record_detects_declared_comparison_count_mismatch(tmp_path):
+    artifact = tmp_path / "calibration.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        "run_id": "run-1",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "manifest_path": str(manifest.resolve()),
+        "status": "PASS",
+        "comparison_count": 2,
+        "comparisons": [{"model_name": "model-a", "partition": "test"}],
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="temporal_calibration",
+        path=artifact,
+        expected_scope="GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        expected_run_id="run-1",
+        expected_symbol="EURUSD",
+        expected_timeframe="M15",
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert record["status"] == "FAIL"
+    assert record["declared_count_integrity"]["status"] == "MISMATCH"
+    assert "temporal_calibration_comparison_count_mismatch" in errors
+
+
+def test_artifact_record_verifies_declared_comparison_count(tmp_path):
+    artifact = tmp_path / "calibration.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        "run_id": "run-1",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "manifest_path": str(manifest.resolve()),
+        "status": "PASS",
+        "comparison_count": 1,
+        "comparisons": [{"model_name": "model-a", "partition": "test"}],
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="temporal_calibration",
+        path=artifact,
+        expected_scope="GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        expected_run_id="run-1",
+        expected_symbol="EURUSD",
+        expected_timeframe="M15",
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert record["declared_count_integrity"]["status"] == "VERIFIED"
+    assert errors == []
+    assert warnings == []
