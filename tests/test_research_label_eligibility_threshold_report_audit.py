@@ -191,7 +191,7 @@ def test_audit_accepts_window_only_fold_signatures_without_inventing_row_counts(
         cap_record["fold_signature"] = [
             row[:3] for row in cap_record["fold_signature"]
         ]
-    source.write_text(json.dumps(payload, sort_keys=True) + "\\n", encoding="utf-8")
+    source.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 
     result = audit_threshold_report(source)
 
