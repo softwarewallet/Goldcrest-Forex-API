@@ -77,3 +77,28 @@ def test_invalid_manifest_revision_is_rejected():
     payload["source_revision"] = "short"
     with pytest.raises(ValueError, match="full_git_sha"):
         create_manifest_seal(payload)
+
+
+
+@pytest.mark.parametrize("flag", [
+    "actionable",
+    "inferential",
+    "statistical_significance_claimed",
+    "automatic_model_selection",
+    "model_training_performed",
+    "execution_connected",
+    "automatic_repair_performed",
+    "deployment_authorized",
+])
+def test_unsafe_or_missing_manifest_safety_flag_cannot_be_sealed(flag):
+    payload = manifest()
+    payload[flag] = True
+    with pytest.raises(ValueError, match="safety_flag_not_explicitly_false"):
+        create_manifest_seal(payload)
+
+
+def test_missing_manifest_safety_flag_cannot_be_sealed():
+    payload = manifest()
+    del payload["deployment_authorized"]
+    with pytest.raises(ValueError, match="safety_flag_not_explicitly_false"):
+        create_manifest_seal(payload)
