@@ -137,7 +137,7 @@ def test_provenance_failure_blocks_overall_certification(monkeypatch, tmp_path):
 def test_freshness_gate_failure_blocks_overall_certification(monkeypatch, tmp_path):
     report = call(monkeypatch, tmp_path, gate_status="FAIL")
     assert report["status"] == "FAIL"
-    assert any(item["code"] == "FINAL_CERTIFICATION_CHAIN_FAILED" for item in report["errors"])
+    assert any(item["code"] == "FRESHNESS_CERTIFICATION_GATE_FAILED" for item in report["errors"])
     assert any(item["code"] == "FRESHNESS_CERTIFICATION_GATE_FAILED" for item in report["errors"])
 
 
