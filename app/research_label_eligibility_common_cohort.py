@@ -51,6 +51,19 @@ def _read_report(path: str | Path) -> dict[str, Any]:
     for field in ("automatic_model_selection", "actionable", "execution_connected"):
         if value.get(field) is not False:
             raise ValueError(f"{path}: {field} must be false")
+    # Passing status cannot override malformed or contradictory diagnostics.
+    for field in ("errors", "warnings"):
+        if field not in value:
+            continue
+        diagnostics = value[field]
+        if not isinstance(diagnostics, list) or any(
+            not isinstance(item, str) or not item.strip() for item in diagnostics
+        ):
+            raise ValueError(f"{path}: {field} must be a list of non-empty strings")
+    if value.get("errors"):
+        raise ValueError(f"{path}: errors must be empty when status is passing")
+    if value.get("inferential") is not False:
+        raise ValueError(f"{path}: inferential must be false")
     baseline_dataset_sha256 = value.get("baseline_dataset_sha256")
     if baseline_dataset_sha256 is not None:
         if (not isinstance(baseline_dataset_sha256, str) or len(baseline_dataset_sha256) != 64
