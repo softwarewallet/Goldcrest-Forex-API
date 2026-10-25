@@ -77,7 +77,7 @@ def audit_backtest_result_integrity(
     warnings: list[str] = []
     normalized: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-    last_close: datetime | None = None
+    last_entry: datetime | None = None
     total_net = 0.0
     gross_profit = 0.0
     gross_loss = 0.0
@@ -108,10 +108,10 @@ def audit_backtest_result_integrity(
             seen_ids.add(tid)
         if entry is None or close is None or (entry is not None and close is not None and entry > close):
             item_errors.append("trade_timestamps_invalid")
-        elif last_close is not None and entry < last_close:
-            item_errors.append("trade_chronology_overlap_or_out_of_order")
-        if close is not None:
-            last_close = close
+        elif last_entry is not None and entry < last_entry:
+            item_errors.append("trade_entry_order_not_monotonic")
+        if entry is not None:
+            last_entry = entry
         if side not in {"LONG", "SHORT", "BUY", "SELL"}:
             item_errors.append("trade_side_invalid")
         for key, value in (
@@ -146,12 +146,15 @@ def audit_backtest_result_integrity(
         if not item_errors:
             net = float(reported_net)
             total_net += net
+            gross = float(trade["gross_pnl"]) if _finite(trade.get("gross_pnl")) else 0.0
             if net > 0:
                 wins += 1
-                gross_profit += net
             elif net < 0:
                 losses += 1
-                gross_loss += abs(net)
+            if gross > 0:
+                gross_profit += gross
+            elif gross < 0:
+                gross_loss += abs(gross)
 
     valid_trades = [trade for trade in normalized if trade["valid"]]
     if not valid_trades:
