@@ -507,3 +507,10 @@ Existing prepared datasets created before these fields were added do not satisfy
 Before the model experiment matrix starts, the pipeline now creates and self-verifies an immutable experiment fingerprint receipt. It binds the canonical configuration (fold geometry, tuning budget, random seed, bootstrap settings, model matrix, label definition and source metadata) to the raw OHLC hash, prepared dataset hash, dataset-manifest content and file hashes, feature schema/source hashes, and SHA-256 hashes of the key pipeline, dataset-builder, feature, and model-runner source files. The pipeline manifest records the fingerprint path, file hash, fingerprint hash, and verification status.
 
 The fingerprint is an identity/reproducibility aid, not a model-quality score or digital signature. It does not prove that historical data is correct, that source code is scientifically valid, or that results will be profitable. A changed configuration, dataset, manifest, or listed implementation file must produce a different fingerprint.
+
+
+## Post-run cross-artifact reproducibility audit
+
+After the pipeline manifest and validation receipt are persisted, the pipeline writes a separate cross-artifact reproducibility audit. It rechecks the pipeline-manifest self-hash, experiment-fingerprint self-hash and file linkage, raw OHLC and dataset bytes, dataset-manifest file/content hashes, feature-source receipt, major audit/matrix artifact hashes, configuration agreement, and the current hashes of all source files captured in the experiment fingerprint. A mismatch is recorded as `FAIL`; the CLI returns a nonzero exit code so a run with broken artifact linkage is not reported as clean.
+
+The reproducibility audit is intentionally a separate receipt: its status/hash is returned by the run but not embedded back into the already-hashed pipeline manifest, avoiding a circular hash dependency. A passing audit establishes cross-artifact consistency only. Model quality and research acceptance remain separate gates.
