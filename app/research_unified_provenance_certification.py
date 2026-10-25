@@ -18,6 +18,7 @@ from app.research_artifact_provenance import verify_provenance
 from app.research_freshness_certification_gate import gate_freshness_certification
 from app.research_git_source_provenance import inspect_git_provenance
 from app.research_provenance_manifest_seal import verify_manifest_seal
+from app.research_certification_report_seal import create_report_seal
 from app.research_run_final_certification import run_final_certification
 
 FALSE_FLAGS = {
@@ -256,6 +257,7 @@ def main() -> int:
     parser.add_argument("--config-path", required=True, type=Path)
     parser.add_argument("--dataset-path", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--report-seal-output", type=Path, help="Optional detached integrity seal for the consolidated report")
     args = parser.parse_args()
     try:
         report = run_unified_certification(
@@ -273,8 +275,18 @@ def main() -> int:
         )
         if args.output.exists():
             raise ValueError(f"output_already_exists:{args.output}")
+        seal = None
+        if args.report_seal_output is not None:
+            if args.report_seal_output.resolve() == args.output.resolve():
+                raise ValueError("report_and_seal_output_paths_must_differ")
+            if args.report_seal_output.exists():
+                raise ValueError(f"report_seal_output_already_exists:{args.report_seal_output}")
+            seal = create_report_seal(report)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        if seal is not None and args.report_seal_output is not None:
+            args.report_seal_output.parent.mkdir(parents=True, exist_ok=True)
+            args.report_seal_output.write_text(json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
         print(json.dumps({
             "status": report["status"],
             "readiness": report["readiness"],
@@ -286,6 +298,7 @@ def main() -> int:
             "regeneration_required_count": report["regeneration_required_count"],
             "error_count": len(report["errors"]),
             "report_path": str(args.output.resolve()),
+            "report_seal_path": str(args.report_seal_output.resolve()) if seal is not None and args.report_seal_output is not None else None,
             "deployment_authorized": False,
         }, indent=2))
         return 0 if report["status"] in {"PASS", "PASS_WITH_WARNINGS"} else 1
