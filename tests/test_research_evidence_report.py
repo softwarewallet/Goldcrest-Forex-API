@@ -877,3 +877,135 @@ def test_artifact_record_marks_complete_identity_metadata(tmp_path):
     assert warnings == []
     assert record["identity_metadata"]["status"] == "COMPLETE"
     assert record["identity_metadata"]["fields_missing"] == []
+
+
+def test_verify_matrix_payload_hash_accepts_canonical_payload(tmp_path):
+    path = tmp_path / "matrix.json"
+    payload = {
+        "schema_version": 1,
+        "run_id": "run-1",
+        "experiments": [],
+        "actionable": False,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    _write_json(path, payload)
+
+    result = evidence._verify_matrix_payload_hash(path)
+
+    assert result["status"] == "VERIFIED"
+    assert result["computed_payload_sha256"] == result["declared_payload_sha256"]
+
+
+def test_verify_matrix_payload_hash_detects_payload_tampering(tmp_path):
+    path = tmp_path / "matrix.json"
+    payload = {
+        "schema_version": 1,
+        "run_id": "run-1",
+        "experiments": [],
+        "actionable": False,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    payload["run_id"] = "tampered-run"
+    _write_json(path, payload)
+
+    result = evidence._verify_matrix_payload_hash(path)
+
+    assert result["status"] == "HASH_MISMATCH"
+
+
+def test_verify_matrix_payload_hash_marks_legacy_payload_unverified(tmp_path):
+    path = tmp_path / "legacy-matrix.json"
+    _write_json(path, {"schema_version": 1, "run_id": "run-1", "experiments": []})
+
+    result = evidence._verify_matrix_payload_hash(path)
+
+    assert result["status"] == "LEGACY_UNVERIFIED"
+    assert result["declared_payload_sha256"] is None
+
+
+
+def test_artifact_record_detects_declared_comparison_count_mismatch(tmp_path):
+    artifact = tmp_path / "calibration.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        "run_id": "run-1",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "manifest_path": str(manifest.resolve()),
+        "status": "PASS",
+        "comparison_count": 2,
+        "comparisons": [{"model_name": "model-a", "partition": "test"}],
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="temporal_calibration",
+        path=artifact,
+        expected_scope="GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        expected_run_id="run-1",
+        expected_symbol="EURUSD",
+        expected_timeframe="M15",
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert record["status"] == "FAIL"
+    assert record["declared_count_integrity"]["status"] == "MISMATCH"
+    assert "temporal_calibration_comparison_count_mismatch" in errors
+
+
+def test_artifact_record_verifies_declared_comparison_count(tmp_path):
+    artifact = tmp_path / "calibration.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        "run_id": "run-1",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "manifest_path": str(manifest.resolve()),
+        "status": "PASS",
+        "comparison_count": 1,
+        "comparisons": [{"model_name": "model-a", "partition": "test"}],
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="temporal_calibration",
+        path=artifact,
+        expected_scope="GOLDCREST_TEMPORAL_CALIBRATION_STABILITY_AUDIT",
+        expected_run_id="run-1",
+        expected_symbol="EURUSD",
+        expected_timeframe="M15",
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert record["declared_count_integrity"]["status"] == "VERIFIED"
+    assert errors == []
+    assert warnings == []
+
+
+
+def test_consolidated_report_exposes_integrity_summary_inventory(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+
+    summary = result["integrity_summary"]
+    assert summary["artifact_section_count"] == len(result["sections"])
+    assert summary["identity_metadata_partial_section_count"] >= 1
+    assert summary["matrix_payload_integrity_status"] == "LEGACY_UNVERIFIED"
+    assert summary["has_integrity_errors"] is False
+    assert summary["has_warnings"] is True
+    assert summary["interpretation"].startswith("Aggregated integrity inventory only.")
