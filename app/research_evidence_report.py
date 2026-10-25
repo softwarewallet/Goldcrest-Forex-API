@@ -260,6 +260,57 @@ def _summary_for_temporal_stability(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def _verify_matrix_payload_hash(path: Path) -> dict[str, Any]:
+    """Verify the canonical self-hash embedded in an experiment-matrix report."""
+    if not path.is_file():
+        return {
+            "status": "SOURCE_MATRIX_MISSING",
+            "path": str(path),
+            "declared_payload_sha256": None,
+            "computed_payload_sha256": None,
+        }
+    try:
+        payload = _read_json(path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        return {
+            "status": "SOURCE_MATRIX_UNREADABLE",
+            "path": str(path.resolve()),
+            "declared_payload_sha256": None,
+            "computed_payload_sha256": None,
+            "error": type(exc).__name__,
+        }
+
+    declared = payload.get("report_payload_sha256")
+    if not isinstance(declared, str) or not declared.strip():
+        return {
+            "status": "LEGACY_UNVERIFIED",
+            "path": str(path.resolve()),
+            "declared_payload_sha256": None,
+            "computed_payload_sha256": None,
+        }
+
+    canonical_payload = dict(payload)
+    canonical_payload.pop("report_payload_sha256", None)
+    try:
+        canonical = json.dumps(
+            canonical_payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+    except (TypeError, ValueError):
+        return {
+            "status": "PAYLOAD_NOT_CANONICALIZABLE",
+            "path": str(path.resolve()),
+            "declared_payload_sha256": declared,
+            "computed_payload_sha256": None,
+        }
+    computed = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return {
+        "status": "VERIFIED" if computed == declared else "HASH_MISMATCH",
+        "path": str(path.resolve()),
+        "declared_payload_sha256": declared,
+        "computed_payload_sha256": computed,
+    }
+
 def _artifact_record(
     *,
     section_name: str,
@@ -1133,13 +1184,36 @@ def build_research_evidence_report(
     matrix_path = _resolve_path(manifest.get("experiment_matrix_report"), manifest_file.parent)
     if matrix_path is None:
         matrix_path = manifest_file.parent / f"{run_id}_experiment_matrix.json"
-    oos_period_robustness, oos_errors, oos_warnings = _derive_oos_period_robustness(
-        matrix_path,
-        expected_run_id=run_id,
-        expected_matrix_sha256=matrix_hash if isinstance(matrix_hash, str) else None,
-    )
-    errors.extend(oos_errors)
-    warnings.extend(oos_warnings)
+    matrix_payload_integrity = _verify_matrix_payload_hash(matrix_path)
+    if matrix_payload_integrity["status"] == "HASH_MISMATCH":
+        errors.append("experiment_matrix_payload_hash_mismatch")
+        oos_period_robustness = {
+            "status": "SOURCE_MATRIX_PAYLOAD_HASH_MISMATCH",
+            "source_matrix_path": str(matrix_path.resolve()),
+            "candidate_count": 0,
+            "common_test_fold_indices": [],
+            "period_group_count": 0,
+            "candidates": [],
+            "model_selection_performed": False,
+            "test_metrics_used_for_selection": False,
+            "actionable": False,
+            "interpretation": "The embedded canonical matrix payload hash did not match; period summaries were withheld.",
+        }
+        oos_errors, oos_warnings = [], []
+    else:
+        if matrix_payload_integrity["status"] == "LEGACY_UNVERIFIED":
+            warnings.append("experiment_matrix_payload_hash_not_available_for_legacy_artifact")
+        elif matrix_payload_integrity["status"] != "VERIFIED":
+            errors.append(
+                "experiment_matrix_payload_integrity_" + str(matrix_payload_integrity["status"]).lower()
+            )
+        oos_period_robustness, oos_errors, oos_warnings = _derive_oos_period_robustness(
+            matrix_path,
+            expected_run_id=run_id,
+            expected_matrix_sha256=matrix_hash if isinstance(matrix_hash, str) else None,
+        )
+        errors.extend(oos_errors)
+        warnings.extend(oos_warnings)
     sections: dict[str, dict[str, Any]] = {}
     records: dict[str, dict[str, Any] | None] = {}
 
@@ -1380,6 +1454,7 @@ def build_research_evidence_report(
         "manifest_path": str(manifest_file),
         "manifest_sha256": _sha256(manifest_file),
         "source_matrix_sha256": matrix_hash,
+        "matrix_payload_integrity": matrix_payload_integrity,
         "run_integrity": {
             "status": integrity.get("status"),
             "checked_artifact_count": integrity.get("checked_artifact_count"),
