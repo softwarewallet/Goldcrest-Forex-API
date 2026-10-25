@@ -59,3 +59,8 @@ Each artifact record now reports whether symbol, timeframe, and manifest-path id
 ## Phase 12: Canonical experiment-matrix payload integrity
 
 The consolidated evidence report independently verifies the canonical `report_payload_sha256` embedded in the experiment matrix. A mismatch is an integrity error and suppresses chronological out-of-sample period summaries derived from that matrix. Legacy matrices without the self-hash are explicitly marked `LEGACY_UNVERIFIED` and produce a warning rather than being described as verified. This self-hash complements the manifest's raw-file SHA-256: the two checks answer different questions and neither establishes data leakage absence or model validity.
+
+
+## Phase 13: Diagnostic declared-count consistency
+
+For temporal calibration, baseline, volatility-regime, and temporal-stability receipts, the consolidated evidence report compares declared comparison/experiment counts with the corresponding list lengths. Contradictions fail the affected artifact record; missing legacy count fields are surfaced as warnings when the rows exist. This prevents internally inconsistent summaries from appearing verified while preserving visibility for older report schemas.
