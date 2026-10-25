@@ -101,6 +101,7 @@ def test_unified_certification_passes_when_all_components_pass(monkeypatch, tmp_
     assert report["readiness"] == "CERTIFIED_CURRENT"
     assert report["provenance_verification"]["status"] == "PASS"
     assert report["provenance_manifest_seal_verification"]["status"] == "PASS"
+    assert report["artifact_inventory_completeness"]["inventory_spec_sha256"] == report["artifact_inventory_spec_seal_verification"]["inventory_spec_sha256"]
     assert report["freshness_audit"]["status"] == "PASS"
     assert report["deployment_authorized"] is False
 
