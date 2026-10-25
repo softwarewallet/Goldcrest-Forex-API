@@ -179,6 +179,62 @@ def test_prepared_dataset_validation_accepts_chronological_finite_data(tmp_path)
     assert result["actionable"] is False
 
 
+def test_prepared_dataset_rejects_label_available_at_feature_timestamp(tmp_path):
+    dataset = tmp_path / "zero_maturity.csv"
+    _write_dataset(dataset, rows=4)
+    with dataset.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+        fields = list(rows[0])
+    rows[1]["label_available_at"] = rows[1]["timestamp"]
+    with dataset.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    result = validate_prepared_dataset(dataset)
+
+    assert result["status"] == "FAIL"
+    assert any("label_available_not_after_feature" in error for error in result["errors"])
+
+
+def test_prepared_dataset_rejects_nonchronological_label_maturity_times(tmp_path):
+    dataset = tmp_path / "maturity_order.csv"
+    _write_dataset(dataset, rows=5)
+    with dataset.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+        fields = list(rows[0])
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rows[0]["label_available_at"] = (start + timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
+    rows[1]["label_available_at"] = (start + timedelta(minutes=45)).isoformat().replace("+00:00", "Z")
+    with dataset.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    result = validate_prepared_dataset(dataset)
+
+    assert result["status"] == "FAIL"
+    assert any("label_available_timestamps_not_strictly_chronological" in error for error in result["errors"])
+
+
+def test_prepared_dataset_rejects_duplicate_label_maturity_times(tmp_path):
+    dataset = tmp_path / "duplicate_maturity.csv"
+    _write_dataset(dataset, rows=4)
+    with dataset.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+        fields = list(rows[0])
+    rows[1]["label_available_at"] = rows[0]["label_available_at"]
+    with dataset.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+
+    result = validate_prepared_dataset(dataset)
+
+    assert result["status"] == "FAIL"
+    assert any("duplicate_label_available_timestamp" in error for error in result["errors"])
+
+
 def test_prepared_dataset_validation_rejects_out_of_order_and_nonfinite_features(tmp_path):
     dataset = tmp_path / "bad.csv"
     dataset.write_text(
