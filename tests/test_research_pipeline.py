@@ -52,9 +52,18 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
             "schema_version": 1,
             "scope": "OFFLINE_RESEARCH_DATASET_PREPARATION",
             "actionable": False,
+            "symbol": kwargs["symbol"],
+            "timeframe": kwargs["timeframe"],
+            "data_source": kwargs["data_source"],
+            "source_version": kwargs["source_version"],
+            "retrieved_at_utc": kwargs["retrieved_at_utc"],
+            "terms_reference": kwargs["terms_reference"],
             "input_snapshot_sha256": research_pipeline._sha256(input_csv),
             "output_dataset_sha256": research_pipeline._sha256(output_csv),
             "output_rows": 1,
+            "label_horizon_bars": kwargs["horizon_bars"],
+            "class_1_means": kwargs["class_1_means"],
+            "max_label_elapsed_hours": kwargs["max_label_elapsed_hours"],
             "feature_names": ["ret_1"],
             "feature_schema_sha256": hashlib.sha256(
                 json.dumps(
@@ -147,6 +156,12 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert verify_experiment_fingerprint(fingerprint_receipt)["status"] == "PASS"
     assert stored["experiment_fingerprint_sha256"] == fingerprint_receipt["experiment_fingerprint_sha256"]
     assert stored["experiment_fingerprint_file_sha256"] == research_pipeline._sha256(fingerprint_path)
+    assert result["reproducibility_audit_status"] == "PASS"
+    reproducibility_path = Path(result["reproducibility_audit_path"])
+    reproducibility = json.loads(reproducibility_path.read_text(encoding="utf-8"))
+    assert reproducibility["status"] == "PASS"
+    assert reproducibility["errors"] == []
+    assert result["reproducibility_audit_sha256"] == research_pipeline._sha256(reproducibility_path)
     audit_path = tmp_path / "run" / "unit-test_provenance_audit.json"
     assert audit_path.exists()
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
