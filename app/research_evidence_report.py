@@ -385,10 +385,21 @@ def _artifact_record(
     reported_matrix_hash = report.get("experiment_matrix_sha256")
     if reported_matrix_hash is None:
         reported_matrix_hash = report.get("source_matrix_sha256")
-    if reported_matrix_hash is not None and expected_matrix_sha256 is not None:
-        if reported_matrix_hash != expected_matrix_sha256:
+    matrix_hash_required = section_name in {
+        "model_evaluation_gate",
+        "temporal_calibration",
+        *_OPTIONAL_REPORTS.keys(),
+    }
+    if reported_matrix_hash is not None:
+        if (
+            not isinstance(reported_matrix_hash, str)
+            or len(reported_matrix_hash) != 64
+            or any(character not in "0123456789abcdefABCDEF" for character in reported_matrix_hash)
+        ):
+            errors.append(f"{section_name}_source_matrix_hash_invalid")
+        elif expected_matrix_sha256 is not None and reported_matrix_hash != expected_matrix_sha256:
             errors.append(f"{section_name}_source_matrix_hash_mismatch")
-    elif section_name in _OPTIONAL_REPORTS and expected_matrix_sha256 is not None:
+    elif matrix_hash_required and expected_matrix_sha256 is not None:
         warnings.append(f"{section_name}_source_matrix_hash_not_reported")
 
     for flag in _SAFETY_FLAGS:
