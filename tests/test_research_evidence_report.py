@@ -1120,3 +1120,4 @@ def test_summary_uses_effective_section_status_when_receipt_hash_fails(tmp_path,
     assert gate_summary["status"] == "FAIL"
     assert gate_summary["reported_status"] == "PASS"
     assert result["summary"]["section_statuses"]["model_evaluation_gate"] == "FAIL"
+    assert result["integrity_summary"]["effective_status_mismatch_section_count"] >= 1
