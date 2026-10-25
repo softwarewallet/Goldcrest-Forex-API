@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+
+import pytest
 from pathlib import Path
 
 from app.research_label_eligibility_common_cohort import (
