@@ -71,7 +71,7 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
             ).encode("utf-8")
         ).hexdigest()
         Path(manifest_path).write_text(
-            json.dumps(manifest, sort_keys=True) + "\\n", encoding="utf-8"
+            json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8"
         )
         return manifest
 
