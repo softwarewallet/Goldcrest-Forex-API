@@ -116,3 +116,8 @@ warning string as a list of individual characters). No model is retrained or sel
 ## Common-cohort report output safety
 
 The common held-out cohort audit refuses an output path that resolves to any supplied comparison-report input, and it never replaces an existing report. It stages JSON in the destination directory and publishes with a no-clobber filesystem link; if another process creates the destination during publication, the audit fails and preserves that file. Choose a fresh output path for each audit run. This protects the original comparison reports and keeps rerun outputs distinct.
+
+
+## Common-cohort temporal integrity checks
+
+Before intersecting held-out predictions, the common-cohort audit parses fold boundaries and prediction timestamps as timezone-aware UTC values, rejects reversed windows and timestamps outside the declared fold window, and detects duplicate instants even when two strings encode the same UTC time. It canonicalizes accepted timestamps for cross-report matching while validating each source report's timestamp fingerprint against its original serialized timestamps. Missing model or feature-variant identities are rejected rather than coerced to placeholder strings. These checks protect the evaluation cohort's temporal identity; they do not prove that model training itself was leakage-free.

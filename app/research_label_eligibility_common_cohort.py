@@ -12,6 +12,7 @@ import os
 import statistics
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -86,11 +87,39 @@ def _experiment_map(report: Mapping[str, Any], path: str) -> dict[tuple[str, str
     for exp in experiments:
         if not isinstance(exp, dict):
             raise ValueError(f"{path}: invalid experiment record")
-        key = (str(exp.get("model_type", "")), str(exp.get("feature_variant", "")))
-        if not all(key) or key in result:
+        model_type = exp.get("model_type")
+        feature_variant = exp.get("feature_variant")
+        if (
+            not isinstance(model_type, str) or not model_type.strip()
+            or not isinstance(feature_variant, str) or not feature_variant.strip()
+        ):
+            raise ValueError(f"{path}: invalid model-feature key")
+        key = (model_type.strip(), feature_variant.strip())
+        if key in result:
             raise ValueError(f"{path}: invalid/duplicate model-feature key")
         result[key] = exp
     return result
+
+
+def _parse_utc_timestamp(value: object, label: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{label}: timestamp must be a non-empty string")
+    raw = value.strip()
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"{label}: timestamp is not valid ISO-8601") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{label}: timestamp must include a UTC timezone")
+    if parsed.utcoffset().total_seconds() != 0:
+        raise ValueError(f"{label}: timestamp must be expressed in UTC")
+    return parsed.astimezone(timezone.utc)
+
+
+def _canonical_utc_timestamp(value: datetime) -> str:
+    return value.isoformat(timespec="auto").replace("+00:00", "Z")
 
 
 def _fold_map(experiment: Mapping[str, Any], path: str) -> dict[int, dict[str, Any]]:
@@ -105,25 +134,34 @@ def _fold_map(experiment: Mapping[str, Any], path: str) -> dict[int, dict[str, A
         if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index in result:
             raise ValueError(f"{path}: invalid/duplicate fold index")
         start, end = fold.get("test_start_utc"), fold.get("test_end_utc")
-        if not isinstance(start, str) or not isinstance(end, str):
-            raise ValueError(f"{path}: fold boundaries missing")
+        start_dt = _parse_utc_timestamp(start, f"{path}: fold {index} test_start_utc")
+        end_dt = _parse_utc_timestamp(end, f"{path}: fold {index} test_end_utc")
+        if end_dt < start_dt:
+            raise ValueError(f"{path}: fold {index} test window ends before it starts")
         pairs = fold.get("eligible_timestamp_predictions")
         fingerprint = fold.get("eligible_timestamp_fingerprint_sha256")
         if not isinstance(pairs, list) or not isinstance(fingerprint, str):
             raise ValueError(f"{path}: per-timestamp paired predictions are missing; regenerate comparison report")
         normalized = []
-        seen = set()
+        seen: set[str] = set()
+        seen_instants: set[datetime] = set()
         for row in pairs:
             if not isinstance(row, dict):
                 raise ValueError(f"{path}: invalid paired timestamp record")
             ts, label = row.get("timestamp_utc"), row.get("label")
             if not isinstance(ts, str) or ts in seen:
                 raise ValueError(f"{path}: missing/duplicate paired timestamp")
+            timestamp_dt = _parse_utc_timestamp(ts, f"{path}: paired timestamp")
+            if timestamp_dt in seen_instants:
+                raise ValueError(f"{path}: duplicate paired timestamp instant")
+            if timestamp_dt < start_dt or timestamp_dt > end_dt:
+                raise ValueError(f"{path}: paired timestamp falls outside its declared test window")
             seen.add(ts)
+            seen_instants.add(timestamp_dt)
             if isinstance(label, bool) or label not in (0, 1):
                 raise ValueError(f"{path}: invalid paired label")
             normalized.append({
-                "timestamp_utc": ts,
+                "timestamp_utc": _canonical_utc_timestamp(timestamp_dt),
                 "label": int(label),
                 "baseline_probability_class_1": row.get("baseline_probability_class_1"),
                 "variant_probability_class_1": row.get("variant_probability_class_1"),
@@ -131,7 +169,11 @@ def _fold_map(experiment: Mapping[str, Any], path: str) -> dict[int, dict[str, A
         expected = hashlib.sha256(("\n".join(sorted(seen)) + ("\n" if seen else "")).encode("utf-8")).hexdigest()
         if fingerprint != expected:
             raise ValueError(f"{path}: eligible timestamp fingerprint mismatch")
-        result[index] = {"test_start_utc": start, "test_end_utc": end, "pairs": normalized}
+        result[index] = {
+            "test_start_utc": _canonical_utc_timestamp(start_dt),
+            "test_end_utc": _canonical_utc_timestamp(end_dt),
+            "pairs": normalized,
+        }
     return result
 
 
