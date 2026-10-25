@@ -97,6 +97,7 @@ def audit_experiment_registry(registry: dict[str, Any], *, base_dir: Path) -> di
             "run_id": run_id,
             "seed": report.get("seed"),
             "fold_id": report.get("fold_id"),
+            "window_id": manifest.get("window_id"),
             "evaluation_window": manifest.get("evaluation_window"),
             "context": report.get("context"),
             "config_sha256": manifest.get("config_sha256"),
