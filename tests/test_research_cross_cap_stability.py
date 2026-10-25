@@ -64,7 +64,7 @@ def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
                     "variant_probability_class_1": 0.95,
                 })
             fingerprint = hashlib.sha256(
-                ("\\n".join(sorted(row["timestamp_utc"] for row in paired_rows)) + "\\n").encode()
+                ("\n".join(sorted(row["timestamp_utc"] for row in paired_rows)) + "\n").encode()
             ).hexdigest()
             baseline_metrics = _metrics(
                 [{"label": row["label"], "p": row["baseline_probability_class_1"]} for row in paired_rows], "p"
