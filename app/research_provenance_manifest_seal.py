@@ -31,6 +31,8 @@ def canonical_manifest_bytes(manifest: dict[str, Any]) -> bytes:
 
 
 def create_manifest_seal(manifest: dict[str, Any]) -> dict[str, Any]:
+    if manifest.get("audit_name") != "research_artifact_provenance_manifest":
+        raise ValueError("manifest_audit_name_invalid")
     raw = canonical_manifest_bytes(manifest)
     revision = manifest.get("source_revision")
     if not isinstance(revision, str) or len(revision) != 40 or any(c not in "0123456789abcdefABCDEF" for c in revision):
@@ -38,6 +40,8 @@ def create_manifest_seal(manifest: dict[str, Any]) -> dict[str, Any]:
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
         raise ValueError("manifest_artifacts_must_be_list")
+    if manifest.get("artifact_count") != len(artifacts):
+        raise ValueError("manifest_artifact_count_mismatch")
     return {
         "schema_version": 1,
         "audit_name": "research_provenance_manifest_detached_seal",
