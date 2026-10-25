@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from app.research_final_certification_chain_audit import audit_final_certification_chain
+import json
+from pathlib import Path
+
+import pytest
+
+from app.research_final_certification_chain_audit import (
+    _write_report_no_clobber,
+    audit_final_certification_chain,
+    main,
+)
 
 
 FLAGS = {
@@ -169,3 +178,65 @@ def test_missing_plan_and_registry_identity_cannot_pass_by_matching_nulls():
     assert report["status"] == "FAIL"
     assert any(error["code"] == "plan_id_invalid" for error in report["errors"])
     assert any(error["code"] == "registry_id_invalid" for error in report["errors"])
+
+
+def _write_cli_inputs(tmp_path):
+    readiness, bundle, verification = fixtures()
+    paths = [
+        tmp_path / "readiness.json",
+        tmp_path / "bundle.json",
+        tmp_path / "verification.json",
+    ]
+    for path, payload in zip(paths, (readiness, bundle, verification)):
+        path.write_text(json.dumps(payload), encoding="utf-8")
+    return paths
+
+
+def test_final_chain_cli_refuses_output_aliasing_an_input(tmp_path, capsys):
+    readiness, bundle, verification = _write_cli_inputs(tmp_path)
+    original = readiness.read_bytes()
+
+    result = main([
+        "--readiness-report", str(readiness),
+        "--evidence-bundle", str(bundle),
+        "--bundle-verification-report", str(verification),
+        "--output", str(readiness),
+    ])
+
+    assert result == 2
+    assert readiness.read_bytes() == original
+    assert "output_must_not_alias_input" in capsys.readouterr().err
+
+
+def test_final_chain_cli_preserves_existing_output(tmp_path, capsys):
+    readiness, bundle, verification = _write_cli_inputs(tmp_path)
+    output = tmp_path / "final.json"
+    output.write_text("preserve", encoding="utf-8")
+
+    result = main([
+        "--readiness-report", str(readiness),
+        "--evidence-bundle", str(bundle),
+        "--bundle-verification-report", str(verification),
+        "--output", str(output),
+    ])
+
+    assert result == 2
+    assert output.read_text(encoding="utf-8") == "preserve"
+    assert "output_already_exists" in capsys.readouterr().err
+
+
+def test_final_chain_report_publication_does_not_clobber_concurrent_output(tmp_path, monkeypatch):
+    import app.research_final_certification_chain_audit as module
+
+    output = tmp_path / "final.json"
+    real_link = module.os.link
+
+    def create_destination_then_link(source, destination):
+        Path(destination).write_text("created concurrently", encoding="utf-8")
+        return real_link(source, destination)
+
+    monkeypatch.setattr(module.os, "link", create_destination_then_link)
+    with pytest.raises(FileExistsError):
+        _write_report_no_clobber(output, {"status": "PASS"}, [])
+    assert output.read_text(encoding="utf-8") == "created concurrently"
+    assert list(tmp_path.glob(".final.json.*.tmp")) == []
