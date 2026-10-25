@@ -781,3 +781,28 @@ def test_evidence_interpretation_keeps_candidate_count_when_periods_are_unavaila
     assert result["common_fold_index_count"] == 5
     assert result["complete_test_fold_count"] == 0
     assert result["candidate_fold_coverage"][0]["candidate_name"] == "candidate-a"
+
+
+def test_consolidated_report_detects_manifest_receipt_summary_mismatch(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # Deliberately make the manifest's copied receipt summary stale while
+    # leaving the hash-bound receipt unchanged.
+    manifest["model_evaluation_gate_status"] = "FAIL"
+    manifest["model_evaluation_gate_errors"] = ["stale-manifest-error"]
+    _write_json(manifest_path, manifest)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "model_evaluation_gate_manifest_status_mismatch" in result["errors"]
+    assert "model_evaluation_gate_manifest_errors_mismatch" in result["errors"]
+
+
+def test_consolidated_report_accepts_matching_manifest_receipt_summary(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+
+    assert "model_evaluation_gate_manifest_status_mismatch" not in result["errors"]
+    assert "model_evaluation_gate_manifest_errors_mismatch" not in result["errors"]

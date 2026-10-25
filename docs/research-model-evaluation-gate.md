@@ -44,3 +44,8 @@ The consolidated evidence interpretation does not classify paired bootstrap inte
 ## Phase 9: Multiplicity context ledger
 
 The consolidated evidence report now inventories the number of comparisons represented by baseline probability-loss intervals, temporal calibration changes, volatility-regime intervals, and chronological out-of-sample candidate summaries. It explicitly records that no multiplicity adjustment has been applied and that confirmatory inference is not supported by this report. Counts across these diagnostic families are an audit inventory, not a claim that all comparisons form one statistical testing family. Any confirmatory analysis requires a pre-specified hypothesis family and an appropriate method; the ledger does not perform that correction.
+
+
+## Phase 10: Manifest-to-receipt consistency
+
+For hash-bound provenance, model-evaluation-gate, and temporal-calibration receipts, the consolidated evidence report checks any status/error/warning summary fields copied into the pipeline manifest against the receipt contents. A mismatch is an integrity error even if the receipt itself is readable. This catches stale or contradictory manifest metadata; it supplements, and does not replace, the artifact hash, scope, run, and source-matrix checks. Legacy manifests that do not record a summary field are not failed solely because that field is absent.
