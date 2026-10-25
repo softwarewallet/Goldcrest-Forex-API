@@ -102,6 +102,12 @@ def _experiment_key(experiment: Mapping[str, Any]) -> tuple[str, str]:
 
 
 def _fold_signature(comparison: Mapping[str, Any]) -> tuple[tuple[Any, ...], ...]:
+    """Return chronological test-window identity, excluding cap/seed-dependent row counts.
+
+    Eligibility counts are useful diagnostics, but they are not fold geometry. Including
+    eligible_test_rows here incorrectly conflates sample eligibility with the identity of
+    a held-out test window and can reject otherwise matched seed-sweep runs.
+    """
     experiments = comparison.get("experiments")
     if not isinstance(experiments, list) or not experiments or not isinstance(experiments[0], dict):
         raise ValueError("comparison_experiments_missing")
@@ -109,15 +115,21 @@ def _fold_signature(comparison: Mapping[str, Any]) -> tuple[tuple[Any, ...], ...
     if not isinstance(folds, list) or not folds:
         raise ValueError("comparison_fold_results_missing")
     signature: list[tuple[Any, ...]] = []
+    seen_indices: set[int] = set()
     for fold in folds:
         if not isinstance(fold, dict):
             raise ValueError("comparison_fold_entry_invalid")
-        signature.append((
-            fold.get("fold_index"),
-            fold.get("test_start_utc"),
-            fold.get("test_end_utc"),
-            fold.get("eligible_test_rows"),
-        ))
+        fold_index = fold.get("fold_index")
+        start = fold.get("test_start_utc")
+        end = fold.get("test_end_utc")
+        if isinstance(fold_index, bool) or not isinstance(fold_index, int) or fold_index < 0:
+            raise ValueError("comparison_fold_index_invalid")
+        if fold_index in seen_indices:
+            raise ValueError("comparison_fold_index_duplicate")
+        if not isinstance(start, str) or not start.strip() or not isinstance(end, str) or not end.strip():
+            raise ValueError("comparison_fold_test_window_invalid")
+        seen_indices.add(fold_index)
+        signature.append((fold_index, start, end))
     return tuple(signature)
 
 
