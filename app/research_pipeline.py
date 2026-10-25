@@ -20,6 +20,7 @@ from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
 from app.research_feature_source_provenance_audit import audit_feature_source_provenance
 from app.research_experiment_fingerprint import build_experiment_fingerprint, verify_experiment_fingerprint
+from app.research_reproducibility_auditor import audit_experiment_reproducibility
 from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
@@ -101,6 +102,7 @@ def run_research_pipeline(
         f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json",
         f"{run_id}_feature_source_audit.json",
         f"{run_id}_experiment_fingerprint.json",
+        f"{run_id}_reproducibility_audit.json",
         f"{run_id}_experiment_matrix.json",
         f"{run_id}_provenance_audit.json",
         f"{run_id}_temporal_calibration_stability.json",
@@ -369,6 +371,7 @@ def run_research_pipeline(
         "experiment_fingerprint_sha256": experiment_fingerprint["experiment_fingerprint_sha256"],
         "experiment_fingerprint_status": fingerprint_verification["status"],
         "experiment_fingerprint_errors": fingerprint_verification["errors"],
+        "reproducibility_audit_path": str(destination / f"{run_id}_reproducibility_audit.json"),
         "feature_count": len(feature_names),
         "feature_names": feature_names,
         "fold_count": report.fold_count,
@@ -437,6 +440,21 @@ def run_research_pipeline(
     result["validation_errors"] = validation["errors"]
     result["validation_warnings"] = validation["warnings"]
     result["strict_validation"] = strict_validation
+
+    # Audit the persisted pipeline manifest and all linked artifacts after the run. The
+    # receipt is separate so it cannot create a hash cycle with the pipeline manifest.
+    reproducibility_audit = audit_experiment_reproducibility(
+        experiment_fingerprint_path, manifest_path
+    )
+    reproducibility_audit_path = Path(payload["reproducibility_audit_path"])
+    reproducibility_audit_path.write_text(
+        json.dumps(reproducibility_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    result["reproducibility_audit_path"] = str(reproducibility_audit_path)
+    result["reproducibility_audit_sha256"] = _sha256(reproducibility_audit_path)
+    result["reproducibility_audit_status"] = reproducibility_audit["status"]
+    result["reproducibility_audit_errors"] = reproducibility_audit["errors"]
     return result
 
 
