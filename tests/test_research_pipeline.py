@@ -197,7 +197,7 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert validation_report["temporal_calibration_stability"]["status"] == "FAIL"
 
     dataset_path = Path(stored["dataset_path"])
-    dataset_path.write_text(dataset_path.read_text(encoding="utf-8") + "\\n", encoding="utf-8")
+    dataset_path.write_text(dataset_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     tampered_audit = audit_experiment_reproducibility(
         fingerprint_path, manifest
     )
