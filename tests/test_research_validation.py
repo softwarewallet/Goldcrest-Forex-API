@@ -187,7 +187,7 @@ def test_prepared_dataset_rejects_label_available_at_feature_timestamp(tmp_path)
         fields = list(rows[0])
     rows[1]["label_available_at"] = rows[1]["timestamp"]
     with dataset.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\\n")
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -207,7 +207,7 @@ def test_prepared_dataset_rejects_nonchronological_label_maturity_times(tmp_path
     rows[0]["label_available_at"] = (start + timedelta(minutes=90)).isoformat().replace("+00:00", "Z")
     rows[1]["label_available_at"] = (start + timedelta(minutes=45)).isoformat().replace("+00:00", "Z")
     with dataset.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\\n")
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
@@ -225,7 +225,7 @@ def test_prepared_dataset_rejects_duplicate_label_maturity_times(tmp_path):
         fields = list(rows[0])
     rows[1]["label_available_at"] = rows[0]["label_available_at"]
     with dataset.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\\n")
+        writer = csv.DictWriter(handle, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 
