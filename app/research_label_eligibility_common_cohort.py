@@ -51,6 +51,11 @@ def _read_report(path: str | Path) -> dict[str, Any]:
     for field in ("automatic_model_selection", "actionable", "execution_connected"):
         if value.get(field) is not False:
             raise ValueError(f"{path}: {field} must be false")
+    baseline_dataset_sha256 = value.get("baseline_dataset_sha256")
+    if baseline_dataset_sha256 is not None:
+        if (not isinstance(baseline_dataset_sha256, str) or len(baseline_dataset_sha256) != 64
+                or any(char not in "0123456789abcdefABCDEF" for char in baseline_dataset_sha256)):
+            raise ValueError(f"{path}: invalid baseline_dataset_sha256")
     cap = value.get("max_label_elapsed_hours")
     if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not math.isfinite(float(cap)) or cap <= 0:
         raise ValueError(f"{path}: invalid max_label_elapsed_hours")
@@ -114,13 +119,34 @@ def _fold_map(experiment: Mapping[str, Any], path: str) -> dict[int, dict[str, A
     return result
 
 
-def audit_common_heldout_cohort(report_paths: Sequence[str | Path]) -> dict[str, Any]:
+def audit_common_heldout_cohort(
+    report_paths: Sequence[str | Path],
+    *,
+    allow_baseline_id_variation: bool = False,
+) -> dict[str, Any]:
+    """Audit shared held-out timestamps; optionally allow distinct baseline IDs only when dataset hashes match."""
     try:
         if len(report_paths) < 2:
             raise ValueError("provide at least two comparison reports")
         loaded = [(str(path), _read_report(path)) for path in report_paths]
         base = loaded[0][1]
-        identity_fields = ("baseline_run_id", "symbol", "timeframe", "label_horizon_bars", "raw_ohlc_sha256")
+        if allow_baseline_id_variation:
+            for path, report in loaded:
+                dataset_hash = report.get("baseline_dataset_sha256")
+                if (not isinstance(dataset_hash, str) or len(dataset_hash) != 64
+                        or any(char not in "0123456789abcdefABCDEF" for char in dataset_hash)):
+                    raise ValueError(
+                        f"{path}: baseline_dataset_sha256 is required for baseline-ID variation mode"
+                    )
+            identity_fields = (
+                "baseline_dataset_sha256", "symbol", "timeframe",
+                "label_horizon_bars", "raw_ohlc_sha256",
+            )
+        else:
+            identity_fields = (
+                "baseline_run_id", "symbol", "timeframe",
+                "label_horizon_bars", "raw_ohlc_sha256", "baseline_dataset_sha256",
+            )
         for path, report in loaded[1:]:
             for field in identity_fields:
                 if report.get(field) != base.get(field):
@@ -140,6 +166,12 @@ def audit_common_heldout_cohort(report_paths: Sequence[str | Path]) -> dict[str,
             "metrics are descriptive held-out diagnostics only; no statistical inference or profitability claim is made",
             "fold observations may overlap; aggregate counts are observation counts across folds, not guaranteed unique timestamps",
         ]
+        baseline_run_ids = list(dict.fromkeys(report["baseline_run_id"] for _, report in loaded))
+        if allow_baseline_id_variation and len(baseline_run_ids) > 1:
+            warnings.append(
+                "baseline run IDs differ; matching baseline dataset hashes do not prove identical "
+                "training configurations, training samples, model artifacts, or training runs"
+            )
         for key in sorted(expected_keys):
             fold_maps = []
             for path, _, mapping in experiment_maps:
@@ -213,7 +245,12 @@ def audit_common_heldout_cohort(report_paths: Sequence[str | Path]) -> dict[str,
             "schema_version": 1,
             "scope": "GOLDCREST_COMMON_HELDOUT_COHORT_AUDIT",
             "status": "PASS",
-            "baseline_run_id": base["baseline_run_id"],
+            "baseline_run_id": base["baseline_run_id"] if len(baseline_run_ids) == 1 else None,
+            "baseline_run_ids": baseline_run_ids,
+            "baseline_identity_mode": (
+                "dataset_hash_equivalence" if allow_baseline_id_variation else "strict_run_id"
+            ),
+            "baseline_dataset_sha256": base.get("baseline_dataset_sha256"),
             "symbol": base["symbol"],
             "timeframe": base["timeframe"],
             "label_horizon_bars": base["label_horizon_bars"],
@@ -244,13 +281,24 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--comparison-report", action="append", required=True,
                         help="Paired comparison JSON; repeat at least twice")
+    parser.add_argument(
+        "--allow-baseline-id-variation-with-matching-dataset-hash",
+        action="store_true",
+        help=(
+            "Allow distinct baseline_run_id values only when every report has the same valid "
+            "baseline_dataset_sha256; training-run equivalence is not implied"
+        ),
+    )
     parser.add_argument("--output", required=True, help="Output JSON audit path")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    report = audit_common_heldout_cohort(args.comparison_report)
+    report = audit_common_heldout_cohort(
+        args.comparison_report,
+        allow_baseline_id_variation=args.allow_baseline_id_variation_with_matching_dataset_hash,
+    )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
