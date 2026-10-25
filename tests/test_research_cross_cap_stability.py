@@ -12,7 +12,9 @@ CAPS = (1.0, 1.5, 8.0)
 SEEDS = (20261021, 20261022)
 
 
-def _source_metrics_for_cap(cap: float) -> tuple[float, float]:
+def _source_metrics_for_cap(cap: float, *, equivalent_15_8: bool = False) -> tuple[float, float]:
+    if equivalent_15_8 and cap == 8.0:
+        return (0.2, 0.8)
     return {
         1.0: (0.4, 0.6),
         1.5: (0.2, 0.8),
@@ -21,7 +23,8 @@ def _source_metrics_for_cap(cap: float) -> tuple[float, float]:
 
 
 def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
-                       missing_source: bool = False, bad_sample_count: bool = False) -> Path:
+                       missing_source: bool = False, bad_sample_count: bool = False,
+                       equivalent_15_8: bool = False) -> Path:
     source_paths = []
     baseline_ids = []
     dataset_hash = format(seed, "064x")
@@ -29,7 +32,7 @@ def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
 
     for cap in CAPS:
         report_path = tmp_path / f"source_seed_{seed}_cap_{str(cap).replace('.', 'p')}.json"
-        variant_probabilities = _source_metrics_for_cap(cap)
+        variant_probabilities = _source_metrics_for_cap(cap, equivalent_15_8=equivalent_15_8)
         fold_results = []
         for fold_index in range(2):
             day = fold_index + 1
@@ -167,3 +170,31 @@ def test_cross_cap_stability_fails_when_expected_seed_set_is_incomplete(tmp_path
 
     assert result["status"] == "FAIL"
     assert any("expected 2 common-cohort audit reports" in error for error in result["errors"])
+
+
+def test_cap_equivalence_diagnostics_surface_same_cohort_prediction_mismatches(tmp_path):
+    paths = [_make_seed_reports(tmp_path, seed) for seed in SEEDS]
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    diagnostics = result["per_seed_results"][0]["cap_equivalence_diagnostics"]
+    assert diagnostics["status"] == "REQUIRES_REVIEW"
+    pair = diagnostics["counts_by_cap_pair"]["1.5_vs_8"]
+    assert pair["equivalent_predictions_and_metrics"] == 0
+    assert pair["same_eligibility_but_predictions_or_metrics_differ"] == 2
+    assert all(issue["variant_predictions_match"] is False for issue in diagnostics["issues"] if issue["cap_pair"] == "1.5_vs_8")
+
+
+def test_cap_equivalence_diagnostics_confirm_matching_timestamps_predictions_and_metrics(tmp_path):
+    paths = [
+        _make_seed_reports(tmp_path, seed, equivalent_15_8=True)
+        for seed in SEEDS
+    ]
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    diagnostics = result["per_seed_results"][0]["cap_equivalence_diagnostics"]
+    assert diagnostics["status"] == "PASS"
+    pair = diagnostics["counts_by_cap_pair"]["1.5_vs_8"]
+    assert pair["equivalent_predictions_and_metrics"] == 2
+    assert pair["same_eligibility_but_predictions_or_metrics_differ"] == 0
