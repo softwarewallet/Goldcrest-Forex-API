@@ -236,6 +236,10 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
     import app.research_unified_provenance_certification as module
 
     output = tmp_path / "out" / "certification.json"
+    for name in ("readiness.json", "bundle.json", "provenance.json", "provenance-seal.json",
+                 "inventory.json", "inventory-seal.json", "config.json"):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    (tmp_path / "dataset").mkdir()
     monkeypatch.setattr(sys, "argv", [
         "research_unified_provenance_certification",
         "--readiness-report", str(tmp_path / "readiness.json"),
