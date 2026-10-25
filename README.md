@@ -203,3 +203,8 @@ The model evaluation integrity gate also checks that candidates sharing a fold i
 
 
 The chronological OOS robustness diagnostic now cross-checks all available train/validation/test boundaries and held-out sample counts across candidates for each shared fold. Mismatches withhold early/middle/late summaries; legacy artifacts with incomplete timestamps remain visibly partial. See `docs/research-model-evaluation-gate.md`.
+
+
+## Dependence-qualified comparative evidence
+
+The consolidated research evidence report withholds positive/negative bootstrap-interval classifications when the baseline analysis detects repeated held-out timestamps across folds. Point estimates remain visible, while those intervals are counted as dependence-limited rather than treated as independent evidence. This is a conservative reporting guard; it does not establish statistical significance, model quality, or profitability.
