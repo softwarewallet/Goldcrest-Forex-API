@@ -72,3 +72,8 @@ A valid seal proves canonical content consistency only. Certification passing do
 Before audit execution, the unified CLI checks that each JSON input is an existing file, the evidence/artifact roots and Git checkout are existing directories, and the config/dataset inputs are existing files or directories. It rejects missing or incorrectly typed inputs with a path-specific JSON error rather than beginning partial certification work. Report and report-seal paths must be distinct from input paths and from each other, and must not already exist.
 
 Report JSON and its optional detached seal are staged in temporary files in their respective output directories before publication. If publication fails partway through, files published by that attempt are removed. This reduces partial-output risk but is not a filesystem-wide atomic transaction across two different directories; retain and verify the seal independently.
+
+
+## Final-chain schema validation
+
+The final certification-chain audit requires non-empty plan and registry identifiers, lowercase hexadecimal SHA-256 digests, and integer report counts (booleans are rejected even though Python treats them as integers). It also rejects malformed diagnostic fields and requires declared and verified report counts to reconcile exactly. These checks prevent malformed JSON values from passing through Python's permissive equality and truthiness rules. They validate report consistency only; they do not independently prove the source artifacts' scientific validity or profitability.
