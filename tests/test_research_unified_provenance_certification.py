@@ -236,6 +236,10 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
     import app.research_unified_provenance_certification as module
 
     output = tmp_path / "out" / "certification.json"
+    for name in ("readiness.json", "bundle.json", "provenance.json", "provenance-seal.json",
+                 "inventory.json", "inventory-seal.json", "config.json"):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    (tmp_path / "dataset").mkdir()
     monkeypatch.setattr(sys, "argv", [
         "research_unified_provenance_certification",
         "--readiness-report", str(tmp_path / "readiness.json"),
@@ -417,3 +421,47 @@ def test_json_outputs_publish_report_and_seal(tmp_path):
     assert json.loads(report_path.read_text(encoding="utf-8")) == report
     assert json.loads(seal_path.read_text(encoding="utf-8")) == seal
     assert not list(tmp_path.rglob("*.tmp"))
+
+
+def test_input_contract_rejects_missing_required_json_file(tmp_path):
+    from argparse import Namespace
+    from app.research_unified_provenance_certification import _validate_input_paths
+    args = Namespace(
+        readiness_report=tmp_path / "missing-readiness.json",
+        evidence_bundle=tmp_path / "bundle.json",
+        provenance_manifest=tmp_path / "manifest.json",
+        provenance_seal=tmp_path / "manifest.seal.json",
+        inventory_spec=tmp_path / "inventory.json",
+        inventory_seal=tmp_path / "inventory.seal.json",
+        evidence_root=tmp_path,
+        artifact_root=tmp_path,
+        repo_path=tmp_path,
+        config_path=tmp_path / "config.json",
+        dataset_path=tmp_path / "dataset.csv",
+    )
+    import pytest
+    with pytest.raises(ValueError, match="required_input_missing:readiness report"):
+        _validate_input_paths(args)
+
+
+def test_input_contract_rejects_directory_where_json_file_required(tmp_path):
+    from argparse import Namespace
+    from app.research_unified_provenance_certification import _validate_input_paths
+    readiness_dir = tmp_path / "readiness"
+    readiness_dir.mkdir()
+    args = Namespace(
+        readiness_report=readiness_dir,
+        evidence_bundle=tmp_path / "bundle.json",
+        provenance_manifest=tmp_path / "manifest.json",
+        provenance_seal=tmp_path / "manifest.seal.json",
+        inventory_spec=tmp_path / "inventory.json",
+        inventory_seal=tmp_path / "inventory.seal.json",
+        evidence_root=tmp_path,
+        artifact_root=tmp_path,
+        repo_path=tmp_path,
+        config_path=tmp_path / "config.json",
+        dataset_path=tmp_path / "dataset.csv",
+    )
+    import pytest
+    with pytest.raises(ValueError, match="required_input_not_file:readiness report"):
+        _validate_input_paths(args)
