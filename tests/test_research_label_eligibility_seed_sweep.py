@@ -5,6 +5,7 @@ import json
 import pytest
 
 from app.research_label_eligibility_seed_sweep import (
+    _fold_signature,
     aggregate_seed_results,
     choose_seed_sweep_report_path,
     parse_random_seeds,
@@ -100,3 +101,78 @@ def test_aggregate_seed_results_rejects_inconsistent_experiment_matrices():
 
     with pytest.raises(ValueError, match="experiment_matrix_differs"):
         aggregate_seed_results([first, second])
+
+
+
+def _comparison_with_fold_windows(folds: list[dict]) -> dict:
+    return {"experiments": [{"fold_results": folds}]}
+
+
+def test_fold_signature_uses_test_window_geometry_not_eligible_row_counts():
+    first = _comparison_with_fold_windows([
+        {
+            "fold_index": 0,
+            "test_start_utc": "2026-01-01T00:00:00Z",
+            "test_end_utc": "2026-01-02T00:00:00Z",
+            "eligible_test_rows": 1400,
+        },
+        {
+            "fold_index": 1,
+            "test_start_utc": "2026-01-02T00:00:00Z",
+            "test_end_utc": "2026-01-03T00:00:00Z",
+            "eligible_test_rows": 1410,
+        },
+    ])
+    second = _comparison_with_fold_windows([
+        {
+            "fold_index": 0,
+            "test_start_utc": "2026-01-01T00:00:00Z",
+            "test_end_utc": "2026-01-02T00:00:00Z",
+            "eligible_test_rows": 1300,
+        },
+        {
+            "fold_index": 1,
+            "test_start_utc": "2026-01-02T00:00:00Z",
+            "test_end_utc": "2026-01-03T00:00:00Z",
+            "eligible_test_rows": 1320,
+        },
+    ])
+
+    assert _fold_signature(first) == _fold_signature(second)
+
+
+def test_fold_signature_detects_test_window_boundary_changes():
+    first = _comparison_with_fold_windows([{
+        "fold_index": 0,
+        "test_start_utc": "2026-01-01T00:00:00Z",
+        "test_end_utc": "2026-01-02T00:00:00Z",
+        "eligible_test_rows": 1400,
+    }])
+    changed = _comparison_with_fold_windows([{
+        "fold_index": 0,
+        "test_start_utc": "2026-01-01T00:00:00Z",
+        "test_end_utc": "2026-01-02T01:00:00Z",
+        "eligible_test_rows": 1400,
+    }])
+
+    assert _fold_signature(first) != _fold_signature(changed)
+
+
+def test_fold_signature_rejects_duplicate_fold_indices():
+    comparison = _comparison_with_fold_windows([
+        {
+            "fold_index": 0,
+            "test_start_utc": "2026-01-01T00:00:00Z",
+            "test_end_utc": "2026-01-02T00:00:00Z",
+            "eligible_test_rows": 1400,
+        },
+        {
+            "fold_index": 0,
+            "test_start_utc": "2026-01-02T00:00:00Z",
+            "test_end_utc": "2026-01-03T00:00:00Z",
+            "eligible_test_rows": 1410,
+        },
+    ])
+
+    with pytest.raises(ValueError, match="fold_index_duplicate"):
+        _fold_signature(comparison)
