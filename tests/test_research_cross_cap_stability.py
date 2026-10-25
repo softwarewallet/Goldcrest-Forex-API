@@ -5,14 +5,16 @@ import json
 from pathlib import Path
 
 from app.research_cross_cap_stability import audit_cross_cap_stability
-from app.research_label_eligibility_common_cohort import audit_common_heldout_cohort
+from app.research_label_eligibility_common_cohort import _metrics, audit_common_heldout_cohort
 
 
 CAPS = (1.0, 1.5, 8.0)
 SEEDS = (20261021, 20261022)
 
 
-def _source_metrics_for_cap(cap: float) -> tuple[float, float]:
+def _source_metrics_for_cap(cap: float, *, equivalent_15_8: bool = False) -> tuple[float, float]:
+    if equivalent_15_8 and cap == 8.0:
+        return (0.2, 0.8)
     return {
         1.0: (0.4, 0.6),
         1.5: (0.2, 0.8),
@@ -21,7 +23,8 @@ def _source_metrics_for_cap(cap: float) -> tuple[float, float]:
 
 
 def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
-                       missing_source: bool = False, bad_sample_count: bool = False) -> Path:
+                       missing_source: bool = False, bad_sample_count: bool = False,
+                       equivalent_15_8: bool = False) -> Path:
     source_paths = []
     baseline_ids = []
     dataset_hash = format(seed, "064x")
@@ -29,7 +32,7 @@ def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
 
     for cap in CAPS:
         report_path = tmp_path / f"source_seed_{seed}_cap_{str(cap).replace('.', 'p')}.json"
-        variant_probabilities = _source_metrics_for_cap(cap)
+        variant_probabilities = _source_metrics_for_cap(cap, equivalent_15_8=equivalent_15_8)
         fold_results = []
         for fold_index in range(2):
             day = fold_index + 1
@@ -38,25 +41,42 @@ def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
                 f"2026-01-0{day}T01:00:00Z",
             ]
             fingerprint = hashlib.sha256(("\n".join(sorted(timestamps)) + "\n").encode()).hexdigest()
+            paired_rows = [
+                {
+                    "timestamp_utc": timestamps[0],
+                    "label": 0,
+                    "baseline_probability_class_1": 0.3,
+                    "variant_probability_class_1": variant_probabilities[0],
+                },
+                {
+                    "timestamp_utc": timestamps[1],
+                    "label": 1,
+                    "baseline_probability_class_1": 0.7,
+                    "variant_probability_class_1": variant_probabilities[1],
+                },
+            ]
+            baseline_metrics = _metrics(
+                [{"label": row["label"], "p": row["baseline_probability_class_1"]} for row in paired_rows], "p"
+            )
+            variant_metrics = _metrics(
+                [{"label": row["label"], "p": row["variant_probability_class_1"]} for row in paired_rows], "p"
+            )
+            delta_metrics = {
+                metric: variant_metrics[metric] - baseline_metrics[metric]
+                for metric in (
+                    "log_loss", "brier_score", "accuracy_at_fixed_half",
+                    "prevalence", "mean_predicted_probability",
+                )
+            }
             fold_results.append({
                 "fold_index": fold_index,
                 "test_start_utc": f"2026-01-0{day}T00:00:00Z",
                 "test_end_utc": f"2026-01-0{day}T02:00:00Z",
                 "eligible_timestamp_fingerprint_sha256": fingerprint,
-                "eligible_timestamp_predictions": [
-                    {
-                        "timestamp_utc": timestamps[0],
-                        "label": 0,
-                        "baseline_probability_class_1": 0.3,
-                        "variant_probability_class_1": variant_probabilities[0],
-                    },
-                    {
-                        "timestamp_utc": timestamps[1],
-                        "label": 1,
-                        "baseline_probability_class_1": 0.7,
-                        "variant_probability_class_1": variant_probabilities[1],
-                    },
-                ],
+                "eligible_timestamp_predictions": paired_rows,
+                "baseline_same_eligible_timestamps_metrics": baseline_metrics,
+                "variant_eligible_test_metrics": variant_metrics,
+                "paired_variant_minus_baseline_delta": delta_metrics,
             })
         report = {
             "status": "PASS_WITH_WARNINGS",
@@ -167,3 +187,31 @@ def test_cross_cap_stability_fails_when_expected_seed_set_is_incomplete(tmp_path
 
     assert result["status"] == "FAIL"
     assert any("expected 2 common-cohort audit reports" in error for error in result["errors"])
+
+
+def test_cap_equivalence_diagnostics_surface_same_cohort_prediction_mismatches(tmp_path):
+    paths = [_make_seed_reports(tmp_path, seed) for seed in SEEDS]
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    diagnostics = result["per_seed_results"][0]["cap_equivalence_diagnostics"]
+    assert diagnostics["status"] == "REQUIRES_REVIEW"
+    pair = diagnostics["counts_by_cap_pair"]["1.5_vs_8"]
+    assert pair["equivalent_predictions_and_metrics"] == 0
+    assert pair["same_eligibility_but_predictions_or_metrics_differ"] == 2
+    assert all(issue["variant_predictions_match"] is False for issue in diagnostics["issues"] if issue["cap_pair"] == "1.5_vs_8")
+
+
+def test_cap_equivalence_diagnostics_confirm_matching_timestamps_predictions_and_metrics(tmp_path):
+    paths = [
+        _make_seed_reports(tmp_path, seed, equivalent_15_8=True)
+        for seed in SEEDS
+    ]
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    diagnostics = result["per_seed_results"][0]["cap_equivalence_diagnostics"]
+    # Other cap pairs can legitimately differ; assert the specific 1.5h/8h pair.
+    pair = diagnostics["counts_by_cap_pair"]["1.5_vs_8"]
+    assert pair["equivalent_predictions_and_metrics"] == 2
+    assert pair["same_eligibility_but_predictions_or_metrics_differ"] == 0

@@ -64,6 +64,143 @@ def _validate_safety(value: Mapping[str, Any], context: str) -> None:
             raise ValueError(f"{context}: {field} must be false")
 
 
+
+def _nested_equal(left: Any, right: Any, *, tolerance: float = 1e-12) -> bool:
+    """Compare nested metric records with a strict absolute tolerance for numeric leaves."""
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return math.isfinite(float(left)) and math.isfinite(float(right)) and math.isclose(
+            float(left), float(right), rel_tol=0.0, abs_tol=tolerance
+        )
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return set(left) == set(right) and all(_nested_equal(left[key], right[key], tolerance=tolerance) for key in left)
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(_nested_equal(a, b, tolerance=tolerance) for a, b in zip(left, right))
+    return left == right
+
+
+def _cap_equivalence_diagnostics(
+    sources: Sequence[tuple[float, Path, Mapping[str, Any]]],
+) -> dict[str, Any]:
+    """Compare cap-specific eligibility, predictions, and metrics without assuming model equivalence."""
+    from itertools import combinations
+
+    indexed: dict[float, dict[tuple[str, str], dict[int, Mapping[str, Any]]]] = {}
+    for cap, path, report in sources:
+        experiments: dict[tuple[str, str], dict[int, Mapping[str, Any]]] = {}
+        for experiment in report.get("experiments", []):
+            key = (str(experiment.get("model_type")), str(experiment.get("feature_variant")))
+            folds = experiment.get("fold_results")
+            if not isinstance(folds, list):
+                raise ValueError(f"{path}: fold results missing for cap equivalence diagnostics")
+            fold_map = {}
+            for fold in folds:
+                if not isinstance(fold, dict) or not isinstance(fold.get("fold_index"), int):
+                    raise ValueError(f"{path}: invalid fold in cap equivalence diagnostics")
+                fold_map[fold["fold_index"]] = fold
+            experiments[key] = fold_map
+        indexed[cap] = experiments
+
+    counts_by_pair: dict[str, dict[str, int]] = {}
+    issues: list[dict[str, Any]] = []
+    comparison_count = 0
+    experiment_keys = set.intersection(*(set(indexed[cap]) for cap in indexed))
+    for left_cap, right_cap in combinations(sorted(indexed), 2):
+        pair_key = f"{left_cap:g}_vs_{right_cap:g}"
+        pair_counts = {
+            "equivalent_predictions_and_metrics": 0,
+            "same_eligibility_but_predictions_or_metrics_differ": 0,
+            "different_eligibility": 0,
+        }
+        for experiment_key in sorted(experiment_keys):
+            left_folds = indexed[left_cap][experiment_key]
+            right_folds = indexed[right_cap][experiment_key]
+            if set(left_folds) != set(right_folds):
+                raise ValueError(
+                    f"cap equivalence fold matrix differs for {experiment_key} "
+                    f"between {left_cap:g}h and {right_cap:g}h"
+                )
+            for fold_index in sorted(left_folds):
+                left = left_folds[fold_index]
+                right = right_folds[fold_index]
+                left_rows = left.get("eligible_timestamp_predictions")
+                right_rows = right.get("eligible_timestamp_predictions")
+                if not isinstance(left_rows, list) or not isinstance(right_rows, list):
+                    raise ValueError("cap equivalence diagnostics require per-timestamp predictions")
+                left_by_ts = {row["timestamp_utc"]: row for row in left_rows}
+                right_by_ts = {row["timestamp_utc"]: row for row in right_rows}
+                same_timestamps = set(left_by_ts) == set(right_by_ts)
+                comparison_count += 1
+                if not same_timestamps:
+                    pair_counts["different_eligibility"] += 1
+                    continue
+
+                timestamps = sorted(left_by_ts)
+                labels_match = all(left_by_ts[ts].get("label") == right_by_ts[ts].get("label") for ts in timestamps)
+                baseline_predictions_match = all(
+                    _nested_equal(
+                        left_by_ts[ts].get("baseline_probability_class_1"),
+                        right_by_ts[ts].get("baseline_probability_class_1"),
+                    ) for ts in timestamps
+                )
+                variant_predictions_match = all(
+                    _nested_equal(
+                        left_by_ts[ts].get("variant_probability_class_1"),
+                        right_by_ts[ts].get("variant_probability_class_1"),
+                    ) for ts in timestamps
+                )
+                metric_fields = (
+                    "baseline_same_eligible_timestamps_metrics",
+                    "variant_eligible_test_metrics",
+                    "paired_variant_minus_baseline_delta",
+                )
+                metrics_match = all(
+                    isinstance(left.get(field), Mapping)
+                    and isinstance(right.get(field), Mapping)
+                    and _nested_equal(left[field], right[field])
+                    for field in metric_fields
+                )
+                if labels_match and baseline_predictions_match and variant_predictions_match and metrics_match:
+                    pair_counts["equivalent_predictions_and_metrics"] += 1
+                else:
+                    pair_counts["same_eligibility_but_predictions_or_metrics_differ"] += 1
+                    issues.append({
+                        "cap_pair": pair_key,
+                        "model_type": experiment_key[0],
+                        "feature_variant": experiment_key[1],
+                        "fold_index": fold_index,
+                        "eligible_timestamp_count": len(timestamps),
+                        "eligible_timestamp_fingerprint_sha256": left.get("eligible_timestamp_fingerprint_sha256"),
+                        "labels_match": labels_match,
+                        "baseline_predictions_match": baseline_predictions_match,
+                        "variant_predictions_match": variant_predictions_match,
+                        "reported_metrics_match": metrics_match,
+                        "interpretation": (
+                            "Eligible timestamps match, but prediction or metric records differ. "
+                            "This is diagnostic only: distinct training artifacts can legitimately "
+                            "produce different predictions, so review provenance before treating it as a defect."
+                        ),
+                    })
+        counts_by_pair[pair_key] = pair_counts
+
+    mismatches = sum(
+        values["same_eligibility_but_predictions_or_metrics_differ"]
+        for values in counts_by_pair.values()
+    )
+    return {
+        "status": "PASS" if mismatches == 0 else "REQUIRES_REVIEW",
+        "comparison_count": comparison_count,
+        "numeric_metric_tolerance": 1e-12,
+        "counts_by_cap_pair": counts_by_pair,
+        "issues": issues,
+        "interpretation": (
+            "Eligibility is compared using the actual per-fold timestamp sets. When timestamp sets match, "
+            "labels, baseline probabilities, variant probabilities, and reported metrics/deltas are compared. "
+            "A mismatch is surfaced for review, not automatically treated as a model defect."
+        ),
+    }
+
 def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
     audit = _read_json(audit_path)
     if audit.get("status") != "PASS":
@@ -159,7 +296,14 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
                     raise ValueError(f"{audit_path}: cap {cap} was not scored on the common timestamp count")
                 for metric in PRIMARY_METRICS:
                     _finite_metric(metrics, metric, f"{audit_path} seed {seed} fold {index} cap {cap}")
-    return {"seed": seed, "audit_path": str(audit_path.resolve()), "audit": audit, "sources": sources}
+    equivalence = _cap_equivalence_diagnostics(sources)
+    return {
+        "seed": seed,
+        "audit_path": str(audit_path.resolve()),
+        "audit": audit,
+        "sources": sources,
+        "cap_equivalence_diagnostics": equivalence,
+    }
 
 
 def _summary(values: Sequence[float]) -> dict[str, Any]:
@@ -305,6 +449,7 @@ def audit_cross_cap_stability(
                 "timeframe": audit["timeframe"],
                 "label_horizon_bars": audit["label_horizon_bars"],
                 "raw_ohlc_sha256": audit["raw_ohlc_sha256"],
+                "cap_equivalence_diagnostics": item["cap_equivalence_diagnostics"],
                 "experiments": seed_experiments,
                 "actionable": False,
             })
@@ -348,6 +493,7 @@ def audit_cross_cap_stability(
                 "Fold test windows may overlap; fold observations are summarized within each seed and are not treated as independent seeds.",
                 "Cross-seed summaries use one mean fold delta per seed, so seeds—not folds—are the aggregation units.",
                 "Matching baseline dataset hashes within a seed do not prove identical training configurations, training samples, artifacts, or training runs.",
+                "Cap-equivalence diagnostics compare per-fold eligible timestamps, predictions, and metrics; any same-cohort mismatch is surfaced for review.",
                 "No model selection, promotion, execution connectivity, or trading action is authorized.",
             ],
             "automatic_model_selection": False,
