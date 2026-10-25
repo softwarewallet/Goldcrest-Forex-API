@@ -88,3 +88,35 @@ def test_invalid_report_revision_is_rejected():
     payload["source_revision"] = "not-a-sha"
     with pytest.raises(ValueError, match="revision_invalid"):
         create_report_seal(payload)
+
+
+
+@pytest.mark.parametrize("flag", [
+    "actionable",
+    "inferential",
+    "statistical_significance_claimed",
+    "automatic_model_selection",
+    "model_training_performed",
+    "execution_connected",
+    "automatic_repair_performed",
+    "deployment_authorized",
+])
+def test_unsafe_or_missing_report_safety_flag_cannot_be_sealed(flag):
+    payload = report()
+    payload[flag] = True
+    with pytest.raises(ValueError, match="safety_flag_not_explicitly_false"):
+        create_report_seal(payload)
+
+
+def test_missing_report_safety_flag_cannot_be_sealed():
+    payload = report()
+    del payload["deployment_authorized"]
+    with pytest.raises(ValueError, match="safety_flag_not_explicitly_false"):
+        create_report_seal(payload)
+
+
+def test_passing_report_with_errors_cannot_be_sealed():
+    payload = report()
+    payload["errors"] = [{"code": "something_failed"}]
+    with pytest.raises(ValueError, match="must_not_contain_errors"):
+        create_report_seal(payload)
