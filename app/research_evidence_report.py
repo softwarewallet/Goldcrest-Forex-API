@@ -1599,6 +1599,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baseline-analysis", help="Existing time-series baseline analysis report")
     parser.add_argument("--regime-analysis", help="Existing volatility-regime analysis report")
     parser.add_argument("--temporal-stability", help="Existing temporal stability / long-gap sensitivity report")
+    parser.add_argument(
+        "--strict-warnings",
+        action="store_true",
+        help="Return exit code 4 when the report has warnings, while still writing the report.",
+    )
     args = parser.parse_args(argv)
     manifest_file = Path(args.manifest).resolve()
     try:
@@ -1625,7 +1630,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"research evidence report failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
-    return 3 if result.get("status") == "FAIL" else 0
+    if result.get("status") == "FAIL":
+        return 3
+    if args.strict_warnings and result.get("warnings"):
+        return 4
+    return 0
 
 
 if __name__ == "__main__":

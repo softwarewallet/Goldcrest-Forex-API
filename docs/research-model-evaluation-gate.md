@@ -69,3 +69,8 @@ For temporal calibration, baseline, volatility-regime, and temporal-stability re
 ## Phase 14: Consolidated integrity inventory
 
 The final report includes an `integrity_summary` that aggregates artifact-section statuses, complete versus partial identity metadata, declared-count mismatches, run-integrity status, and matrix payload-hash status. This gives downstream audit consumers one concise inventory without collapsing warnings into a pass claim or implying predictive quality. The summary is descriptive only and does not authorize deployment or execution.
+
+
+## Phase 15: Strict warning exit mode
+
+The consolidated evidence CLI supports `--strict-warnings`. It still writes the full report, then returns exit code `4` when warnings exist, `3` when the report fails, and `0` when there are no errors or warnings. Without this option, warning-only reports retain exit code `0` for backward compatibility. This lets scheduled or CI workflows opt into fail-closed handling of partial/legacy evidence without changing default behavior.

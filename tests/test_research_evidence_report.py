@@ -1009,3 +1009,36 @@ def test_consolidated_report_exposes_integrity_summary_inventory(tmp_path, monke
     assert summary["has_integrity_errors"] is False
     assert summary["has_warnings"] is True
     assert summary["interpretation"].startswith("Aggregated integrity inventory only.")
+
+
+
+def test_cli_strict_warnings_returns_distinct_nonzero_code(tmp_path, monkeypatch, capsys):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    output_path = tmp_path / "strict-evidence.json"
+
+    exit_code = evidence.main([
+        "--manifest", str(manifest_path),
+        "--output", str(output_path),
+        "--strict-warnings",
+    ])
+
+    assert exit_code == 4
+    assert output_path.is_file()
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert report["warnings"]
+
+
+def test_cli_without_strict_warnings_keeps_warning_exit_code_zero(tmp_path, monkeypatch, capsys):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    output_path = tmp_path / "non-strict-evidence.json"
+
+    exit_code = evidence.main([
+        "--manifest", str(manifest_path),
+        "--output", str(output_path),
+    ])
+
+    assert exit_code == 0
+    assert output_path.is_file()
+    report = json.loads(output_path.read_text(encoding="utf-8"))
+    assert report["status"] == "PASS_WITH_WARNINGS"
