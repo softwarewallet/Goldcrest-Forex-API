@@ -43,8 +43,21 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False):
     import app.research_unified_provenance_certification as module
+
+    if repo_path is None:
+        repo_path = tmp_path / "repo"
+        monkeypatch.setattr(module, "inspect_git_provenance", lambda path: {
+            "audit_name": "research_git_source_provenance",
+            "status": "PASS",
+            "source_revision": REV,
+            "working_tree_clean": True,
+            "dirty_path_count": 0,
+            "dirty_paths": [],
+            "errors": [],
+            **FLAGS,
+        })
 
     provenance_report = {
         "status": "PASS",
@@ -58,7 +71,10 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         provenance_report["status"] = "FAIL"
         provenance_report["stale_or_invalid_count"] = 1
     monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: provenance_report)
-    monkeypatch.setattr(module, "fingerprint_path", lambda path: CONFIG_HASH if str(path).endswith("config.json") else DATASET_HASH)
+    if fingerprint_error:
+        monkeypatch.setattr(module, "fingerprint_path", lambda path: (_ for _ in ()).throw(FileNotFoundError("missing_input")) if str(path).endswith("config.json") else DATASET_HASH)
+    else:
+        monkeypatch.setattr(module, "fingerprint_path", lambda path: CONFIG_HASH if str(path).endswith("config.json") else DATASET_HASH)
     monkeypatch.setattr(module, "audit_artifact_freshness", lambda *a, **k: {
         "audit_name": "research_artifact_freshness_audit",
         "status": "PASS" if gate_status != "FAIL" else "STALE",
@@ -247,3 +263,59 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
     assert captured["inventory_spec"]["source"] == "inventory.json"
     assert captured["inventory_seal"]["source"] == "inventory-seal.json"
     assert output.is_file()
+
+
+
+def test_missing_repo_path_blocks_certification(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+
+    monkeypatch.setattr(module, "run_final_certification", lambda *a, **k: (
+        {"audit_name": "bundle_verification", "status": "PASS", "errors": []},
+        {"audit_name": "final_chain", "status": "PASS", "errors": []},
+    ))
+    selected_manifest = manifest()
+    inventory_spec = {
+        "schema_version": 1,
+        "audit_name": "research_artifact_inventory_specification",
+        "required_artifacts": [{"artifact_id": "metrics", "path": "metrics.csv"}],
+    }
+    report = module.run_unified_certification(
+        {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
+        provenance_seal=create_manifest_seal(selected_manifest),
+        inventory_spec=inventory_spec,
+        inventory_seal=create_inventory_spec_seal(inventory_spec),
+        evidence_root=tmp_path, artifact_root=tmp_path,
+        current_source_revision=REV, repo_path=None,
+        config_path=tmp_path / "config.json", dataset_path=tmp_path / "dataset",
+    )
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
+    assert report["git_source_provenance"]["status"] == "NOT_CHECKED"
+    assert report["deployment_authorized"] is False
+
+
+def test_git_report_with_invalid_revision_blocks_certification(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+
+    monkeypatch.setattr(module, "inspect_git_provenance", lambda path: {
+        "audit_name": "research_git_source_provenance",
+        "status": "PASS",
+        "source_revision": "not-a-sha",
+        "working_tree_clean": True,
+        "dirty_path_count": 0,
+        "dirty_paths": [],
+        "errors": [],
+        **FLAGS,
+    })
+    report = call(monkeypatch, tmp_path, repo_path=tmp_path / "repo")
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
+
+
+
+def test_missing_current_config_fails_closed_with_consolidated_report(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path, fingerprint_error=True)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "CURRENT_INPUT_FINGERPRINT_FAILED" and item["input"] == "config"
+               for item in report["errors"])
+    assert report["deployment_authorized"] is False
