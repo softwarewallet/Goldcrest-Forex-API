@@ -683,6 +683,7 @@ def compare_label_eligibility_runs(
                     fold["eligible_test_rows"] for exp in comparisons for fold in exp["fold_results"]
                 ),
             },
+            "inferential": False,
             "test_metrics_used_for_selection": False,
             "automatic_model_selection": False,
             "actionable": False,
