@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Use this runner after a single matched uncapped/capped replay to check whether the observed metric changes are sensitive to the optimizer random seed. It creates several fresh paired runs. Within every pair, the uncapped and capped variants use the same seed, reconstructed chronological fold geometry, model/feature matrix, tuning-trial budget, bootstrap count, and raw OHLC snapshot.
+Use this runner after a single matched uncapped/capped replay to check whether the observed metric changes are sensitive to the optimizer random seed. It creates several fresh paired runs. Within every pair, the uncapped and capped variants use the same seed, reconstructed chronological fold geometry, model/feature matrix, tuning-trial budget, bootstrap count, and raw OHLC snapshot. Seed-sweep fold identity is defined by fold index and UTC test-window boundaries; eligible-row counts are reported separately and do not define fold geometry.
 
 The historical baseline manifest is used only to reconstruct settings and verify source artifacts. If the historical manifest did not preserve its original random seed, the seed sweep does not recover that unknown seed; it explicitly runs new, matched replay pairs instead.
 
