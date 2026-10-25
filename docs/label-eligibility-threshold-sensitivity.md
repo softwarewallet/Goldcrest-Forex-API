@@ -102,3 +102,12 @@ input and seed result, rejects contradictory passing reports that still contain 
 eligibility row counts reconcile arithmetically, verifies eligible fractions against those counts,
 and requires row-mask fingerprints to be hexadecimal SHA-256 strings. These are report-integrity
 checks only: they do not retrain models, choose a cap, or establish predictive superiority.
+
+
+## Threshold-audit diagnostic schema checks
+
+The threshold eligibility report auditor now validates optional `errors` and `warnings` fields
+on the source sweep, cap records, seed-sweep reports, and per-seed records. Diagnostic fields must
+be lists of non-empty strings; reports marked passing cannot carry unresolved errors. Malformed
+inputs become explicit audit failures instead of being silently converted (for example, treating a
+warning string as a list of individual characters). No model is retrained or selected by these checks.
