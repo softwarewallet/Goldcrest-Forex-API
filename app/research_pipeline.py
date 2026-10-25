@@ -21,6 +21,7 @@ from app.research_dataset_builder import prepare_research_dataset
 from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
+from app.research_model_evaluation_gate import audit_model_evaluation_report
 from app.research_validation import validate_completed_run
 from app.temporal_calibration_stability import write_temporal_calibration_stability_report
 
@@ -70,6 +71,7 @@ def run_research_pipeline(
     strict_provenance_audit: bool = False,
     strict_validation: bool = False,
     strict_temporal_calibration_audit: bool = False,
+    strict_model_evaluation_gate: bool = False,
     max_label_elapsed_hours: float | None = None,
 ) -> dict[str, Any]:
     """Run ingestion (optional), dataset preparation, and fixed-fold model comparison."""
@@ -98,6 +100,7 @@ def run_research_pipeline(
         f"{run_id}_experiment_matrix.json",
         f"{run_id}_provenance_audit.json",
         f"{run_id}_temporal_calibration_stability.json",
+        f"{run_id}_model_evaluation_gate.json",
         f"{run_id}_pipeline_manifest.json",
         f"{run_id}_validation_report.json",
     ]
@@ -246,6 +249,16 @@ def run_research_pipeline(
     )
     temporal_calibration_audit_sha256 = _sha256(temporal_calibration_audit_path)
 
+    # Independently validate the exact persisted experiment matrix before writing the
+    # manifest. The receipt is read-only, run-scoped, and never selects/promotes a model.
+    model_evaluation_gate_path = destination / f"{run_id}_model_evaluation_gate.json"
+    model_evaluation_gate = audit_model_evaluation_report(matrix_report_path)
+    model_evaluation_gate_path.write_text(
+        json.dumps(model_evaluation_gate, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+        encoding="utf-8",
+    )
+    model_evaluation_gate_sha256 = _sha256(model_evaluation_gate_path)
+
     payload: dict[str, Any] = {
         "schema_version": 1,
         "run_id": run_id,
@@ -283,6 +296,13 @@ def run_research_pipeline(
         "temporal_calibration_audit_errors": temporal_calibration_audit["errors"],
         "temporal_calibration_audit_warnings": temporal_calibration_audit["warnings"],
         "strict_temporal_calibration_audit": strict_temporal_calibration_audit,
+        "model_evaluation_gate_path": str(model_evaluation_gate_path),
+        "model_evaluation_gate_sha256": model_evaluation_gate_sha256,
+        "model_evaluation_gate_status": model_evaluation_gate["status"],
+        "model_evaluation_gate_errors": model_evaluation_gate["errors"],
+        "model_evaluation_gate_warnings": model_evaluation_gate["warnings"],
+        "strict_model_evaluation_gate": strict_model_evaluation_gate,
+        "strict_model_evaluation_gate": strict_model_evaluation_gate,
         "ingestion": ingestion,
         "label_horizon_bars": horizon_bars,
         "class_1_means": class_1_means,
@@ -361,6 +381,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--strict-provenance-audit", action="store_true", help="Return a nonzero exit code if the structural provenance audit fails")
     parser.add_argument("--strict-temporal-calibration-audit", action="store_true", help="Return a nonzero exit code if the temporal calibration stability audit fails")
     parser.add_argument("--strict-validation", action="store_true", help="Return a nonzero exit code if the consolidated research validation fails")
+    parser.add_argument("--strict-model-evaluation-gate", action="store_true", help="Return a nonzero exit code if the persisted model evaluation integrity gate fails")
     return parser
 
 
@@ -392,6 +413,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             strict_provenance_audit=args.strict_provenance_audit,
             strict_validation=args.strict_validation,
             strict_temporal_calibration_audit=args.strict_temporal_calibration_audit,
+            strict_model_evaluation_gate=args.strict_model_evaluation_gate,
             max_label_elapsed_hours=args.max_label_elapsed_hours,
         )
     except Exception as exc:
@@ -408,6 +430,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.strict_temporal_calibration_audit and result.get("temporal_calibration_audit_status") == "FAIL":
         print("research pipeline completed, but temporal calibration audit failed; inspect the audit receipt", file=sys.stderr)
         return 5
+    if args.strict_model_evaluation_gate and result.get("model_evaluation_gate_status") == "FAIL":
+        print("research pipeline completed, but model evaluation integrity gate failed; inspect the audit receipt", file=sys.stderr)
+        return 6
     return 0
 
 
