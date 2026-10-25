@@ -77,3 +77,8 @@ Report JSON and its optional detached seal are staged in temporary files in thei
 ## Final-chain schema validation
 
 The final certification-chain audit requires non-empty plan and registry identifiers, lowercase hexadecimal SHA-256 digests, and integer report counts (booleans are rejected even though Python treats them as integers). It also rejects malformed diagnostic fields and requires declared and verified report counts to reconcile exactly. These checks prevent malformed JSON values from passing through Python's permissive equality and truthiness rules. They validate report consistency only; they do not independently prove the source artifacts' scientific validity or profitability.
+
+
+## Final-chain report publication safety
+
+The final certification-chain CLI rejects an output path that resolves to any supplied input and refuses to overwrite an existing report. It stages and fsyncs JSON in the destination directory, then publishes through a no-clobber filesystem link so a concurrent destination creation cannot silently replace another file. If publication fails, the staged temporary file is cleaned up. Use a fresh output filename for each audit attempt.
