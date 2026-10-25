@@ -125,6 +125,13 @@ def audit_research_evidence_pack(
             for flag in FALSE_FLAGS:
                 if payload.get(flag) is not False:
                     item_errors.append(f"safety_flag_not_explicitly_false:{flag}")
+            shared_fingerprints = payload.get("dataset_fingerprints")
+            if isinstance(shared_fingerprints, dict):
+                for digest in shared_fingerprints:
+                    if not _valid_sha256(digest):
+                        item_errors.append("dataset_fingerprint_invalid")
+                    else:
+                        dataset_fingerprints.add(digest.lower())
 
             if role == "experiment_registry":
                 supplied, validated = payload.get("runs_supplied"), payload.get("runs_validated")
@@ -154,16 +161,13 @@ def audit_research_evidence_pack(
                     item_errors.append("validation_required_audit_coverage_incomplete")
                 if not isinstance(fingerprints, dict) or not fingerprints:
                     item_errors.append("validation_dataset_fingerprint_missing")
-                else:
-                    for digest in fingerprints:
-                        if not _valid_sha256(digest):
-                            item_errors.append("validation_dataset_fingerprint_invalid")
-                        else:
-                            dataset_fingerprints.add(digest.lower())
+                elif any(not _valid_sha256(digest) for digest in fingerprints):
+                    item_errors.append("validation_dataset_fingerprint_invalid")
             elif role == "experiment_comparison":
                 if payload.get("selection_performed") is not False:
                     item_errors.append("comparison_selection_flag_not_false")
-                if payload.get("runs_compared", 0) < 2:
+                compared = payload.get("runs_compared")
+                if not isinstance(compared, int) or isinstance(compared, bool) or compared < 2:
                     item_errors.append("comparison_run_coverage_insufficient")
 
         for code in item_errors:
