@@ -41,7 +41,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS"):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None):
     import app.research_unified_provenance_certification as module
 
     provenance_report = {
@@ -79,7 +79,7 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS"):
     return module.run_unified_certification(
         {"audit_name": "readiness"}, {"audit_name": "bundle"}, provenance or manifest(),
         evidence_root=tmp_path, artifact_root=tmp_path,
-        current_source_revision=REV, config_path=tmp_path / "config.json",
+        current_source_revision=REV, repo_path=repo_path, config_path=tmp_path / "config.json",
         dataset_path=tmp_path / "dataset",
     )
 
@@ -111,3 +111,57 @@ def test_unified_report_retains_all_component_reports(monkeypatch, tmp_path):
         "provenance_verification", "bundle_verification", "final_certification_chain",
         "freshness_audit", "freshness_certification_gate",
     }.issubset(report)
+
+
+def test_git_clean_tree_revision_is_used_and_reported(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+
+    git_report = {
+        "audit_name": "research_git_source_provenance",
+        "status": "PASS",
+        "source_revision": REV,
+        "working_tree_clean": True,
+        "dirty_path_count": 0,
+        "dirty_paths": [],
+        "errors": [],
+        **FLAGS,
+    }
+    monkeypatch.setattr(module, "inspect_git_provenance", lambda path: git_report)
+    report = call(monkeypatch, tmp_path, repo_path=tmp_path / "repo")
+    assert report["status"] == "PASS"
+    assert report["source_revision"] == REV
+    assert report["git_source_provenance"]["working_tree_clean"] is True
+
+
+def test_git_dirty_tree_blocks_overall_certification(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+
+    git_report = {
+        "audit_name": "research_git_source_provenance",
+        "status": "FAIL",
+        "source_revision": REV,
+        "working_tree_clean": False,
+        "dirty_path_count": 1,
+        "dirty_paths": ["app/changed.py"],
+        "errors": [{"code": "WORKING_TREE_DIRTY", "dirty_path_count": 1}],
+        **FLAGS,
+    }
+    monkeypatch.setattr(module, "inspect_git_provenance", lambda path: git_report)
+    report = call(monkeypatch, tmp_path, repo_path=tmp_path / "repo")
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
+    assert report["git_source_provenance"]["dirty_paths"] == ["app/changed.py"]
+    assert report["deployment_authorized"] is False
+
+
+def test_git_inspection_error_blocks_overall_certification(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+
+    def fail(path):
+        raise ValueError("not_a_git_repository")
+
+    monkeypatch.setattr(module, "inspect_git_provenance", fail)
+    report = call(monkeypatch, tmp_path, repo_path=tmp_path / "not-a-repo")
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
+    assert report["git_source_provenance"]["status"] == "NOT_CHECKED"

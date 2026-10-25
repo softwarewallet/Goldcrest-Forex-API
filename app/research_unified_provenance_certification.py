@@ -14,6 +14,7 @@ from typing import Any
 from app.research_artifact_freshness_audit import audit_artifact_freshness, fingerprint_path
 from app.research_artifact_provenance import verify_provenance
 from app.research_freshness_certification_gate import gate_freshness_certification
+from app.research_git_source_provenance import inspect_git_provenance
 from app.research_run_final_certification import run_final_certification
 
 FALSE_FLAGS = {
@@ -35,10 +36,21 @@ def run_unified_certification(
     *,
     evidence_root: Path,
     artifact_root: Path,
-    current_source_revision: str,
+    current_source_revision: str | None = None,
+    repo_path: Path | None = None,
     config_path: Path,
     dataset_path: Path,
 ) -> dict[str, Any]:
+    git_report: dict[str, Any] | None = None
+    git_error: str | None = None
+    if repo_path is not None:
+        try:
+            git_report = inspect_git_provenance(repo_path)
+            current_source_revision = git_report["source_revision"]
+        except (OSError, ValueError) as exc:
+            git_error = f"{type(exc).__name__}:{exc}"
+    if current_source_revision is None:
+        current_source_revision = "0" * 40
     provenance_report = verify_provenance(
         provenance_manifest,
         root=artifact_root,
@@ -78,6 +90,13 @@ def run_unified_certification(
     gate_report = gate_freshness_certification(freshness_report, certification_report)
 
     errors: list[dict[str, Any]] = []
+    if git_error is not None or (git_report is not None and git_report.get("status") != "PASS"):
+        errors.append({
+            "code": "GIT_SOURCE_PROVENANCE_FAILED",
+            "git_status": git_report.get("status") if git_report else "ERROR",
+            "dirty_path_count": git_report.get("dirty_path_count") if git_report else None,
+            "error": git_error,
+        })
     if provenance_report["status"] != "PASS":
         errors.append({
             "code": "PROVENANCE_VERIFICATION_FAILED",
@@ -102,6 +121,10 @@ def run_unified_certification(
             "CERTIFIED_CURRENT"
         ),
         "source_revision": current_source_revision,
+        "git_source_provenance": git_report or {
+            "status": "NOT_CHECKED",
+            "errors": ([{"code": "GIT_SOURCE_PROVENANCE_ERROR", "error": git_error}] if git_error else []),
+        },
         "provenance_verification": provenance_report,
         "bundle_verification": bundle_verification,
         "final_certification_chain": certification_report,
@@ -116,7 +139,7 @@ def run_unified_certification(
         **FALSE_FLAGS,
         "scope_limitations": [
             "This command validates supplied manifests and reports and checks declared artifact bytes; it cannot prove that the inventory is complete.",
-            "The source revision is caller-supplied and syntax/consistency-checked, not independently discovered from the running Git checkout.",
+            "When --repo-path is supplied, the source revision is resolved from Git HEAD and dirty tracked/untracked files fail certification; ignored files are not included by Git status.",
             "The provenance manifest must be retained separately or its digest anchored in a separately controlled location.",
             "Passing certification does not establish profitability, predictive validity, statistical significance, or deployment suitability.",
             "No artifacts are regenerated and no experiments, model training, broker connectivity, deployment, or trades are initiated.",
@@ -138,7 +161,7 @@ def main() -> int:
     parser.add_argument("--evidence-root", required=True, type=Path)
     parser.add_argument("--provenance-manifest", required=True, type=Path)
     parser.add_argument("--artifact-root", required=True, type=Path)
-    parser.add_argument("--current-source-revision", required=True)
+    parser.add_argument("--repo-path", required=True, type=Path, help="Local Git checkout; certification requires a clean working tree")
     parser.add_argument("--config-path", required=True, type=Path)
     parser.add_argument("--dataset-path", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
@@ -150,7 +173,7 @@ def main() -> int:
             _read_object(args.provenance_manifest),
             evidence_root=args.evidence_root,
             artifact_root=args.artifact_root,
-            current_source_revision=args.current_source_revision,
+            repo_path=args.repo_path,
             config_path=args.config_path,
             dataset_path=args.dataset_path,
         )
