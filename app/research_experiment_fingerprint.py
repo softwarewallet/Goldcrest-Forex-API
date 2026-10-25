@@ -51,6 +51,8 @@ def build_experiment_fingerprint(
         raise ValueError("dataset_manifest_must_be_object")
     if dataset_manifest.get("actionable") is not False:
         raise ValueError("dataset_manifest_must_be_explicitly_non_actionable")
+    if dataset_manifest.get("input_snapshot_sha256") != raw_ohlc_sha256:
+        raise ValueError("dataset_manifest_raw_hash_mismatch")
     if dataset_manifest.get("output_dataset_sha256") != dataset_sha256:
         raise ValueError("dataset_manifest_dataset_hash_mismatch")
 
@@ -59,7 +61,14 @@ def build_experiment_fingerprint(
             raise ValueError(f"dataset_manifest_{field}_invalid")
 
     manifest_path = Path(dataset_manifest_path)
-    manifest_bytes_sha256 = sha256_file(manifest_path)
+    manifest_bytes = manifest_path.read_bytes()
+    try:
+        loaded_manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("dataset_manifest_file_unreadable") from exc
+    if not isinstance(loaded_manifest, dict) or loaded_manifest != dataset_manifest:
+        raise ValueError("dataset_manifest_file_content_mismatch")
+    manifest_bytes_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
     manifest_without_hash = dict(dataset_manifest)
     declared_manifest_hash = manifest_without_hash.pop("manifest_sha256", None)
     actual_manifest_hash = hashlib.sha256(canonical_json(manifest_without_hash)).hexdigest()
@@ -101,7 +110,11 @@ def verify_experiment_fingerprint(receipt: dict[str, Any]) -> dict[str, Any]:
         receipt = {}
         errors.append("receipt_must_be_object")
 
-    if receipt.get("schema_version") != 1:
+    if (
+        isinstance(receipt.get("schema_version"), bool)
+        or not isinstance(receipt.get("schema_version"), int)
+        or receipt.get("schema_version") != 1
+    ):
         errors.append("schema_version_invalid")
     if receipt.get("scope") != _SCOPE:
         errors.append("scope_invalid")
