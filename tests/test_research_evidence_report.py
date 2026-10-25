@@ -1104,3 +1104,19 @@ def test_artifact_record_marks_well_formed_diagnostic_fields_valid(tmp_path):
     assert report is not None
     assert record["diagnostic_schema"]["status"] == "VALID"
     assert errors == []
+
+
+
+def test_summary_uses_effective_section_status_when_receipt_hash_fails(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["model_evaluation_gate_sha256"] = "0" * 64
+    _write_json(manifest_path, manifest)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+
+    gate_summary = result["summary"]["model_evaluation_gate"]
+    assert result["sections"]["model_evaluation_gate"]["status"] == "FAIL"
+    assert gate_summary["status"] == "FAIL"
+    assert gate_summary["reported_status"] == "PASS"
+    assert result["summary"]["section_statuses"]["model_evaluation_gate"] == "FAIL"
