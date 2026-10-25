@@ -24,6 +24,7 @@ def _manifest_and_paths(tmp_path: Path):
         "schema_version": 1,
         "scope": "OFFLINE_RESEARCH_DATASET_PREPARATION",
         "actionable": False,
+        "input_snapshot_sha256": "a" * 64,
         "output_dataset_sha256": dataset_hash,
         "feature_implementation_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "feature_schema_sha256": hashlib.sha256(canonical_json({"feature_names": ["ret_1"]})).hexdigest(),
@@ -99,3 +100,39 @@ def test_experiment_fingerprint_rejects_invalid_dataset_manifest_self_hash(tmp_p
 def test_experiment_fingerprint_rejects_noncanonical_configuration(tmp_path):
     with pytest.raises(ValueError, match="fingerprint_payload_not_canonicalizable"):
         _build(tmp_path, configuration={"seed": float("nan")})
+
+
+def test_experiment_fingerprint_rejects_raw_snapshot_mismatch(tmp_path):
+    dataset_hash, manifest_path, manifest, implementation_paths = _manifest_and_paths(tmp_path)
+    manifest["input_snapshot_sha256"] = "c" * 64
+    manifest["manifest_sha256"] = hashlib.sha256(canonical_json({
+        key: value for key, value in manifest.items() if key != "manifest_sha256"
+    })).hexdigest()
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="dataset_manifest_raw_hash_mismatch"):
+        build_experiment_fingerprint(
+            configuration={"seed": 1},
+            raw_ohlc_sha256="a" * 64,
+            dataset_sha256=dataset_hash,
+            dataset_manifest_path=manifest_path,
+            dataset_manifest=manifest,
+            implementation_paths=implementation_paths,
+        )
+
+
+def test_experiment_fingerprint_rejects_manifest_file_object_mismatch(tmp_path):
+    dataset_hash, manifest_path, manifest, implementation_paths = _manifest_and_paths(tmp_path)
+    file_manifest = dict(manifest)
+    file_manifest["feature_backend"] = "tampered"
+    manifest_path.write_text(json.dumps(file_manifest, sort_keys=True) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="dataset_manifest_file_content_mismatch"):
+        build_experiment_fingerprint(
+            configuration={"seed": 1},
+            raw_ohlc_sha256="a" * 64,
+            dataset_sha256=dataset_hash,
+            dataset_manifest_path=manifest_path,
+            dataset_manifest=manifest,
+            implementation_paths=implementation_paths,
+        )
