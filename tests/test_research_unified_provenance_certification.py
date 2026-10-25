@@ -360,4 +360,4 @@ def test_final_certification_exception_returns_consolidated_failure(monkeypatch,
     assert report["final_certification_chain"]["status"] == "FAIL"
     assert any(item["code"] == "FINAL_CERTIFICATION_EXECUTION_FAILED"
                for item in report["final_certification_chain"]["errors"])
-    assert any(item["code"] == "FRESHNESS_CERTIFICATION_GATE_FAILED" for item in report["errors"])
+    assert any(item["code"] == "FINAL_CERTIFICATION_CHAIN_FAILED" for item in report["errors"])
