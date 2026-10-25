@@ -305,7 +305,8 @@ def test_consolidated_evidence_report_binds_and_summarizes_sources(tmp_path, mon
 
     result = evidence.build_research_evidence_report(manifest)
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert any(item.endswith("_not_reported") for item in result["warnings"])
     assert result["run_id"] == "evidence-run-001"
     assert result["source_matrix_sha256"]
     assert result["actionable"] is False
@@ -415,7 +416,7 @@ def test_legacy_run_accepts_explicit_temporal_calibration_receipt(tmp_path, monk
         manifest_path, temporal_calibration_path=temporal_path
     )
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "PASS_WITH_WARNINGS"
     assert result["sections"]["temporal_calibration"]["status"] == "PASS"
     assert result["summary"]["temporal_calibration"]["matrix_payload_hash_verified"] is True
 
