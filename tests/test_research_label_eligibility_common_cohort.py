@@ -191,3 +191,47 @@ def test_dataset_hash_equivalence_mode_requires_valid_baseline_dataset_hash(tmp_
     assert result["status"] == "FAIL"
     assert any("baseline_dataset_sha256 is required" in error for error in result["errors"])
     assert result["actionable"] is False
+
+
+def test_common_cohort_rejects_pass_status_with_errors(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    payload = json.loads(b.read_text(encoding="utf-8"))
+    payload["errors"] = ["unresolved_integrity_error"]
+    b.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("errors must be empty" in error for error in result["errors"])
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
+
+
+def test_common_cohort_rejects_malformed_diagnostic_schema(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    payload = json.loads(b.read_text(encoding="utf-8"))
+    payload["warnings"] = "warning string, not a list"
+    b.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("warnings must be a list" in error for error in result["errors"])
+    assert result["actionable"] is False
+
+
+def test_common_cohort_requires_explicit_non_inferential_flag(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    payload = json.loads(b.read_text(encoding="utf-8"))
+    payload.pop("inferential", None)
+    b.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("inferential must be false" in error for error in result["errors"])
+    assert result["automatic_model_selection"] is False
+    assert result["actionable"] is False
