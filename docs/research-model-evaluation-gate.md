@@ -87,3 +87,8 @@ The consolidated report now publishes a `summary.section_statuses` inventory usi
 
 
 The consolidated `integrity_summary` also counts malformed diagnostic-schema sections and sections whose effective status differs from the receipt's reported status. These counters make integrity defects visible in a compact inventory without changing or hiding the underlying receipt.
+
+
+## Phase 19: Required source-matrix provenance
+
+The consolidated evidence reader now warns when the model-evaluation-gate, temporal-calibration, baseline, regime, or temporal-stability receipt omits its source-matrix SHA-256 while the manifest provides the expected matrix fingerprint. Any supplied source-matrix fingerprint must also be a 64-character hexadecimal SHA-256 value; malformed fingerprints fail the section. A warning for absent legacy metadata is not proof of tampering, but it prevents the report from implying that source-matrix binding was verified.
