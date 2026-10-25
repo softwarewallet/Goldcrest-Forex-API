@@ -115,6 +115,8 @@ def validate_prepared_dataset(
                 fail("label_eligibility_metadata_missing_for_elapsed_cap")
             previous_timestamp: datetime | None = None
             seen_timestamps: set[datetime] = set()
+            previous_label_available_timestamp: datetime | None = None
+            seen_label_available_timestamps: set[datetime] = set()
             for row in reader:
                 row_count += 1
                 symbol = (row.get("symbol") or "").strip().upper()
@@ -124,8 +126,19 @@ def validate_prepared_dataset(
                 try:
                     ts = _parse_utc(row.get("timestamp") or "", "timestamp")
                     available = _parse_utc(row.get("label_available_at") or "", "label_available_at")
-                    if available < ts:
-                        fail("label_available_before_feature")
+                    # A label cannot be known at or before its feature timestamp.
+                    # Equality is invalid too: it would imply a zero-duration/future-outcome label.
+                    if available <= ts:
+                        fail("label_available_not_after_feature")
+                    if available in seen_label_available_timestamps:
+                        fail("duplicate_label_available_timestamp")
+                    if (
+                        previous_label_available_timestamp is not None
+                        and available <= previous_label_available_timestamp
+                    ):
+                        fail("label_available_timestamps_not_strictly_chronological")
+                    seen_label_available_timestamps.add(available)
+                    previous_label_available_timestamp = available
                     if has_elapsed and has_eligibility:
                         label_elapsed_metadata_count += 1
                         try:
