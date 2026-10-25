@@ -88,7 +88,7 @@ def audit_artifact_inventory_completeness(
     if unexpected:
         errors.append({"code": "UNEXPECTED_ARTIFACTS_PRESENT", "count": len(unexpected)})
     canonical_spec = json.dumps(inventory_spec, sort_keys=True, separators=(",", ":"),
-                                ensure_ascii=False, allow_nan=False).encode("utf-8")
+                                ensure_ascii=False, allow_nan=False) + "\\n").encode("utf-8")
     status = "FAIL" if errors else "PASS"
     return {
         "schema_version": 1,
