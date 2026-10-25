@@ -24,7 +24,8 @@ def _source_metrics_for_cap(cap: float, *, equivalent_15_8: bool = False) -> tup
 
 def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
                        missing_source: bool = False, bad_sample_count: bool = False,
-                       equivalent_15_8: bool = False) -> Path:
+                       equivalent_15_8: bool = False,
+                       extra_eligible_for_8h: bool = False) -> Path:
     source_paths = []
     baseline_ids = []
     dataset_hash = format(seed, "064x")
@@ -55,6 +56,13 @@ def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
                     "variant_probability_class_1": variant_probabilities[1],
                 },
             ]
+            if extra_eligible_for_8h and cap == 8.0:
+                paired_rows.append({
+                    "timestamp_utc": f"2026-01-0{day}T01:30:00Z",
+                    "label": 1,
+                    "baseline_probability_class_1": 0.9,
+                    "variant_probability_class_1": 0.95,
+                })
             baseline_metrics = _metrics(
                 [{"label": row["label"], "p": row["baseline_probability_class_1"]} for row in paired_rows], "p"
             )
@@ -216,3 +224,71 @@ def test_cap_equivalence_diagnostics_confirm_matching_timestamps_predictions_and
     pair = diagnostics["counts_by_cap_pair"]["1.5_vs_8"]
     assert pair["equivalent_predictions_and_metrics"] == 2
     assert pair["same_eligibility_but_predictions_or_metrics_differ"] == 0
+
+
+def test_cross_cap_output_accounts_for_eligibility_outside_common_cohort(tmp_path):
+    paths = [
+        _make_seed_reports(
+            tmp_path, seed, extra_eligible_for_8h=True
+        )
+        for seed in SEEDS
+    ]
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    assert result["status"] == "PASS", result
+    experiment = result["per_seed_results"][0]["experiments"][0]
+    accounting = experiment["eligibility_accounting_by_cap"]
+    assert accounting["1.0"]["eligible_timestamp_observations_across_folds"] == 4
+    assert accounting["1.0"]["common_timestamp_observations_across_folds"] == 4
+    assert accounting["1.0"]["excluded_to_common_observations_across_folds"] == 0
+    assert accounting["8.0"]["eligible_timestamp_observations_across_folds"] == 6
+    assert accounting["8.0"]["common_timestamp_observations_across_folds"] == 4
+    assert accounting["8.0"]["excluded_to_common_observations_across_folds"] == 2
+    assert accounting["8.0"]["arithmetic_reconciles"] is True
+    assert accounting["8.0"]["counts_are_unique_timestamps"] is False
+    assert experiment["fold_results"][0]["per_cap_eligible_timestamp_count"]["8.0"] == 3
+    assert experiment["fold_results"][0]["per_cap_excluded_to_common_count"]["8.0"] == 1
+
+
+def test_cross_cap_rejects_passing_audit_with_nonempty_errors(tmp_path):
+    paths = [_make_seed_reports(tmp_path, seed) for seed in SEEDS]
+    payload = json.loads(paths[0].read_text(encoding="utf-8"))
+    payload["errors"] = ["contradictory_integrity_error"]
+    paths[0].write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    assert result["status"] == "FAIL"
+    assert any("errors must be empty" in error for error in result["errors"])
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
+
+
+def test_cross_cap_rejects_malformed_audit_warning_schema(tmp_path):
+    paths = [_make_seed_reports(tmp_path, seed) for seed in SEEDS]
+    payload = json.loads(paths[0].read_text(encoding="utf-8"))
+    payload["warnings"] = "not-a-list"
+    paths[0].write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    assert result["status"] == "FAIL"
+    assert any("warnings must be a list" in error for error in result["errors"])
+    assert result["actionable"] is False
+
+
+def test_cross_cap_rejects_source_fold_boundary_drift(tmp_path):
+    paths = [_make_seed_reports(tmp_path, seed) for seed in SEEDS]
+    audit = json.loads(paths[0].read_text(encoding="utf-8"))
+    source_path = Path(audit["input_comparison_reports"][2])
+    source = json.loads(source_path.read_text(encoding="utf-8"))
+    source["experiments"][0]["fold_results"][0]["test_end_utc"] = "2026-01-01T03:00:00Z"
+    source_path.write_text(json.dumps(source), encoding="utf-8")
+
+    result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
+
+    assert result["status"] == "FAIL"
+    assert any("test boundaries differ" in error for error in result["errors"])
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
