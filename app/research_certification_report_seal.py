@@ -29,6 +29,14 @@ def canonical_report_bytes(report: dict[str, Any]) -> bytes:
         raise ValueError("certification_report_audit_name_invalid")
     if report.get("status") not in {"PASS", "PASS_WITH_WARNINGS", "FAIL"}:
         raise ValueError("certification_report_status_invalid")
+    errors = report.get("errors")
+    if not isinstance(errors, list):
+        raise ValueError("certification_report_errors_must_be_list")
+    if report.get("status") in {"PASS", "PASS_WITH_WARNINGS"} and errors:
+        raise ValueError("passing_certification_report_must_not_contain_errors")
+    for flag in FALSE_FLAGS:
+        if report.get(flag) is not False:
+            raise ValueError(f"certification_report_safety_flag_not_explicitly_false:{flag}")
     revision = report.get("source_revision")
     if not isinstance(revision, str) or len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
         raise ValueError("certification_report_source_revision_invalid")
