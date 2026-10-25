@@ -107,7 +107,8 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
     for experiment in experiments:
         if not isinstance(experiment, dict):
             raise ValueError(f"{audit_path}: invalid experiment record")
-        _validate_safety(experiment, f"{audit_path} experiment")
+        if experiment.get("actionable") is not False:
+            raise ValueError(f"{audit_path}: experiment actionable flag must be false")
         folds = experiment.get("fold_results")
         if not isinstance(folds, list) or not folds:
             raise ValueError(f"{audit_path}: fold results missing")
@@ -128,7 +129,8 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
                 metrics = per_cap[str(cap)]
                 if not isinstance(metrics, dict):
                     raise ValueError(f"{audit_path}: invalid metric record for cap {cap}")
-                _validate_safety(fold, f"{audit_path} fold")
+                if fold.get("actionable") is not False:
+                    raise ValueError(f"{audit_path}: fold actionable flag must be false")
                 if metrics.get("sample_count") != fold.get("common_timestamp_count"):
                     raise ValueError(f"{audit_path}: cap {cap} was not scored on the common timestamp count")
                 for metric in PRIMARY_METRICS:
