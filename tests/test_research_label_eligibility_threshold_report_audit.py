@@ -135,3 +135,44 @@ def test_audit_rejects_non_threshold_sweep_input(tmp_path):
     except ValueError as exc:
         result_raised = "not_a_label_eligibility_threshold_sweep_report" in str(exc)
     assert result_raised
+
+
+
+def test_threshold_audit_rejects_malformed_source_warning_schema(tmp_path):
+    from pathlib import Path
+    import pytest
+
+    source = Path(_threshold_fixture(tmp_path, [
+        (1.0, 10, 0, 5),
+        (1.5, 10, 0, 5),
+        (8.0, 10, 0, 5),
+    ]))
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["warnings"] = "not-a-list"
+    source.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = audit_threshold_report(source)
+
+    assert result["status"] == "FAIL"
+    assert "source_threshold_sweep_warnings_schema_invalid" in result["errors"]
+
+
+def test_threshold_audit_rejects_seed_report_with_errors_despite_pass_status(tmp_path):
+    from pathlib import Path
+    import pytest
+
+    source = Path(_threshold_fixture(tmp_path, [
+        (1.0, 10, 0, 5),
+        (1.5, 10, 0, 5),
+        (8.0, 10, 0, 5),
+    ]))
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    child_path = Path(payload["cap_results"][0]["seed_sweep_report_path"])
+    child = json.loads(child_path.read_text(encoding="utf-8"))
+    child["errors"] = ["contradictory_error"]
+    child_path.write_text(json.dumps(child, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = audit_threshold_report(source)
+
+    assert result["status"] == "FAIL"
+    assert any("reports_errors_despite_pass_status" in error for error in result["errors"])
