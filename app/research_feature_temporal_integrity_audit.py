@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -90,13 +89,16 @@ def audit_feature_temporal_integrity(
         "timestamp gaps do not establish missing candles or market-session expectations",
         "audit is deterministic and descriptive; it does not establish predictive validity",
     ]
-    if not isinstance(source_data_sha256, str) or len(source_data_sha256) != 64:
+    if (not isinstance(source_data_sha256, str) or len(source_data_sha256) != 64
+            or any(char not in "0123456789abcdefABCDEF" for char in source_data_sha256)):
         raise ValueError("source_data_sha256_invalid")
     if sample_count < 1:
         raise ValueError("sample_count_must_be_positive")
 
     full = build_causal_ohlc_features(bars)
     cutoffs = _sample_cutoffs(len(bars), sample_count)
+    if not cutoffs:
+        raise ValueError("not_enough_rows_for_temporal_invariance_checks")
     prefix_checks: list[dict[str, Any]] = []
     perturbation_checks: list[dict[str, Any]] = []
 
@@ -144,8 +146,17 @@ def audit_feature_temporal_integrity(
     validation_end = split.validation[-1].timestamp
     test_start = split.test[0].timestamp
     ordered = train_end < validation_start < validation_end < test_start
+    row_index = {bar.timestamp: index for index, bar in enumerate(bars)}
+    train_validation_gap = row_index[validation_start] - row_index[train_end] - 1
+    validation_test_gap = row_index[test_start] - row_index[validation_end] - 1
+    gaps_sufficient = (
+        train_validation_gap >= 2 * horizon_bars
+        and validation_test_gap >= 2 * horizon_bars
+    )
     if not ordered:
         errors.append("chronological_partition_order_failed")
+    if not gaps_sufficient:
+        errors.append("purge_gap_smaller_than_required_horizon")
     partitions = {
         "train_rows": len(split.train),
         "validation_rows": len(split.validation),
@@ -157,6 +168,9 @@ def audit_feature_temporal_integrity(
         "test_start_utc": test_start.isoformat(),
         "strictly_ordered_non_overlapping": ordered,
         "horizon_bars_purged_at_boundaries": horizon_bars,
+        "rows_purged_between_train_and_validation": train_validation_gap,
+        "rows_purged_between_validation_and_test": validation_test_gap,
+        "purge_gaps_sufficient_for_horizon": gaps_sufficient,
     }
 
     feature_source_sha256 = None
@@ -232,6 +246,7 @@ def main() -> int:
             "prefix_invariance_passed": report["prefix_invariance"]["all_passed"],
             "future_perturbation_invariance_passed": report["future_perturbation_invariance"]["all_passed"],
             "chronological_partition_isolated": report["chronological_partition_isolation"]["strictly_ordered_non_overlapping"],
+            "purge_gaps_sufficient_for_horizon": report["chronological_partition_isolation"]["purge_gaps_sufficient_for_horizon"],
             "actionable": False,
             "execution_connected": False,
         }, indent=2))
