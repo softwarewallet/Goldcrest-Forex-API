@@ -121,6 +121,23 @@ def _build_run(tmp_path: Path, monkeypatch, *, with_optional: bool = True) -> Pa
         "test_metrics_used_for_selection": False,
     })
 
+    gate_path = tmp_path / f"{run_id}_model_evaluation_gate.json"
+    _write_json(gate_path, {
+        "schema_version": 1,
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "status": "PASS",
+        "run_id": run_id,
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "source_matrix_sha256": matrix_hash,
+        "experiment_count": 2,
+        "folds_checked": 14,
+        "fold_metric_objects_checked": 14,
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
     manifest = {
         "schema_version": 1,
         "run_id": run_id,
@@ -136,6 +153,12 @@ def _build_run(tmp_path: Path, monkeypatch, *, with_optional: bool = True) -> Pa
         "dataset_manifest_sha256": "3" * 64,
         "experiment_matrix_report": str(matrix_path),
         "experiment_matrix_report_sha256": matrix_hash,
+        "model_evaluation_gate_path": str(gate_path),
+        "model_evaluation_gate_sha256": _sha(gate_path),
+        "model_evaluation_gate_status": "PASS",
+        "model_evaluation_gate_errors": [],
+        "model_evaluation_gate_warnings": [],
+        "strict_model_evaluation_gate": False,
         "provenance_audit_path": str(provenance_path),
         "provenance_audit_sha256": _sha(provenance_path),
         "provenance_audit_status": "PASS",
@@ -291,6 +314,9 @@ def test_consolidated_evidence_report_binds_and_summarizes_sources(tmp_path, mon
     assert result["evidence_coverage"]["available_optional_section_count"] == 3
     assert result["summary"]["validation"]["dataset_row_count"] == 100
     assert result["summary"]["temporal_calibration"]["comparison_count"] == 1
+    assert result["sections"]["model_evaluation_gate"]["status"] == "PASS"
+    assert result["summary"]["model_evaluation_gate"]["folds_checked"] == 14
+    assert "model_evaluation_gate" in result["evidence_coverage"]["available_sections"]
     assert result["summary"]["baseline_analysis"]["experiment_count"] == 1
     assert result["summary"]["baseline_analysis"]["experiments"][0]["ranked_or_selected"] is False
     assert result["summary"]["regime_analysis"]["fold_threshold_count"] == 1

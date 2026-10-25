@@ -6,6 +6,7 @@ infer profitability, establish statistical significance, or authorize trading/ex
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from datetime import datetime
@@ -207,8 +208,13 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
 
     result = {
         "schema_version": 1,
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
         "status": "FAIL" if errors else "PASS",
-        "source_path": str(source),
+        "run_id": payload.get("run_id"),
+        "symbol": payload.get("symbol"),
+        "timeframe": payload.get("timeframe"),
+        "source_path": str(source.resolve()),
+        "source_matrix_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "experiment_count": len(experiments),
         "folds_checked": checked_folds,
         "fold_metric_objects_checked": checked_metrics,

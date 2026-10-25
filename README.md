@@ -194,3 +194,6 @@ Validate persisted walk-forward experiment matrices for metric arithmetic, fold 
 
 
 The offline pipeline also writes a hash-addressed `<run-id>_model_evaluation_gate.json` receipt from the exact persisted experiment matrix. Use `--strict-model-evaluation-gate` to return exit code 6 if that independent structural/metric-integrity gate fails. The receipt is diagnostic only and does not select a model or authorize execution. See `docs/research-model-evaluation-gate.md`.
+
+
+The consolidated evidence report now verifies and summarizes the model evaluation gate receipt alongside provenance and temporal calibration evidence. For new runs it checks the receipt's recorded hash, run identity, and source-matrix hash; legacy manifests without the gate are marked as incomplete evidence rather than treated as having passed the gate.
