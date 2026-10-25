@@ -157,16 +157,32 @@ def _chronology_integrity(
                 else "FOLD_ORDER_TIMESTAMP_MISMATCH"
             )
 
+    complete_boundary_coverage = bool(candidates and fold_indices) and all(
+        all(row.get(field) is not None for field in boundary_aliases)
+        for index in fold_indices
+        for row in boundary_values[index]
+    )
+    all_sample_counts_present = bool(candidates and fold_indices) and all(
+        count is not None
+        for index in fold_indices
+        for count in sample_counts_by_fold[index]
+    )
     window_identity = {
         "status": (
             "WINDOW_IDENTITY_MISMATCH" if window_mismatch or sample_count_mismatch
-            else "VERIFIED_AVAILABLE_BOUNDARIES" if len(metadata_fields_seen) == len(boundary_aliases)
+            else "VERIFIED_FULL_WINDOW_IDENTITY" if complete_boundary_coverage and all_sample_counts_present
             else "PARTIAL_WINDOW_METADATA" if metadata_fields_seen
             else "NO_WINDOW_METADATA"
         ),
         "boundary_fields_observed": sorted(metadata_fields_seen),
         "boundary_field_count": len(metadata_fields_seen),
         "expected_boundary_field_count": len(boundary_aliases),
+        "complete_boundary_coverage": complete_boundary_coverage,
+        "sample_count_coverage": (
+            "COMPLETE" if all_sample_counts_present
+            else "PARTIAL" if any(count is not None for counts in sample_counts_by_fold.values() for count in counts)
+            else "NONE"
+        ),
         "window_mismatch": window_mismatch,
         "sample_count_mismatch": sample_count_mismatch,
         "interpretation": (
