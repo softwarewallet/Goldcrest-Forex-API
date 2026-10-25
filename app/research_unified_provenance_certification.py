@@ -331,6 +331,39 @@ def _validate_cli_paths(args: argparse.Namespace) -> None:
             raise ValueError(f"output_already_exists:{label}:{path}")
 
 
+
+def _validate_input_paths(args: argparse.Namespace) -> None:
+    """Validate required input existence and filesystem types before audit work begins."""
+    json_inputs = {
+        "readiness report": args.readiness_report,
+        "evidence bundle": args.evidence_bundle,
+        "provenance manifest": args.provenance_manifest,
+        "provenance seal": args.provenance_seal,
+        "inventory specification": args.inventory_spec,
+        "inventory seal": args.inventory_seal,
+    }
+    for label, path in json_inputs.items():
+        if not path.exists():
+            raise ValueError(f"required_input_missing:{label}:{path}")
+        if not path.is_file():
+            raise ValueError(f"required_input_not_file:{label}:{path}")
+    directory_inputs = {
+        "evidence root": args.evidence_root,
+        "artifact root": args.artifact_root,
+        "repository path": args.repo_path,
+    }
+    for label, path in directory_inputs.items():
+        if not path.exists():
+            raise ValueError(f"required_input_missing:{label}:{path}")
+        if not path.is_dir():
+            raise ValueError(f"required_input_not_directory:{label}:{path}")
+    for label, path in (("config", args.config_path), ("dataset", args.dataset_path)):
+        if not path.exists():
+            raise ValueError(f"required_input_missing:{label}:{path}")
+        if not (path.is_file() or path.is_dir()):
+            raise ValueError(f"required_input_not_file_or_directory:{label}:{path}")
+
+
 def _write_json_outputs(report_path: Path, report: dict[str, Any],
                         seal_path: Path | None = None,
                         seal: dict[str, Any] | None = None) -> None:
@@ -392,6 +425,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         _validate_cli_paths(args)
+        _validate_input_paths(args)
         report = run_unified_certification(
             _read_object(args.readiness_report),
             _read_object(args.evidence_bundle),
