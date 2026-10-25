@@ -1009,6 +1009,12 @@ def build_research_evidence_report(
     # These two receipts are explicitly referenced and hash-bound by the pipeline manifest.
     for name, path_field, hash_field, scope in (
         ("provenance_audit", "provenance_audit_path", "provenance_audit_sha256", None),
+        (
+            "model_evaluation_gate",
+            "model_evaluation_gate_path",
+            "model_evaluation_gate_sha256",
+            "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        ),
     ):
         path = _resolve_path(manifest.get(path_field), manifest_file.parent)
         declared = bool(manifest.get(path_field) or manifest.get(hash_field))
@@ -1150,6 +1156,15 @@ def build_research_evidence_report(
             "errors": records["provenance_audit"].get("errors", []),
             "warnings": records["provenance_audit"].get("warnings", []),
         } if records.get("provenance_audit") is not None else None,
+        "model_evaluation_gate": {
+            "status": records["model_evaluation_gate"].get("status"),
+            "experiment_count": records["model_evaluation_gate"].get("experiment_count"),
+            "folds_checked": records["model_evaluation_gate"].get("folds_checked"),
+            "fold_metric_objects_checked": records["model_evaluation_gate"].get("fold_metric_objects_checked"),
+            "errors": records["model_evaluation_gate"].get("errors", []),
+            "warnings": records["model_evaluation_gate"].get("warnings", []),
+            "actionable": False,
+        } if records.get("model_evaluation_gate") is not None else None,
         "temporal_calibration": _summary_for_calibration(records["temporal_calibration"])
         if records.get("temporal_calibration") is not None else None,
         "baseline_analysis": _summary_for_baseline(records["baseline_analysis"])
@@ -1172,6 +1187,11 @@ def build_research_evidence_report(
     validation_status = sections["validation"].get("status")
     if validation_status == "FAIL":
         _add_issue(errors, "validation_report_failed")
+    evaluation_gate_status = sections["model_evaluation_gate"].get("status")
+    if evaluation_gate_status == "FAIL" or evaluation_gate_status == "MISSING":
+        _add_issue(errors, "model_evaluation_gate_not_pass")
+    elif evaluation_gate_status == "NOT_PROVIDED":
+        _add_issue(warnings, "model_evaluation_gate_not_recorded_in_legacy_manifest")
     provenance_status = sections["provenance_audit"].get("status")
     if provenance_status == "FAIL" or provenance_status == "MISSING":
         _add_issue(errors, "provenance_audit_not_pass")
