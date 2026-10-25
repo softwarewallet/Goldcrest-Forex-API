@@ -303,3 +303,12 @@ def test_git_report_with_invalid_revision_blocks_certification(monkeypatch, tmp_
     report = call(monkeypatch, tmp_path, repo_path=tmp_path / "repo")
     assert report["status"] == "FAIL"
     assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
+
+
+
+def test_missing_current_config_fails_closed_with_consolidated_report(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "CURRENT_INPUT_FINGERPRINT_FAILED" and item["input"] == "config"
+               for item in report["errors"])
+    assert report["deployment_authorized"] is False
