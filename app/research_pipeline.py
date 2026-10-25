@@ -19,6 +19,7 @@ from app.ctrader_history_ingest import download_ctrader_history
 from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
 from app.research_feature_source_provenance_audit import audit_feature_source_provenance
+from app.research_experiment_fingerprint import build_experiment_fingerprint, verify_experiment_fingerprint
 from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
@@ -99,6 +100,7 @@ def run_research_pipeline(
         f"{run_id}_{file_instrument}_{period}_research_dataset.csv",
         f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json",
         f"{run_id}_feature_source_audit.json",
+        f"{run_id}_experiment_fingerprint.json",
         f"{run_id}_experiment_matrix.json",
         f"{run_id}_provenance_audit.json",
         f"{run_id}_temporal_calibration_stability.json",
@@ -231,6 +233,65 @@ def run_research_pipeline(
             + ", ".join(feature_source_audit["errors"])
         )
 
+    fingerprint_configuration = {
+        "symbol": instrument,
+        "timeframe": period,
+        "source": source_name,
+        "source_version": actual_source_version,
+        "retrieved_at_utc": retrieved_at_utc,
+        "terms_reference": terms_reference,
+        "label_horizon_bars": horizon_bars,
+        "class_1_means": class_1_means,
+        "max_label_elapsed_hours": max_label_elapsed_hours,
+        "initial_train_bars": initial_train_bars,
+        "validation_bars": validation_bars,
+        "test_bars": test_bars,
+        "step_bars": step_bars,
+        "trials_per_fold": trials_per_fold,
+        "random_seed": random_seed,
+        "bootstrap_resamples": bootstrap_resamples,
+        "max_experiments": max_experiments,
+        "include_ablation": include_ablation,
+        "model_types": ["xgboost", "lightgbm"],
+        "strict_provenance_audit": strict_provenance_audit,
+        "strict_validation": strict_validation,
+        "strict_temporal_calibration_audit": strict_temporal_calibration_audit,
+        "strict_model_evaluation_gate": strict_model_evaluation_gate,
+    }
+    implementation_root = Path(__file__).resolve().parent
+    implementation_paths = {
+        f"app/{name}": implementation_root / name
+        for name in (
+            "research_pipeline.py",
+            "research_dataset_builder.py",
+            "research_experiment_matrix.py",
+            "historical_tabular_research.py",
+            "causal_ta_features.py",
+            "research_feature_source_provenance_audit.py",
+            "research_experiment_fingerprint.py",
+        )
+    }
+    experiment_fingerprint = build_experiment_fingerprint(
+        configuration=fingerprint_configuration,
+        raw_ohlc_sha256=raw_sha256,
+        dataset_sha256=_sha256(dataset_csv),
+        dataset_manifest_path=dataset_manifest_path,
+        dataset_manifest=dataset_manifest,
+        implementation_paths=implementation_paths,
+    )
+    fingerprint_verification = verify_experiment_fingerprint(experiment_fingerprint)
+    if fingerprint_verification["status"] != "PASS":
+        raise ValueError(
+            "experiment fingerprint verification failed before model training: "
+            + ", ".join(fingerprint_verification["errors"])
+        )
+    experiment_fingerprint_path = destination / f"{run_id}_experiment_fingerprint.json"
+    experiment_fingerprint_path.write_text(
+        json.dumps(experiment_fingerprint, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    experiment_fingerprint_file_sha256 = _sha256(experiment_fingerprint_path)
+
     feature_names = _feature_names_from_dataset(dataset_csv)
     bars, examples, dataset_sha256 = load_historical_dataset(dataset_csv, feature_names)
     report = run_experiment_matrix(
@@ -303,6 +364,11 @@ def run_research_pipeline(
         "feature_source_audit_errors": feature_source_audit["errors"],
         "feature_schema_sha256": dataset_manifest.get("feature_schema_sha256"),
         "feature_implementation_sha256": dataset_manifest.get("feature_implementation_sha256"),
+        "experiment_fingerprint_path": str(experiment_fingerprint_path),
+        "experiment_fingerprint_file_sha256": experiment_fingerprint_file_sha256,
+        "experiment_fingerprint_sha256": experiment_fingerprint["experiment_fingerprint_sha256"],
+        "experiment_fingerprint_status": fingerprint_verification["status"],
+        "experiment_fingerprint_errors": fingerprint_verification["errors"],
         "feature_count": len(feature_names),
         "feature_names": feature_names,
         "fold_count": report.fold_count,
