@@ -54,3 +54,8 @@ For hash-bound provenance, model-evaluation-gate, and temporal-calibration recei
 ## Phase 11: Artifact identity metadata completeness
 
 Each artifact record now reports whether symbol, timeframe, and manifest-path identity metadata were present and matched the current run context. Missing identity fields generate explicit warnings and a `PARTIAL` metadata status rather than being silently treated as verified. A reported-but-mismatched identity remains an error. This is backward-compatible with older receipts and makes provenance limitations visible without overstating what legacy artifacts establish.
+
+
+## Phase 12: Canonical experiment-matrix payload integrity
+
+The consolidated evidence report independently verifies the canonical `report_payload_sha256` embedded in the experiment matrix. A mismatch is an integrity error and suppresses chronological out-of-sample period summaries derived from that matrix. Legacy matrices without the self-hash are explicitly marked `LEGACY_UNVERIFIED` and produce a warning rather than being described as verified. This self-hash complements the manifest's raw-file SHA-256: the two checks answer different questions and neither establishes data leakage absence or model validity.
