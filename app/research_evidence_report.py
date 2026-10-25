@@ -1031,6 +1031,38 @@ def _derive_oos_period_robustness(
     return audit, errors, warnings
 
 
+
+def _check_manifest_receipt_consistency(
+    *,
+    section_name: str,
+    manifest: Mapping[str, Any],
+    receipt: Mapping[str, Any] | None,
+    errors: list[str],
+) -> None:
+    """Ensure manifest summaries of hash-bound receipts match the receipt itself.
+
+    This checks the audit trail's internal consistency; it does not replace the
+    artifact hash, scope, run, or source-matrix provenance checks.
+    """
+    if receipt is None:
+        return
+
+    status_field = f"{section_name}_status"
+    if status_field in manifest and manifest.get(status_field) != receipt.get("status"):
+        _add_issue(errors, f"{section_name}_manifest_status_mismatch")
+
+    for suffix in ("errors", "warnings"):
+        manifest_field = f"{section_name}_{suffix}"
+        if manifest_field not in manifest:
+            continue
+        declared = manifest.get(manifest_field)
+        actual = receipt.get(suffix, [])
+        if not isinstance(declared, list) or not isinstance(actual, list):
+            _add_issue(errors, f"{section_name}_manifest_{suffix}_mismatch")
+            continue
+        if declared != actual:
+            _add_issue(errors, f"{section_name}_manifest_{suffix}_mismatch")
+
 def build_research_evidence_report(
     manifest_path: str | Path,
     *,
@@ -1129,6 +1161,19 @@ def build_research_evidence_report(
         errors.extend(section_errors)
         warnings.extend(section_warnings)
 
+
+    # The manifest repeats summary fields for these hash-bound receipts. Check
+    # those copies against the actual receipt so stale status/error metadata
+    # cannot contradict the artifact used by this consolidated report.
+    for receipt_name in ("provenance_audit", "model_evaluation_gate"):
+        _check_manifest_receipt_consistency(
+            section_name=receipt_name,
+            manifest=manifest,
+            receipt=records.get(receipt_name),
+            errors=errors,
+        )
+
+
     standard_temporal_path = manifest_file.parent / f"{run_id}_temporal_calibration_stability.json"
     temporal_path = (
         Path(temporal_calibration_path).resolve()
@@ -1175,6 +1220,21 @@ def build_research_evidence_report(
         records["temporal_calibration"] = temporal_report
         errors.extend(section_errors)
         warnings.extend(section_warnings)
+
+
+    _check_manifest_receipt_consistency(
+        section_name="temporal_calibration_audit",
+        manifest={
+            # Pipeline manifest uses the explicit *_audit field names for this
+            # receipt; map them to the shared consistency-check convention.
+            "temporal_calibration_audit_status": manifest.get("temporal_calibration_audit_status"),
+            "temporal_calibration_audit_errors": manifest.get("temporal_calibration_audit_errors"),
+            "temporal_calibration_audit_warnings": manifest.get("temporal_calibration_audit_warnings"),
+        },
+        receipt=records.get("temporal_calibration"),
+        errors=errors,
+    )
+
 
     validation_path = (
         Path(validation_report_path).resolve()
