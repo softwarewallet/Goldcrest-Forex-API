@@ -478,6 +478,7 @@ def _artifact_record(
         "path": str(path.resolve()),
         "sha256": digest,
         "scope": report.get("scope"),
+        "reported_status": status if status in _ALLOWED_STATUSES else None,
         "identity_metadata": {
             "status": "COMPLETE" if not identity_fields_missing else "PARTIAL",
             "fields_present": identity_fields_present,
@@ -1545,6 +1546,8 @@ def build_research_evidence_report(
     identity_complete_count = 0
     identity_partial_count = 0
     declared_count_mismatch_count = 0
+    diagnostic_schema_invalid_count = 0
+    effective_status_mismatch_count = 0
     for section in sections.values():
         section_status = str(section.get("status", "UNKNOWN"))
         section_status_counts[section_status] = section_status_counts.get(section_status, 0) + 1
@@ -1557,6 +1560,12 @@ def build_research_evidence_report(
         count_integrity = section.get("declared_count_integrity")
         if isinstance(count_integrity, dict) and count_integrity.get("status") == "MISMATCH":
             declared_count_mismatch_count += 1
+        diagnostic_schema = section.get("diagnostic_schema")
+        if isinstance(diagnostic_schema, dict) and diagnostic_schema.get("status") == "INVALID":
+            diagnostic_schema_invalid_count += 1
+        reported_status = section.get("reported_status")
+        if reported_status is not None and reported_status != section.get("status"):
+            effective_status_mismatch_count += 1
 
     integrity_summary = {
         "artifact_section_count": len(sections),
@@ -1564,6 +1573,8 @@ def build_research_evidence_report(
         "identity_metadata_complete_section_count": identity_complete_count,
         "identity_metadata_partial_section_count": identity_partial_count,
         "declared_count_mismatch_section_count": declared_count_mismatch_count,
+        "diagnostic_schema_invalid_section_count": diagnostic_schema_invalid_count,
+        "effective_status_mismatch_section_count": effective_status_mismatch_count,
         "run_integrity_status": integrity.get("status"),
         "matrix_payload_integrity_status": matrix_payload_integrity.get("status"),
         "has_integrity_errors": bool(errors),
