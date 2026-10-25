@@ -133,6 +133,48 @@ def _fold_signature(comparison: Mapping[str, Any]) -> tuple[tuple[Any, ...], ...
     return tuple(signature)
 
 
+def _fold_eligibility_counts(comparison: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Extract per-fold eligibility counts separately from fold-window identity."""
+    experiments = comparison.get("experiments")
+    if not isinstance(experiments, list) or not experiments:
+        raise ValueError("comparison_experiments_missing_for_fold_eligibility_counts")
+
+    shared: list[dict[str, Any]] | None = None
+    for experiment in experiments:
+        if not isinstance(experiment, dict):
+            raise ValueError("comparison_experiment_invalid_for_fold_eligibility_counts")
+        folds = experiment.get("fold_results")
+        if not isinstance(folds, list) or not folds:
+            raise ValueError("comparison_fold_results_missing_for_fold_eligibility_counts")
+        rows: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        for fold in folds:
+            if not isinstance(fold, dict):
+                raise ValueError("comparison_fold_entry_invalid_for_fold_eligibility_counts")
+            index = fold.get("fold_index")
+            eligible = fold.get("eligible_test_rows")
+            start, end = fold.get("test_start_utc"), fold.get("test_end_utc")
+            if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index in seen:
+                raise ValueError("comparison_fold_index_invalid_for_fold_eligibility_counts")
+            if isinstance(eligible, bool) or not isinstance(eligible, int) or eligible < 0:
+                raise ValueError("comparison_eligible_test_rows_invalid")
+            if not isinstance(start, str) or not start.strip() or not isinstance(end, str) or not end.strip():
+                raise ValueError("comparison_fold_window_invalid_for_fold_eligibility_counts")
+            seen.add(index)
+            rows.append({
+                "fold_index": index,
+                "test_start_utc": start,
+                "test_end_utc": end,
+                "eligible_test_rows": eligible,
+            })
+        rows.sort(key=lambda row: row["fold_index"])
+        if shared is None:
+            shared = rows
+        elif rows != shared:
+            raise ValueError("comparison_fold_eligibility_counts_differ_between_experiments")
+    return shared or []
+
+
 def _extract_seed_result(seed: int, replay: Mapping[str, Any], comparison: Mapping[str, Any]) -> dict[str, Any]:
     if comparison.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
         raise ValueError(f"seed_{seed}_comparison_status_not_pass")
@@ -185,6 +227,7 @@ def _extract_seed_result(seed: int, replay: Mapping[str, Any], comparison: Mappi
         "comparison_report_path": replay.get("paired_comparison_report_path"),
         "raw_ohlc_sha256": comparison.get("raw_ohlc_sha256"),
         "fold_signature": _fold_signature(comparison),
+        "fold_eligibility_counts": _fold_eligibility_counts(comparison),
         "experiments": normalized,
         "warnings": list(replay.get("warnings") or []) + list(comparison.get("warnings") or []),
         "errors": list(replay.get("errors") or []) + list(comparison.get("errors") or []),
@@ -308,6 +351,7 @@ def run_label_eligibility_seed_sweep(
     results: list[dict[str, Any]] = []
     raw_hash: str | None = None
     fold_signature: tuple[tuple[Any, ...], ...] | None = None
+    fold_eligibility_counts: list[dict[str, Any]] | None = None
     expected_experiments: set[str] | None = None
     warnings: list[str] = []
     errors: list[str] = []
@@ -347,16 +391,20 @@ def run_label_eligibility_seed_sweep(
             if not isinstance(current_hash, str) or not current_hash:
                 raise ValueError("seed_replay_raw_ohlc_hash_missing")
             current_signature = normalized["fold_signature"]
+            current_fold_eligibility_counts = normalized["fold_eligibility_counts"]
             current_experiments = set(normalized["experiments"])
             if raw_hash is None:
                 raw_hash = current_hash
                 fold_signature = current_signature
+                fold_eligibility_counts = current_fold_eligibility_counts
                 expected_experiments = current_experiments
             else:
                 if current_hash != raw_hash:
                     raise ValueError("raw_ohlc_hash_differs_between_seed_runs")
                 if current_signature != fold_signature:
                     raise ValueError("fold_test_windows_differ_between_seed_runs")
+                if current_fold_eligibility_counts != fold_eligibility_counts:
+                    raise ValueError("fold_eligibility_counts_differ_between_seed_runs")
                 if current_experiments != expected_experiments:
                     raise ValueError("model_feature_matrix_differs_between_seed_runs")
 
@@ -413,6 +461,7 @@ def run_label_eligibility_seed_sweep(
         "failed_seed_count": len(seed_values) - len(successful),
         "run_id_prefix": prefix,
         "raw_ohlc_sha256": raw_hash,
+        "fold_eligibility_counts": fold_eligibility_counts,
         "shared_fold_test_windows_across_seeds": fold_signature is not None and len(successful) > 0,
         "same_seed_applied_to_uncapped_and_capped_within_each_pair": True,
         "seed_results": results,

@@ -205,3 +205,30 @@ def test_audit_accepts_window_only_fold_signatures_without_inventing_row_counts(
         for warning in result["warnings"]
     )
     assert result["adjacent_cap_comparisons"][0]["same_fold_eligible_test_counts"] is None
+
+
+
+def test_audit_uses_separate_fold_eligibility_counts_with_window_only_signature(tmp_path):
+    from pathlib import Path
+
+    source = Path(_threshold_fixture(tmp_path, [
+        (1.5, 800, 200, 80),
+        (8.0, 800, 200, 80),
+    ]))
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    for cap_record in payload["cap_results"]:
+        cap_record["fold_signature"] = [
+            row[:3] for row in cap_record["fold_signature"]
+        ]
+        cap_record["fold_eligibility_counts"] = [
+            {"fold_index": 0, "test_start_utc": "2026-01-01T00:00:00Z",
+             "test_end_utc": "2026-01-07T00:00:00Z", "eligible_test_rows": 80}
+        ]
+    source.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
+
+    result = audit_threshold_report(source)
+
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert result["cap_profiles"][0]["eligible_test_rows_across_fold_windows"] == 80
+    assert result["cap_profiles"][1]["eligible_test_rows_across_fold_windows"] == 80
+    assert result["adjacent_cap_comparisons"][0]["same_fold_eligible_test_counts"] is True

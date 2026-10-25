@@ -93,7 +93,18 @@ def _fold_eligibility_profile(cap_record: Mapping[str, Any], label: str) -> list
     are cap-dependent diagnostics, not fold identity, and newer threshold reports may omit
     them from the signature. Do not fabricate counts when they are unavailable.
     """
+    separate_counts = cap_record.get("fold_eligibility_counts")
     signature = cap_record.get("fold_signature")
+    if separate_counts is not None:
+        if not isinstance(separate_counts, list) or not separate_counts:
+            raise ValueError(f"{label}_fold_eligibility_counts_invalid")
+        if any(not isinstance(item, dict) for item in separate_counts):
+            raise ValueError(f"{label}_fold_eligibility_counts_entry_invalid")
+        signature = [
+            [item.get("fold_index"), item.get("test_start_utc"), item.get("test_end_utc"),
+             item.get("eligible_test_rows")]
+            for item in separate_counts
+        ]
     if not isinstance(signature, list) or not signature:
         raise ValueError(f"{label}_fold_signature_missing")
     profile: list[dict[str, Any]] = []
