@@ -93,3 +93,12 @@ After the gap-policy equivalence audit passes, this report-only review reuses th
 Use the exact equivalence-audit report path printed by the previous command if collision-safe naming produced a rerun filename. The review reports existing per-model/per-feature metric summaries and per-seed paired deltas, and checks whether the uncapped reference metrics match between cap runs. If they do not match, differences between cap-level deltas may include reference-run variability and should not be interpreted as a clean incremental policy effect.
 
 Identical row masks are grouped as one policy for this dataset; therefore the 1.5-hour and 8-hour caps are not treated as independent candidates when their masks are identical. Repeated seeds use the same historical period and overlapping walk-forward windows, so they are optimizer-sensitivity checks rather than independent market replications. The report makes no model selection, profitability, or live-execution decision.
+
+
+## Performance-review input integrity
+
+The downstream gap-policy performance review validates the diagnostic schema of every passing
+input and seed result, rejects contradictory passing reports that still contain errors, checks that
+eligibility row counts reconcile arithmetically, verifies eligible fractions against those counts,
+and requires row-mask fingerprints to be hexadecimal SHA-256 strings. These are report-integrity
+checks only: they do not retrain models, choose a cap, or establish predictive superiority.
