@@ -7,6 +7,7 @@ import pytest
 
 from app.research_label_eligibility_legacy_fold_metadata_recovery import (
     recover_seed_report,
+    recover_threshold_report,
 )
 
 
@@ -114,3 +115,95 @@ def test_recovery_rejects_unsafe_comparison_flags(tmp_path):
 
     with pytest.raises(ValueError, match="unexpected_safety_flag:execution_connected"):
         recover_seed_report(source, 1.5, tmp_path / "recovered.json")
+
+
+
+def test_threshold_recovery_updates_only_matching_caps_and_preserves_research_safety(tmp_path):
+    digest = "a" * 64
+    rows_by_cap = {
+        1.0: [100, 101],
+        1.5: [120, 121],
+        8.0: [120, 121],
+    }
+    recovered_reports = {}
+    for cap, counts in rows_by_cap.items():
+        rows = [
+            {
+                "fold_index": i,
+                "test_start_utc": f"2026-01-0{i + 1}T00:00:00Z",
+                "test_end_utc": f"2026-01-0{i + 2}T00:00:00Z",
+                "eligible_test_rows": count,
+            }
+            for i, count in enumerate(counts)
+        ]
+        seed_report = {
+            "raw_ohlc_sha256": digest,
+            "successful_seed_count": 2,
+            "fold_eligibility_counts": rows,
+            "actionable": False,
+            "execution_connected": False,
+            "automatic_model_selection": False,
+            "inferential": False,
+        }
+        recovered_reports[cap] = (seed_report, tmp_path / f"recovered-{cap}.json")
+
+    source = _write(tmp_path / "threshold-source.json", {
+        "status": "PASS_WITH_WARNINGS",
+        "scope": "GOLDCREST_LABEL_ELIGIBILITY_THRESHOLD_SWEEP",
+        "raw_ohlc_sha256": digest,
+        "requested_caps_hours": [1.0, 1.5, 8.0],
+        "cap_results": [
+            {"max_label_elapsed_hours": cap, "status": "PASS_WITH_WARNINGS"}
+            for cap in (1.0, 1.5, 8.0)
+        ],
+        "actionable": False,
+        "execution_connected": False,
+        "automatic_model_selection": False,
+        "inferential": False,
+    })
+    output = tmp_path / "threshold-recovered.json"
+
+    recovered = recover_threshold_report(source, output, recovered_reports)
+
+    assert [row["max_label_elapsed_hours"] for row in recovered["cap_results"]] == [1.0, 1.5, 8.0]
+    assert [
+        row["eligible_test_rows"] for row in recovered["cap_results"][1]["fold_eligibility_counts"]
+    ] == [120, 121]
+    assert recovered["actionable"] is False
+    assert recovered["execution_connected"] is False
+    assert recovered["automatic_model_selection"] is False
+    assert recovered["inferential"] is False
+    assert json.loads(output.read_text(encoding="utf-8"))["fold_eligibility_metadata_recovery"]["source_artifacts_modified"] is False
+
+
+def test_threshold_recovery_rejects_hash_mismatch(tmp_path):
+    source = _write(tmp_path / "threshold-source.json", {
+        "status": "PASS",
+        "raw_ohlc_sha256": "b" * 64,
+        "cap_results": [
+            {"max_label_elapsed_hours": cap, "status": "PASS"}
+            for cap in (1.0, 1.5, 8.0)
+        ],
+        "actionable": False,
+        "execution_connected": False,
+        "automatic_model_selection": False,
+        "inferential": False,
+    })
+    recovered_reports = {
+        cap: ({
+            "raw_ohlc_sha256": "a" * 64,
+            "successful_seed_count": 2,
+            "fold_eligibility_counts": [{
+                "fold_index": 0,
+                "test_start_utc": "2026-01-01T00:00:00Z",
+                "test_end_utc": "2026-01-02T00:00:00Z",
+                "eligible_test_rows": 100,
+            }],
+        }, tmp_path / f"recovered-{cap}.json")
+        for cap in (1.0, 1.5, 8.0)
+    }
+
+    from app.research_label_eligibility_legacy_fold_metadata_recovery import recover_threshold_report
+
+    with pytest.raises(ValueError, match="raw_hash_mismatch"):
+        recover_threshold_report(source, tmp_path / "out.json", recovered_reports)
