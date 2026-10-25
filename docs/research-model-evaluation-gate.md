@@ -92,3 +92,8 @@ The consolidated `integrity_summary` also counts malformed diagnostic-schema sec
 ## Phase 19: Required source-matrix provenance
 
 The consolidated evidence reader now warns when the model-evaluation-gate, temporal-calibration, baseline, regime, or temporal-stability receipt omits its source-matrix SHA-256 while the manifest provides the expected matrix fingerprint. Any supplied source-matrix fingerprint must also be a 64-character hexadecimal SHA-256 value; malformed fingerprints fail the section. A warning for absent legacy metadata is not proof of tampering, but it prevents the report from implying that source-matrix binding was verified.
+
+
+## Phase 20: Manifest hash declaration integrity
+
+A receipt path declared in the pipeline manifest must be accompanied by a valid 64-character hexadecimal SHA-256 declaration. The consolidated report applies this to the experiment matrix, provenance audit, model-evaluation gate, and manifest-referenced temporal-calibration receipt. Missing or malformed declared fingerprints are explicit integrity errors rather than being silently treated as an unbound artifact. A separately supplied temporal-calibration file that is not declared by the manifest remains supported as an external input and is not misrepresented as manifest-hash-bound.
