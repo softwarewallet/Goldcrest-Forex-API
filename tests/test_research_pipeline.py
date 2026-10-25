@@ -52,6 +52,7 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
             "schema_version": 1,
             "scope": "OFFLINE_RESEARCH_DATASET_PREPARATION",
             "actionable": False,
+            "input_snapshot_sha256": research_pipeline._sha256(input_csv),
             "output_dataset_sha256": research_pipeline._sha256(output_csv),
             "output_rows": 1,
             "feature_names": ["ret_1"],
