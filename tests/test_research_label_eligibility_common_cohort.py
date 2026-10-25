@@ -292,3 +292,71 @@ def test_common_cohort_output_does_not_clobber_concurrent_destination(tmp_path, 
         _write_report_no_clobber(output, {"status": "PASS"}, [])
     assert output.read_text(encoding="utf-8") == "created by another process"
     assert list(tmp_path.glob(".audit.json.*.tmp")) == []
+
+
+def test_common_cohort_rejects_prediction_outside_declared_test_window(tmp_path):
+    rows = _rows()
+    rows[1]["timestamp_utc"] = "2026-01-01T03:00:00Z"
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, rows)
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("outside its declared test window" in error for error in result["errors"])
+
+
+def test_common_cohort_rejects_naive_timestamp_without_timezone(tmp_path):
+    rows = _rows()
+    rows[1]["timestamp_utc"] = "2026-01-01T01:00:00"
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, rows)
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("must include a UTC timezone" in error for error in result["errors"])
+
+
+def test_common_cohort_rejects_duplicate_timestamp_instants_with_different_strings(tmp_path):
+    rows = _rows()
+    rows.append({
+        "timestamp_utc": "2026-01-01T01:00:00+00:00",
+        "label": 1,
+        "baseline_probability_class_1": 0.8,
+        "variant_probability_class_1": 0.85,
+    })
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, rows)
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("duplicate paired timestamp instant" in error for error in result["errors"])
+
+
+def test_common_cohort_rejects_reversed_fold_window(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    payload = json.loads(b.read_text(encoding="utf-8"))
+    payload["experiments"][0]["fold_results"][0]["test_start_utc"] = "2026-01-01T03:00:00Z"
+    payload["experiments"][0]["fold_results"][0]["test_end_utc"] = "2026-01-01T02:00:00Z"
+    b.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("ends before it starts" in error for error in result["errors"])
+
+
+def test_common_cohort_rejects_missing_model_feature_identity(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    payload = json.loads(b.read_text(encoding="utf-8"))
+    payload["experiments"][0]["model_type"] = None
+    b.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("invalid model-feature key" in error for error in result["errors"])
