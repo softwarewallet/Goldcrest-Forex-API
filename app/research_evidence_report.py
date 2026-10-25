@@ -406,6 +406,47 @@ def _artifact_record(
     for item in report.get("warnings", []) if isinstance(report.get("warnings"), list) else []:
         _add_issue(warnings, f"{section_name}_reported_warning:{item}")
 
+    count_specs = {
+        "temporal_calibration": ("comparison_count", "comparisons"),
+        "baseline_analysis": ("experiment_count", "experiments"),
+        "regime_analysis": ("experiment_count", "experiments"),
+        "temporal_stability": ("experiment_count", "experiments"),
+    }
+    declared_count_integrity: dict[str, Any] | None = None
+    if section_name in count_specs:
+        count_field, list_field = count_specs[section_name]
+        declared_count = report.get(count_field)
+        rows = report.get(list_field)
+        if isinstance(declared_count, int) and not isinstance(declared_count, bool):
+            if isinstance(rows, list):
+                if declared_count != len(rows):
+                    errors.append(f"{section_name}_{count_field}_mismatch")
+                    declared_count_integrity = {
+                        "status": "MISMATCH",
+                        "declared_count": declared_count,
+                        "observed_count": len(rows),
+                    }
+                else:
+                    declared_count_integrity = {
+                        "status": "VERIFIED",
+                        "declared_count": declared_count,
+                        "observed_count": len(rows),
+                    }
+            else:
+                errors.append(f"{section_name}_{list_field}_missing_for_declared_count")
+                declared_count_integrity = {
+                    "status": "UNVERIFIABLE",
+                    "declared_count": declared_count,
+                    "observed_count": None,
+                }
+        elif isinstance(rows, list):
+            warnings.append(f"{section_name}_{count_field}_not_reported")
+            declared_count_integrity = {
+                "status": "DECLARED_COUNT_MISSING",
+                "declared_count": None,
+                "observed_count": len(rows),
+            }
+
     record = {
         "status": status if status in _ALLOWED_STATUSES else "FAIL",
         "path": str(path.resolve()),
@@ -417,6 +458,8 @@ def _artifact_record(
             "fields_missing": identity_fields_missing,
         },
     }
+    if declared_count_integrity is not None:
+        record["declared_count_integrity"] = declared_count_integrity
     if errors:
         record["status"] = "FAIL"
     return record, report, errors, warnings
