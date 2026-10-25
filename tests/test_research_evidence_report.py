@@ -877,3 +877,49 @@ def test_artifact_record_marks_complete_identity_metadata(tmp_path):
     assert warnings == []
     assert record["identity_metadata"]["status"] == "COMPLETE"
     assert record["identity_metadata"]["fields_missing"] == []
+
+
+def test_verify_matrix_payload_hash_accepts_canonical_payload(tmp_path):
+    path = tmp_path / "matrix.json"
+    payload = {
+        "schema_version": 1,
+        "run_id": "run-1",
+        "experiments": [],
+        "actionable": False,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    _write_json(path, payload)
+
+    result = evidence._verify_matrix_payload_hash(path)
+
+    assert result["status"] == "VERIFIED"
+    assert result["computed_payload_sha256"] == result["declared_payload_sha256"]
+
+
+def test_verify_matrix_payload_hash_detects_payload_tampering(tmp_path):
+    path = tmp_path / "matrix.json"
+    payload = {
+        "schema_version": 1,
+        "run_id": "run-1",
+        "experiments": [],
+        "actionable": False,
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    payload["report_payload_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    payload["run_id"] = "tampered-run"
+    _write_json(path, payload)
+
+    result = evidence._verify_matrix_payload_hash(path)
+
+    assert result["status"] == "HASH_MISMATCH"
+
+
+def test_verify_matrix_payload_hash_marks_legacy_payload_unverified(tmp_path):
+    path = tmp_path / "legacy-matrix.json"
+    _write_json(path, {"schema_version": 1, "run_id": "run-1", "experiments": []})
+
+    result = evidence._verify_matrix_payload_hash(path)
+
+    assert result["status"] == "LEGACY_UNVERIFIED"
+    assert result["declared_payload_sha256"] is None
