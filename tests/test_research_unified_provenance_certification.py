@@ -43,7 +43,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False):
     import app.research_unified_provenance_certification as module
 
     if repo_path is None:
@@ -71,7 +71,10 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         provenance_report["status"] = "FAIL"
         provenance_report["stale_or_invalid_count"] = 1
     monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: provenance_report)
-    monkeypatch.setattr(module, "fingerprint_path", lambda path: CONFIG_HASH if str(path).endswith("config.json") else DATASET_HASH)
+    if fingerprint_error:
+        monkeypatch.setattr(module, "fingerprint_path", lambda path: (_ for _ in ()).throw(FileNotFoundError("missing_input")) if str(path).endswith("config.json") else DATASET_HASH)
+    else:
+        monkeypatch.setattr(module, "fingerprint_path", lambda path: CONFIG_HASH if str(path).endswith("config.json") else DATASET_HASH)
     monkeypatch.setattr(module, "audit_artifact_freshness", lambda *a, **k: {
         "audit_name": "research_artifact_freshness_audit",
         "status": "PASS" if gate_status != "FAIL" else "STALE",
@@ -307,7 +310,7 @@ def test_git_report_with_invalid_revision_blocks_certification(monkeypatch, tmp_
 
 
 def test_missing_current_config_fails_closed_with_consolidated_report(monkeypatch, tmp_path):
-    report = call(monkeypatch, tmp_path)
+    report = call(monkeypatch, tmp_path, fingerprint_error=True)
     assert report["status"] == "FAIL"
     assert any(item["code"] == "CURRENT_INPUT_FINGERPRINT_FAILED" and item["input"] == "config"
                for item in report["errors"])
