@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from app.research_unified_provenance_certification import run_unified_certification
+from app.research_provenance_manifest_seal import create_manifest_seal
 
 REV = "a" * 40
 CONFIG_HASH = hashlib.sha256(b"config").hexdigest()
@@ -41,7 +42,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True):
     import app.research_unified_provenance_certification as module
 
     provenance_report = {
@@ -76,8 +77,10 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         "errors": [] if gate_status == "PASS" else [{"code": "gate_failed"}],
         "warnings": [],
     })
+    selected_manifest = provenance or manifest()
     return module.run_unified_certification(
-        {"audit_name": "readiness"}, {"audit_name": "bundle"}, provenance or manifest(),
+        {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
+        provenance_seal=create_manifest_seal(selected_manifest) if include_seal else None,
         evidence_root=tmp_path, artifact_root=tmp_path,
         current_source_revision=REV, repo_path=repo_path, config_path=tmp_path / "config.json",
         dataset_path=tmp_path / "dataset",
@@ -89,6 +92,7 @@ def test_unified_certification_passes_when_all_components_pass(monkeypatch, tmp_
     assert report["status"] == "PASS"
     assert report["readiness"] == "CERTIFIED_CURRENT"
     assert report["provenance_verification"]["status"] == "PASS"
+    assert report["provenance_manifest_seal_verification"]["status"] == "PASS"
     assert report["freshness_audit"]["status"] == "PASS"
     assert report["deployment_authorized"] is False
 
@@ -165,3 +169,10 @@ def test_git_inspection_error_blocks_overall_certification(monkeypatch, tmp_path
     assert report["status"] == "FAIL"
     assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
     assert report["git_source_provenance"]["status"] == "NOT_CHECKED"
+
+
+def test_missing_provenance_seal_blocks_certification(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path, include_seal=False)
+    assert report["status"] == "FAIL"
+    assert report["provenance_manifest_seal_verification"]["status"] == "FAIL"
+    assert any(item["code"] == "PROVENANCE_MANIFEST_SEAL_FAILED" for item in report["errors"])

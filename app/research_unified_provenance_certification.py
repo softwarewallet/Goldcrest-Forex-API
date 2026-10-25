@@ -15,6 +15,7 @@ from app.research_artifact_freshness_audit import audit_artifact_freshness, fing
 from app.research_artifact_provenance import verify_provenance
 from app.research_freshness_certification_gate import gate_freshness_certification
 from app.research_git_source_provenance import inspect_git_provenance
+from app.research_provenance_manifest_seal import verify_manifest_seal
 from app.research_run_final_certification import run_final_certification
 
 FALSE_FLAGS = {
@@ -34,6 +35,7 @@ def run_unified_certification(
     bundle: dict[str, Any],
     provenance_manifest: dict[str, Any],
     *,
+    provenance_seal: dict[str, Any] | None = None,
     evidence_root: Path,
     artifact_root: Path,
     current_source_revision: str | None = None,
@@ -51,6 +53,12 @@ def run_unified_certification(
             git_error = f"{type(exc).__name__}:{exc}"
     if current_source_revision is None:
         current_source_revision = "0" * 40
+    seal_report = verify_manifest_seal(provenance_manifest, provenance_seal) if provenance_seal is not None else {
+        "audit_name": "research_provenance_manifest_seal_verification",
+        "status": "FAIL",
+        "manifest_sha256": None,
+        "errors": [{"code": "PROVENANCE_SEAL_REQUIRED"}],
+    }
     provenance_report = verify_provenance(
         provenance_manifest,
         root=artifact_root,
@@ -97,6 +105,11 @@ def run_unified_certification(
             "dirty_path_count": git_report.get("dirty_path_count") if git_report else None,
             "error": git_error,
         })
+    if seal_report["status"] != "PASS":
+        errors.append({
+            "code": "PROVENANCE_MANIFEST_SEAL_FAILED",
+            "error_count": len(seal_report["errors"]),
+        })
     if provenance_report["status"] != "PASS":
         errors.append({
             "code": "PROVENANCE_VERIFICATION_FAILED",
@@ -125,6 +138,7 @@ def run_unified_certification(
             "status": "NOT_CHECKED",
             "errors": ([{"code": "GIT_SOURCE_PROVENANCE_ERROR", "error": git_error}] if git_error else []),
         },
+        "provenance_manifest_seal_verification": seal_report,
         "provenance_verification": provenance_report,
         "bundle_verification": bundle_verification,
         "final_certification_chain": certification_report,
@@ -140,7 +154,7 @@ def run_unified_certification(
         "scope_limitations": [
             "This command validates supplied manifests and reports and checks declared artifact bytes; it cannot prove that the inventory is complete.",
             "When --repo-path is supplied, the source revision is resolved from Git HEAD and dirty tracked/untracked files fail certification; ignored files are not included by Git status.",
-            "The provenance manifest must be retained separately or its digest anchored in a separately controlled location.",
+            "The detached provenance seal detects manifest edits only if the seal is retained separately or its digest is anchored in a separately controlled location; it is not a digital signature.",
             "Passing certification does not establish profitability, predictive validity, statistical significance, or deployment suitability.",
             "No artifacts are regenerated and no experiments, model training, broker connectivity, deployment, or trades are initiated.",
         ],
@@ -160,6 +174,7 @@ def main() -> int:
     parser.add_argument("--evidence-bundle", required=True, type=Path)
     parser.add_argument("--evidence-root", required=True, type=Path)
     parser.add_argument("--provenance-manifest", required=True, type=Path)
+    parser.add_argument("--provenance-seal", required=True, type=Path, help="Detached seal created by app.research_provenance_manifest_seal")
     parser.add_argument("--artifact-root", required=True, type=Path)
     parser.add_argument("--repo-path", required=True, type=Path, help="Local Git checkout; certification requires a clean working tree")
     parser.add_argument("--config-path", required=True, type=Path)
@@ -186,6 +201,7 @@ def main() -> int:
             "readiness": report["readiness"],
             "artifact_count": report["artifact_count"],
             "stale_or_invalid_artifact_count": report["stale_or_invalid_artifact_count"],
+            "provenance_seal_status": report["provenance_manifest_seal_verification"]["status"],
             "regeneration_required_count": report["regeneration_required_count"],
             "error_count": len(report["errors"]),
             "report_path": str(args.output.resolve()),
