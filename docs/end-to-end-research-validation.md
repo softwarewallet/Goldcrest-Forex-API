@@ -500,3 +500,10 @@ All outputs remain `actionable=false` and `execution_connected=false`.
 Every newly prepared research dataset manifest now records both a canonical feature-schema SHA-256 and the SHA-256 of `app/causal_ta_features.py`. Before loading the prepared dataset into the experiment runner, the pipeline independently checks the manifest self-hash, the dataset bytes and row count, the ordered feature columns, the schema fingerprint, and the current feature implementation hash. A mismatch writes a non-actionable audit receipt and stops the run before model training begins.
 
 Existing prepared datasets created before these fields were added do not satisfy this gate. Regenerate them from the immutable raw OHLC snapshot using a new run ID; do not edit an old manifest to claim a source fingerprint that was not captured at preparation time. This fingerprint check complements, but does not replace, the point-in-time feature invariance audit. Matching source hashes alone do not prove that feature code is causally correct.
+
+
+## Canonical experiment fingerprint
+
+Before the model experiment matrix starts, the pipeline now creates and self-verifies an immutable experiment fingerprint receipt. It binds the canonical configuration (fold geometry, tuning budget, random seed, bootstrap settings, model matrix, label definition and source metadata) to the raw OHLC hash, prepared dataset hash, dataset-manifest content and file hashes, feature schema/source hashes, and SHA-256 hashes of the key pipeline, dataset-builder, feature, and model-runner source files. The pipeline manifest records the fingerprint path, file hash, fingerprint hash, and verification status.
+
+The fingerprint is an identity/reproducibility aid, not a model-quality score or digital signature. It does not prove that historical data is correct, that source code is scientifically valid, or that results will be profitable. A changed configuration, dataset, manifest, or listed implementation file must produce a different fingerprint.
