@@ -200,3 +200,6 @@ The consolidated evidence report now verifies and summarizes the model evaluatio
 
 
 The model evaluation integrity gate also checks that candidates sharing a fold index use identical UTC-normalized train/validation/test boundaries and the same held-out sample count. This prevents structurally mismatched folds from being silently treated as paired comparisons; it does not establish statistical significance or model superiority. See `docs/research-model-evaluation-gate.md`.
+
+
+The chronological OOS robustness diagnostic now cross-checks all available train/validation/test boundaries and held-out sample counts across candidates for each shared fold. Mismatches withhold early/middle/late summaries; legacy artifacts with incomplete timestamps remain visibly partial. See `docs/research-model-evaluation-gate.md`.

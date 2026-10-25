@@ -137,6 +137,50 @@ def test_audit_withholds_periods_when_candidates_disagree_on_fold_windows():
     assert audit["candidates"] == []
 
 
+def test_audit_withholds_periods_when_test_end_or_sample_count_differs():
+    results = {
+        "candidate-a": [fold(0), fold(1), fold(2)],
+        "candidate-b": [fold(0), fold(1), fold(2)],
+    }
+    starts = [
+        "2026-04-01T00:00:00Z",
+        "2026-04-02T00:00:00Z",
+        "2026-04-03T00:00:00Z",
+    ]
+    for rows in results.values():
+        for row, start in zip(rows, starts):
+            row["test_start_utc"] = start
+            row["test_end_utc"] = start.replace("00:00:00", "12:00:00")
+            row["train_start_utc"] = "2026-01-01T00:00:00Z"
+            row["train_end_utc"] = "2026-03-01T00:00:00Z"
+            row["validation_start_utc"] = "2026-03-01T01:00:00Z"
+            row["validation_end_utc"] = "2026-03-31T00:00:00Z"
+    results["candidate-b"][1]["test_end_utc"] = "2026-04-02T13:00:00Z"
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["status"] == "CHRONOLOGY_INVALID"
+    assert audit["chronology_integrity"]["window_identity"]["status"] == "WINDOW_IDENTITY_MISMATCH"
+    assert audit["candidates"] == []
+
+
+def test_audit_withholds_periods_when_held_out_sample_counts_differ():
+    results = {
+        "candidate-a": [fold(0), fold(1), fold(2)],
+        "candidate-b": [fold(0), fold(1), fold(2)],
+    }
+    for rows in results.values():
+        for index, row in enumerate(rows):
+            start = f"2026-04-0{index + 1}T00:00:00Z"
+            row["test_start_utc"] = start
+    results["candidate-b"][1]["test"]["sample_count"] = 9
+
+    audit = build_oos_period_robustness_audit(results, [])
+
+    assert audit["status"] == "CHRONOLOGY_INVALID"
+    assert audit["chronology_integrity"]["window_identity"]["sample_count_mismatch"] is True
+
+
 def test_audit_rejects_out_of_domain_test_metrics():
     results = {
         "candidate": [

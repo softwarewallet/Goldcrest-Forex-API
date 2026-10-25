@@ -29,3 +29,8 @@ A `PASS` means the listed structure and arithmetic checks are internally consist
 
 
 The common-fold check detects mismatched candidate windows before paired or comparative summaries are trusted. It is a structural consistency check only; identical windows do not establish independent observations, statistical significance, or a fair experimental design by themselves.
+
+
+## Chronological out-of-sample window identity
+
+The early/middle/late OOS period diagnostic cross-checks every available train, validation, and test boundary across candidates sharing a fold index, in addition to checking chronological test-start order. Where all candidates record held-out sample counts, those counts must also match. A mismatch withholds the period summaries. Legacy matrices with partial or absent boundary metadata are explicitly reported as partial/unknown; they are not silently described as having fully verified windows. This is a structural audit, not evidence that overlapping folds are statistically independent.
