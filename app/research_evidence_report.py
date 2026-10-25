@@ -417,7 +417,16 @@ def _artifact_record(
         count_field, list_field = count_specs[section_name]
         declared_count = report.get(count_field)
         rows = report.get(list_field)
-        if isinstance(declared_count, int) and not isinstance(declared_count, bool):
+        if count_field in report and (
+            isinstance(declared_count, bool) or not isinstance(declared_count, int) or declared_count < 0
+        ):
+            errors.append(f"{section_name}_{count_field}_invalid")
+            declared_count_integrity = {
+                "status": "INVALID_DECLARED_COUNT",
+                "declared_count": declared_count,
+                "observed_count": len(rows) if isinstance(rows, list) else None,
+            }
+        elif isinstance(declared_count, int) and not isinstance(declared_count, bool):
             if isinstance(rows, list):
                 if declared_count != len(rows):
                     errors.append(f"{section_name}_{count_field}_mismatch")
