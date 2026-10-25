@@ -138,6 +138,13 @@ def prepare_research_dataset(
     manifest_output.parent.mkdir(parents=True, exist_ok=True)
 
     feature_names = list(feature_batch.feature_names)
+    feature_schema_sha256 = hashlib.sha256(
+        _canonical_json({"feature_names": feature_names})
+    ).hexdigest()
+    feature_implementation_path = Path(__file__).with_name("causal_ta_features.py")
+    feature_implementation_sha256 = hashlib.sha256(
+        feature_implementation_path.read_bytes()
+    ).hexdigest()
     output_fields = [
         "symbol", "timeframe", "timestamp", "open", "high", "low", "close",
         "label", "label_available_at",
@@ -206,6 +213,9 @@ def prepare_research_dataset(
         "input_rows": len(bars),
         "output_rows": len(emitted),
         "feature_names": feature_names,
+        "feature_schema_sha256": feature_schema_sha256,
+        "feature_implementation_sha256": feature_implementation_sha256,
+        "feature_implementation_file": "app/causal_ta_features.py",
         "feature_backend": feature_batch.indicator_backend,
         "feature_timestamp_rule": "Each feature at t uses only OHLC observations timestamped <= t.",
         "label_definition": f"Binary forward-close direction over {horizon_bars} bars; class 1 means {class_1_means}; equality maps to class 0.",
