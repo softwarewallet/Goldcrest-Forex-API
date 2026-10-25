@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -297,6 +299,81 @@ def _read_object(path: Path) -> dict[str, Any]:
     return payload
 
 
+
+def _validate_cli_paths(args: argparse.Namespace) -> None:
+    """Reject output aliases before creating directories or writing any files."""
+    inputs = {
+        "readiness report": args.readiness_report,
+        "evidence bundle": args.evidence_bundle,
+        "provenance manifest": args.provenance_manifest,
+        "provenance seal": args.provenance_seal,
+        "inventory specification": args.inventory_spec,
+        "inventory seal": args.inventory_seal,
+        "config": args.config_path,
+        "dataset": args.dataset_path,
+    }
+    outputs = {"report output": args.output}
+    if args.report_seal_output is not None:
+        outputs["report seal output"] = args.report_seal_output
+    resolved_inputs = {label: path.resolve(strict=False) for label, path in inputs.items()}
+    resolved_outputs = {label: path.resolve(strict=False) for label, path in outputs.items()}
+    for output_label, output_path in resolved_outputs.items():
+        for input_label, input_path in resolved_inputs.items():
+            if output_path == input_path:
+                raise ValueError(f"output_path_aliases_input:{output_label}:{input_label}:{output_path}")
+    items = list(resolved_outputs.items())
+    for index, (label, path) in enumerate(items):
+        for other_label, other_path in items[index + 1:]:
+            if path == other_path:
+                raise ValueError(f"output_paths_must_differ:{label}:{other_label}:{path}")
+    for label, path in outputs.items():
+        if path.exists():
+            raise ValueError(f"output_already_exists:{label}:{path}")
+
+
+def _write_json_outputs(report_path: Path, report: dict[str, Any],
+                        seal_path: Path | None = None,
+                        seal: dict[str, Any] | None = None) -> None:
+    """Stage JSON outputs before publication and remove partial outputs on failure."""
+    payloads: list[tuple[Path, str]] = [
+        (report_path, json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")
+    ]
+    if seal_path is not None and seal is not None:
+        payloads.append((seal_path, json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n"))
+    staged: list[tuple[Path, Path]] = []
+    published: list[Path] = []
+    try:
+        for target, payload in payloads:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", newline="\n",
+                dir=str(target.parent), prefix=f".{target.name}.", suffix=".tmp",
+                delete=False,
+            ) as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+                staged.append((Path(handle.name), target))
+        for temporary, target in staged:
+            if target.exists():
+                raise ValueError(f"output_already_exists:{target}")
+            os.replace(temporary, target)
+            published.append(target)
+    except Exception:
+        for target in published:
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+    finally:
+        for temporary, _ in staged:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--readiness-report", required=True, type=Path)
@@ -314,6 +391,7 @@ def main() -> int:
     parser.add_argument("--report-seal-output", type=Path, help="Optional detached integrity seal for the consolidated report")
     args = parser.parse_args()
     try:
+        _validate_cli_paths(args)
         report = run_unified_certification(
             _read_object(args.readiness_report),
             _read_object(args.evidence_bundle),
@@ -327,20 +405,8 @@ def main() -> int:
             config_path=args.config_path,
             dataset_path=args.dataset_path,
         )
-        if args.output.exists():
-            raise ValueError(f"output_already_exists:{args.output}")
-        seal = None
-        if args.report_seal_output is not None:
-            if args.report_seal_output.resolve() == args.output.resolve():
-                raise ValueError("report_and_seal_output_paths_must_differ")
-            if args.report_seal_output.exists():
-                raise ValueError(f"report_seal_output_already_exists:{args.report_seal_output}")
-            seal = create_report_seal(report)
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
-        if seal is not None and args.report_seal_output is not None:
-            args.report_seal_output.parent.mkdir(parents=True, exist_ok=True)
-            args.report_seal_output.write_text(json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        seal = create_report_seal(report) if args.report_seal_output is not None else None
+        _write_json_outputs(args.output, report, args.report_seal_output, seal)
         print(json.dumps({
             "status": report["status"],
             "readiness": report["readiness"],

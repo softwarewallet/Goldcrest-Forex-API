@@ -362,3 +362,58 @@ def test_final_certification_exception_returns_consolidated_failure(monkeypatch,
     assert any(item["code"] == "FINAL_CERTIFICATION_EXECUTION_FAILED"
                for item in report["final_certification_chain"]["errors"])
     assert any(item["code"] == "FINAL_CERTIFICATION_CHAIN_FAILED" for item in report["errors"])
+
+
+def test_cli_path_validation_rejects_output_aliasing_input(tmp_path):
+    from argparse import Namespace
+    from app.research_unified_provenance_certification import _validate_cli_paths
+    shared = tmp_path / "config.json"
+    args = Namespace(
+        readiness_report=tmp_path / "readiness.json",
+        evidence_bundle=tmp_path / "bundle.json",
+        provenance_manifest=tmp_path / "manifest.json",
+        provenance_seal=tmp_path / "manifest.seal.json",
+        inventory_spec=tmp_path / "inventory.json",
+        inventory_seal=tmp_path / "inventory.seal.json",
+        config_path=shared,
+        dataset_path=tmp_path / "dataset.csv",
+        output=shared,
+        report_seal_output=tmp_path / "report.seal.json",
+    )
+    import pytest
+    with pytest.raises(ValueError, match="output_path_aliases_input"):
+        _validate_cli_paths(args)
+
+
+def test_cli_path_validation_rejects_report_and_seal_alias(tmp_path):
+    from argparse import Namespace
+    from app.research_unified_provenance_certification import _validate_cli_paths
+    shared = tmp_path / "same.json"
+    args = Namespace(
+        readiness_report=tmp_path / "readiness.json",
+        evidence_bundle=tmp_path / "bundle.json",
+        provenance_manifest=tmp_path / "manifest.json",
+        provenance_seal=tmp_path / "manifest.seal.json",
+        inventory_spec=tmp_path / "inventory.json",
+        inventory_seal=tmp_path / "inventory.seal.json",
+        config_path=tmp_path / "config.json",
+        dataset_path=tmp_path / "dataset.csv",
+        output=shared,
+        report_seal_output=shared,
+    )
+    import pytest
+    with pytest.raises(ValueError, match="output_paths_must_differ"):
+        _validate_cli_paths(args)
+
+
+def test_json_outputs_publish_report_and_seal(tmp_path):
+    import json
+    from app.research_unified_provenance_certification import _write_json_outputs
+    report_path = tmp_path / "nested" / "report.json"
+    seal_path = tmp_path / "separate" / "report.seal.json"
+    report = {"status": "FAIL", "deployment_authorized": False}
+    seal = {"sha256": "a" * 64}
+    _write_json_outputs(report_path, report, seal_path, seal)
+    assert json.loads(report_path.read_text(encoding="utf-8")) == report
+    assert json.loads(seal_path.read_text(encoding="utf-8")) == seal
+    assert not list(tmp_path.rglob("*.tmp"))
