@@ -542,6 +542,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.strict_model_evaluation_gate and result.get("model_evaluation_gate_status") == "FAIL":
         print("research pipeline completed, but model evaluation integrity gate failed; inspect the audit receipt", file=sys.stderr)
         return 6
+    if result.get("reproducibility_audit_status") == "FAIL":
+        print("research pipeline completed, but cross-artifact reproducibility audit failed; inspect reproducibility_audit_errors", file=sys.stderr)
+        return 7
     return 0
 
 
