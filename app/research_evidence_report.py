@@ -401,10 +401,27 @@ def _artifact_record(
         errors.append(f"{section_name}_reported_fail")
     elif status == "PASS_WITH_WARNINGS":
         warnings.append(f"{section_name}_reported_warnings")
-    for item in report.get("errors", []) if isinstance(report.get("errors"), list) else []:
-        _add_issue(errors, f"{section_name}_reported_error:{item}")
-    for item in report.get("warnings", []) if isinstance(report.get("warnings"), list) else []:
-        _add_issue(warnings, f"{section_name}_reported_warning:{item}")
+    # Receipt diagnostics are part of the machine-readable contract. Do not
+    # silently ignore malformed fields or non-string entries: doing so could
+    # make a corrupt receipt look clean to downstream aggregation.
+    diagnostic_schema_errors: list[str] = []
+    for field_name, target in (("errors", errors), ("warnings", warnings)):
+        if field_name not in report:
+            continue
+        values = report.get(field_name)
+        if not isinstance(values, list):
+            issue = f"{section_name}_{field_name}_must_be_list"
+            _add_issue(errors, issue)
+            diagnostic_schema_errors.append(issue)
+            continue
+        for index, item in enumerate(values):
+            if not isinstance(item, str) or not item.strip():
+                issue = f"{section_name}_{field_name}_item_{index}_invalid"
+                _add_issue(errors, issue)
+                diagnostic_schema_errors.append(issue)
+                continue
+            prefix = "reported_error" if field_name == "errors" else "reported_warning"
+            _add_issue(target, f"{section_name}_{prefix}:{item}")
 
     count_specs = {
         "temporal_calibration": ("comparison_count", "comparisons"),
@@ -465,6 +482,10 @@ def _artifact_record(
             "status": "COMPLETE" if not identity_fields_missing else "PARTIAL",
             "fields_present": identity_fields_present,
             "fields_missing": identity_fields_missing,
+        },
+        "diagnostic_schema": {
+            "status": "INVALID" if diagnostic_schema_errors else "VALID",
+            "errors": diagnostic_schema_errors,
         },
     }
     if declared_count_integrity is not None:
