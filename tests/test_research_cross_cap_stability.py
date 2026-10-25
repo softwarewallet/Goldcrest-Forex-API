@@ -1,31 +1,23 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 from app.research_cross_cap_stability import audit_cross_cap_stability
+from app.research_label_eligibility_common_cohort import audit_common_heldout_cohort
 
 
 CAPS = (1.0, 1.5, 8.0)
 SEEDS = (20261021, 20261022)
 
 
-def _metrics(cap: float, sample_count: int = 2) -> dict:
-    values = {
-        1.0: (0.60, 0.20, 0.70),
-        1.5: (0.50, 0.15, 0.75),
-        8.0: (0.70, 0.25, 0.65),
-    }[cap]
+def _source_metrics_for_cap(cap: float) -> tuple[float, float]:
     return {
-        "sample_count": sample_count,
-        "positive_count": 1,
-        "negative_count": sample_count - 1,
-        "prevalence": 0.5,
-        "log_loss": values[0],
-        "brier_score": values[1],
-        "accuracy_at_fixed_half": values[2],
-        "mean_predicted_probability": 0.5,
-    }
+        1.0: (0.4, 0.6),
+        1.5: (0.2, 0.8),
+        8.0: (0.45, 0.55),
+    }[cap]
 
 
 def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
@@ -34,8 +26,38 @@ def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
     baseline_ids = []
     dataset_hash = format(seed, "064x")
     raw_hash = "a" * 64
+
     for cap in CAPS:
         report_path = tmp_path / f"source_seed_{seed}_cap_{str(cap).replace('.', 'p')}.json"
+        variant_probabilities = _source_metrics_for_cap(cap)
+        fold_results = []
+        for fold_index in range(2):
+            day = fold_index + 1
+            timestamps = [
+                f"2026-01-0{day}T00:00:00Z",
+                f"2026-01-0{day}T01:00:00Z",
+            ]
+            fingerprint = hashlib.sha256(("\n".join(sorted(timestamps)) + "\n").encode()).hexdigest()
+            fold_results.append({
+                "fold_index": fold_index,
+                "test_start_utc": f"2026-01-0{day}T00:00:00Z",
+                "test_end_utc": f"2026-01-0{day}T02:00:00Z",
+                "eligible_timestamp_fingerprint_sha256": fingerprint,
+                "eligible_timestamp_predictions": [
+                    {
+                        "timestamp_utc": timestamps[0],
+                        "label": 0,
+                        "baseline_probability_class_1": 0.3,
+                        "variant_probability_class_1": variant_probabilities[0],
+                    },
+                    {
+                        "timestamp_utc": timestamps[1],
+                        "label": 1,
+                        "baseline_probability_class_1": 0.7,
+                        "variant_probability_class_1": variant_probabilities[1],
+                    },
+                ],
+            })
         report = {
             "status": "PASS_WITH_WARNINGS",
             "baseline_run_id": f"baseline-{seed}-{cap}",
@@ -49,54 +71,28 @@ def _make_seed_reports(tmp_path: Path, seed: int, *, audit_status: str = "PASS",
             "automatic_model_selection": False,
             "actionable": False,
             "execution_connected": False,
+            "experiments": [{
+                "model_type": "xgboost",
+                "feature_variant": "all_features",
+                "fold_results": fold_results,
+            }],
         }
         report_path.write_text(json.dumps(report), encoding="utf-8")
         source_paths.append(str(report_path))
         baseline_ids.append(report["baseline_run_id"])
 
-    if missing_source:
-        source_paths[1] = str(tmp_path / "does_not_exist.json")
-
-    fold_results = []
-    for fold_index in range(2):
-        per_cap = {str(cap): _metrics(cap) for cap in CAPS}
-        if bad_sample_count:
-            per_cap["8.0"]["sample_count"] = 3
-        fold_results.append({
-            "fold_index": fold_index,
-            "test_start_utc": f"2026-01-0{fold_index + 1}T00:00:00Z",
-            "test_end_utc": f"2026-01-0{fold_index + 1}T02:00:00Z",
-            "common_timestamp_count": 2,
-            "common_cohort_timestamp_fingerprint_sha256": "c" * 64,
-            "baseline_metrics_on_common_cohort": _metrics(1.0),
-            "variant_metrics_on_common_cohort_by_cap": per_cap,
-            "actionable": False,
-        })
     audit_path = tmp_path / f"common_cohort_audit_1h_1p5h_8h_seed_{seed}.json"
-    audit = {
-        "status": audit_status,
-        "scope": "GOLDCREST_COMMON_HELDOUT_COHORT_AUDIT",
-        "baseline_identity_mode": "dataset_hash_equivalence",
-        "baseline_dataset_sha256": dataset_hash,
-        "baseline_run_id": None,
-        "baseline_run_ids": baseline_ids,
-        "symbol": "EURUSD",
-        "timeframe": "M15",
-        "label_horizon_bars": 4,
-        "raw_ohlc_sha256": raw_hash,
-        "caps_hours": list(CAPS),
-        "input_comparison_reports": source_paths,
-        "experiments": [{
-            "model_type": "xgboost",
-            "feature_variant": "all_features",
-            "fold_count": 2,
-            "fold_results": fold_results,
-            "actionable": False,
-        }],
-        "automatic_model_selection": False,
-        "actionable": False,
-        "execution_connected": False,
-    }
+    audit = audit_common_heldout_cohort(
+        source_paths,
+        allow_baseline_id_variation=True,
+    )
+    assert audit["status"] == "PASS", audit
+    if missing_source:
+        audit["input_comparison_reports"][1] = str(tmp_path / "does_not_exist.json")
+    if audit_status != "PASS":
+        audit["status"] = audit_status
+    if bad_sample_count:
+        audit["experiments"][0]["fold_results"][0]["variant_metrics_on_common_cohort_by_cap"]["8.0"]["sample_count"] = 3
     audit_path.write_text(json.dumps(audit), encoding="utf-8")
     return audit_path
 
