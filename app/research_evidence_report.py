@@ -1458,16 +1458,21 @@ def build_research_evidence_report(
         warnings.extend(section_warnings)
 
     summary: dict[str, Any] = {
-        "validation": _summary_for_validation(records["validation"])
-        if records.get("validation") is not None else None,
+        "validation": {
+            **_summary_for_validation(records["validation"]),
+            "effective_status": sections["validation"].get("status"),
+            "reported_status": records["validation"].get("status"),
+        } if records.get("validation") is not None else None,
         "provenance_audit": {
-            "status": records["provenance_audit"].get("status"),
+            "status": sections["provenance_audit"].get("status"),
+            "reported_status": records["provenance_audit"].get("status"),
             "experiment_count": records["provenance_audit"].get("experiment_count"),
             "errors": records["provenance_audit"].get("errors", []),
             "warnings": records["provenance_audit"].get("warnings", []),
         } if records.get("provenance_audit") is not None else None,
         "model_evaluation_gate": {
-            "status": records["model_evaluation_gate"].get("status"),
+            "status": sections["model_evaluation_gate"].get("status"),
+            "reported_status": records["model_evaluation_gate"].get("status"),
             "experiment_count": records["model_evaluation_gate"].get("experiment_count"),
             "folds_checked": records["model_evaluation_gate"].get("folds_checked"),
             "fold_metric_objects_checked": records["model_evaluation_gate"].get("fold_metric_objects_checked"),
@@ -1475,15 +1480,35 @@ def build_research_evidence_report(
             "warnings": records["model_evaluation_gate"].get("warnings", []),
             "actionable": False,
         } if records.get("model_evaluation_gate") is not None else None,
-        "temporal_calibration": _summary_for_calibration(records["temporal_calibration"])
-        if records.get("temporal_calibration") is not None else None,
-        "baseline_analysis": _summary_for_baseline(records["baseline_analysis"])
-        if records.get("baseline_analysis") is not None else None,
-        "regime_analysis": _summary_for_regimes(records["regime_analysis"])
-        if records.get("regime_analysis") is not None else None,
-        "temporal_stability": _summary_for_temporal_stability(records["temporal_stability"])
-        if records.get("temporal_stability") is not None else None,
+        "temporal_calibration": {
+            **_summary_for_calibration(records["temporal_calibration"]),
+            "effective_status": sections["temporal_calibration"].get("status"),
+            "reported_status": records["temporal_calibration"].get("status"),
+        } if records.get("temporal_calibration") is not None else None,
+        "baseline_analysis": {
+            **_summary_for_baseline(records["baseline_analysis"]),
+            "effective_status": sections["baseline_analysis"].get("status"),
+            "reported_status": records["baseline_analysis"].get("status"),
+        } if records.get("baseline_analysis") is not None else None,
+        "regime_analysis": {
+            **_summary_for_regimes(records["regime_analysis"]),
+            "effective_status": sections["regime_analysis"].get("status"),
+            "reported_status": records["regime_analysis"].get("status"),
+        } if records.get("regime_analysis") is not None else None,
+        "temporal_stability": {
+            **_summary_for_temporal_stability(records["temporal_stability"]),
+            "effective_status": sections["temporal_stability"].get("status"),
+            "reported_status": records["temporal_stability"].get("status"),
+        } if records.get("temporal_stability") is not None else None,
         "oos_period_robustness": oos_period_robustness,
+    }
+
+    # Expose effective (integrity-adjusted) section statuses separately from
+    # each receipt's self-reported status, so a hash/provenance failure cannot
+    # leave downstream consumers reading a stale PASS in the summary.
+    summary["section_statuses"] = {
+        name: section.get("status")
+        for name, section in sections.items()
     }
 
     evidence_interpretation = build_evidence_interpretation(
