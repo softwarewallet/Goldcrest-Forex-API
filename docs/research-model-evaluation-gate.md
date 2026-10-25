@@ -74,3 +74,16 @@ The final report includes an `integrity_summary` that aggregates artifact-sectio
 ## Phase 15: Strict warning exit mode
 
 The consolidated evidence CLI supports `--strict-warnings`. It still writes the full report, then returns exit code `4` when warnings exist, `3` when the report fails, and `0` when there are no errors or warnings. Without this option, warning-only reports retain exit code `0` for backward compatibility. This lets scheduled or CI workflows opt into fail-closed handling of partial/legacy evidence without changing default behavior.
+
+
+## Phase 16: Receipt diagnostic schema validation
+
+The consolidated evidence reader validates that receipt-level `errors` and `warnings` fields, when present, are lists containing non-empty strings. Malformed fields or entries are integrity errors and are exposed in each section's `diagnostic_schema` summary. This prevents downstream aggregation from silently ignoring malformed diagnostics. Older receipts may omit these fields; absence alone is not treated as malformed.
+
+
+## Phase 17: Effective section-status propagation
+
+The consolidated report now publishes a `summary.section_statuses` inventory using the effective integrity-adjusted status for every section. Detailed summaries distinguish that effective status from the receipt's own `reported_status`. A receipt that claims `PASS` but fails a hash, scope, identity, or schema check is therefore shown as `FAIL` in the summary rather than leaving a contradictory apparent pass for downstream consumers.
+
+
+The consolidated `integrity_summary` also counts malformed diagnostic-schema sections and sections whose effective status differs from the receipt's reported status. These counters make integrity defects visible in a compact inventory without changing or hiding the underlying receipt.

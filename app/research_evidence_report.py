@@ -401,10 +401,27 @@ def _artifact_record(
         errors.append(f"{section_name}_reported_fail")
     elif status == "PASS_WITH_WARNINGS":
         warnings.append(f"{section_name}_reported_warnings")
-    for item in report.get("errors", []) if isinstance(report.get("errors"), list) else []:
-        _add_issue(errors, f"{section_name}_reported_error:{item}")
-    for item in report.get("warnings", []) if isinstance(report.get("warnings"), list) else []:
-        _add_issue(warnings, f"{section_name}_reported_warning:{item}")
+    # Receipt diagnostics are part of the machine-readable contract. Do not
+    # silently ignore malformed fields or non-string entries: doing so could
+    # make a corrupt receipt look clean to downstream aggregation.
+    diagnostic_schema_errors: list[str] = []
+    for field_name, target in (("errors", errors), ("warnings", warnings)):
+        if field_name not in report:
+            continue
+        values = report.get(field_name)
+        if not isinstance(values, list):
+            issue = f"{section_name}_{field_name}_must_be_list"
+            _add_issue(errors, issue)
+            diagnostic_schema_errors.append(issue)
+            continue
+        for index, item in enumerate(values):
+            if not isinstance(item, str) or not item.strip():
+                issue = f"{section_name}_{field_name}_item_{index}_invalid"
+                _add_issue(errors, issue)
+                diagnostic_schema_errors.append(issue)
+                continue
+            prefix = "reported_error" if field_name == "errors" else "reported_warning"
+            _add_issue(target, f"{section_name}_{prefix}:{item}")
 
     count_specs = {
         "temporal_calibration": ("comparison_count", "comparisons"),
@@ -461,10 +478,15 @@ def _artifact_record(
         "path": str(path.resolve()),
         "sha256": digest,
         "scope": report.get("scope"),
+        "reported_status": status if status in _ALLOWED_STATUSES else None,
         "identity_metadata": {
             "status": "COMPLETE" if not identity_fields_missing else "PARTIAL",
             "fields_present": identity_fields_present,
             "fields_missing": identity_fields_missing,
+        },
+        "diagnostic_schema": {
+            "status": "INVALID" if diagnostic_schema_errors else "VALID",
+            "errors": diagnostic_schema_errors,
         },
     }
     if declared_count_integrity is not None:
@@ -1437,16 +1459,21 @@ def build_research_evidence_report(
         warnings.extend(section_warnings)
 
     summary: dict[str, Any] = {
-        "validation": _summary_for_validation(records["validation"])
-        if records.get("validation") is not None else None,
+        "validation": {
+            **_summary_for_validation(records["validation"]),
+            "effective_status": sections["validation"].get("status"),
+            "reported_status": records["validation"].get("status"),
+        } if records.get("validation") is not None else None,
         "provenance_audit": {
-            "status": records["provenance_audit"].get("status"),
+            "status": sections["provenance_audit"].get("status"),
+            "reported_status": records["provenance_audit"].get("status"),
             "experiment_count": records["provenance_audit"].get("experiment_count"),
             "errors": records["provenance_audit"].get("errors", []),
             "warnings": records["provenance_audit"].get("warnings", []),
         } if records.get("provenance_audit") is not None else None,
         "model_evaluation_gate": {
-            "status": records["model_evaluation_gate"].get("status"),
+            "status": sections["model_evaluation_gate"].get("status"),
+            "reported_status": records["model_evaluation_gate"].get("status"),
             "experiment_count": records["model_evaluation_gate"].get("experiment_count"),
             "folds_checked": records["model_evaluation_gate"].get("folds_checked"),
             "fold_metric_objects_checked": records["model_evaluation_gate"].get("fold_metric_objects_checked"),
@@ -1454,15 +1481,35 @@ def build_research_evidence_report(
             "warnings": records["model_evaluation_gate"].get("warnings", []),
             "actionable": False,
         } if records.get("model_evaluation_gate") is not None else None,
-        "temporal_calibration": _summary_for_calibration(records["temporal_calibration"])
-        if records.get("temporal_calibration") is not None else None,
-        "baseline_analysis": _summary_for_baseline(records["baseline_analysis"])
-        if records.get("baseline_analysis") is not None else None,
-        "regime_analysis": _summary_for_regimes(records["regime_analysis"])
-        if records.get("regime_analysis") is not None else None,
-        "temporal_stability": _summary_for_temporal_stability(records["temporal_stability"])
-        if records.get("temporal_stability") is not None else None,
+        "temporal_calibration": {
+            **_summary_for_calibration(records["temporal_calibration"]),
+            "effective_status": sections["temporal_calibration"].get("status"),
+            "reported_status": records["temporal_calibration"].get("status"),
+        } if records.get("temporal_calibration") is not None else None,
+        "baseline_analysis": {
+            **_summary_for_baseline(records["baseline_analysis"]),
+            "effective_status": sections["baseline_analysis"].get("status"),
+            "reported_status": records["baseline_analysis"].get("status"),
+        } if records.get("baseline_analysis") is not None else None,
+        "regime_analysis": {
+            **_summary_for_regimes(records["regime_analysis"]),
+            "effective_status": sections["regime_analysis"].get("status"),
+            "reported_status": records["regime_analysis"].get("status"),
+        } if records.get("regime_analysis") is not None else None,
+        "temporal_stability": {
+            **_summary_for_temporal_stability(records["temporal_stability"]),
+            "effective_status": sections["temporal_stability"].get("status"),
+            "reported_status": records["temporal_stability"].get("status"),
+        } if records.get("temporal_stability") is not None else None,
         "oos_period_robustness": oos_period_robustness,
+    }
+
+    # Expose effective (integrity-adjusted) section statuses separately from
+    # each receipt's self-reported status, so a hash/provenance failure cannot
+    # leave downstream consumers reading a stale PASS in the summary.
+    summary["section_statuses"] = {
+        name: section.get("status")
+        for name, section in sections.items()
     }
 
     evidence_interpretation = build_evidence_interpretation(
@@ -1499,6 +1546,8 @@ def build_research_evidence_report(
     identity_complete_count = 0
     identity_partial_count = 0
     declared_count_mismatch_count = 0
+    diagnostic_schema_invalid_count = 0
+    effective_status_mismatch_count = 0
     for section in sections.values():
         section_status = str(section.get("status", "UNKNOWN"))
         section_status_counts[section_status] = section_status_counts.get(section_status, 0) + 1
@@ -1511,6 +1560,12 @@ def build_research_evidence_report(
         count_integrity = section.get("declared_count_integrity")
         if isinstance(count_integrity, dict) and count_integrity.get("status") == "MISMATCH":
             declared_count_mismatch_count += 1
+        diagnostic_schema = section.get("diagnostic_schema")
+        if isinstance(diagnostic_schema, dict) and diagnostic_schema.get("status") == "INVALID":
+            diagnostic_schema_invalid_count += 1
+        reported_status = section.get("reported_status")
+        if reported_status is not None and reported_status != section.get("status"):
+            effective_status_mismatch_count += 1
 
     integrity_summary = {
         "artifact_section_count": len(sections),
@@ -1518,6 +1573,8 @@ def build_research_evidence_report(
         "identity_metadata_complete_section_count": identity_complete_count,
         "identity_metadata_partial_section_count": identity_partial_count,
         "declared_count_mismatch_section_count": declared_count_mismatch_count,
+        "diagnostic_schema_invalid_section_count": diagnostic_schema_invalid_count,
+        "effective_status_mismatch_section_count": effective_status_mismatch_count,
         "run_integrity_status": integrity.get("status"),
         "matrix_payload_integrity_status": matrix_payload_integrity.get("status"),
         "has_integrity_errors": bool(errors),
