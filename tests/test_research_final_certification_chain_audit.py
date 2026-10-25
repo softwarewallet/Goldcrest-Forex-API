@@ -105,3 +105,67 @@ def test_upstream_error_list_blocks_chain():
     report = audit_final_certification_chain(readiness, bundle, verification)
     assert report["status"] == "FAIL"
     assert any(e["code"] == "input_report_contains_errors" and e["report"] == "verification" for e in report["errors"])
+
+
+def test_digest_fields_require_lowercase_sha256_hex():
+    readiness, bundle, verification = fixtures()
+    bundle["bundle_sha256"] = "g" * 64
+    verification["bundle_sha256"] = "g" * 64
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "bundle_digest_invalid" for error in report["errors"])
+
+
+def test_plan_identity_fields_must_be_present_and_well_formed():
+    readiness, bundle, verification = fixtures()
+    readiness["plan_id"] = None
+    readiness["plan_sha256"] = "g" * 64
+    bundle["plan_id"] = None
+    bundle["plan_sha256"] = "g" * 64
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "plan_id_invalid" for error in report["errors"])
+    assert any(error["code"] == "plan_digest_invalid" for error in report["errors"])
+
+
+def test_boolean_values_are_not_accepted_as_report_counts():
+    readiness, bundle, verification = fixtures()
+    bundle["report_count"] = True
+    verification["reports_declared"] = True
+    verification["reports_verified"] = True
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    codes = {error["code"] for error in report["errors"]}
+    assert "bundle_report_count_invalid" in codes
+    assert "verified_declared_report_count_invalid" in codes
+    assert "verified_report_count_invalid" in codes
+
+
+def test_diagnostic_fields_must_be_lists():
+    readiness, bundle, verification = fixtures()
+    readiness["warnings"] = "not-a-list"
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "input_warnings_schema_invalid" for error in report["errors"])
+
+
+def test_missing_plan_and_registry_identity_cannot_pass_by_matching_nulls():
+    readiness, bundle, verification = fixtures()
+    readiness.pop("plan_id")
+    bundle.pop("plan_id")
+    readiness.pop("registry_id")
+    bundle.pop("registry_id")
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "plan_id_invalid" for error in report["errors"])
+    assert any(error["code"] == "registry_id_invalid" for error in report["errors"])

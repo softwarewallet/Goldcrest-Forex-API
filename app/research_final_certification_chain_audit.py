@@ -22,6 +22,18 @@ REQUIRED_FALSE_FLAGS = (
 )
 
 
+def _is_sha256_hex(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(char in "0123456789abcdef" for char in value)
+    )
+
+
+def _valid_nonempty_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 def audit_final_certification_chain(
     readiness: dict[str, Any],
     bundle: dict[str, Any],
@@ -67,12 +79,29 @@ def audit_final_certification_chain(
                 "code": "deployment_must_remain_unauthorized",
                 "report": name,
             })
-        if payload.get("errors"):
-            errors.append({"code": "input_report_contains_errors", "report": name})
+        if "errors" in payload:
+            input_errors = payload.get("errors")
+            if not isinstance(input_errors, list):
+                errors.append({"code": "input_errors_schema_invalid", "report": name})
+            elif input_errors:
+                errors.append({"code": "input_report_contains_errors", "report": name})
+        if "warnings" in payload:
+            input_warnings = payload.get("warnings")
+            if not isinstance(input_warnings, list) or any(
+                not isinstance(item, str) or not item.strip() for item in input_warnings
+            ):
+                errors.append({"code": "input_warnings_schema_invalid", "report": name})
         if payload.get("status") == "PASS_WITH_WARNINGS":
             warnings.append(f"{name}_passed_with_warnings")
 
     if all(isinstance(payload, dict) for payload, _, _ in inputs.values()):
+        for name, payload in (("readiness", readiness), ("bundle", bundle)):
+            if not _valid_nonempty_string(payload.get("plan_id")):
+                errors.append({"code": "plan_id_invalid", "report": name})
+            if not _is_sha256_hex(payload.get("plan_sha256")):
+                errors.append({"code": "plan_digest_invalid", "report": name})
+            if not _valid_nonempty_string(payload.get("registry_id")):
+                errors.append({"code": "registry_id_invalid", "report": name})
         if readiness.get("plan_id") != bundle.get("plan_id"):
             errors.append({"code": "plan_id_mismatch_between_readiness_and_bundle"})
         if readiness.get("plan_sha256") != bundle.get("plan_sha256"):
@@ -80,7 +109,7 @@ def audit_final_certification_chain(
         if readiness.get("registry_id") != bundle.get("registry_id"):
             errors.append({"code": "registry_id_mismatch_between_readiness_and_bundle"})
         bundle_sha = bundle.get("bundle_sha256")
-        if not isinstance(bundle_sha, str) or len(bundle_sha) != 64:
+        if not _is_sha256_hex(bundle_sha):
             errors.append({"code": "bundle_digest_invalid"})
         if verification.get("bundle_sha256") != bundle_sha:
             errors.append({"code": "verification_bundle_digest_mismatch"})
@@ -89,9 +118,21 @@ def audit_final_certification_chain(
         verified_count = verification.get("reports_verified")
         if not isinstance(declared, int) or isinstance(declared, bool) or declared < 1:
             errors.append({"code": "bundle_report_count_invalid"})
-        if verified_declared != declared:
+        if (
+            not isinstance(verified_declared, int)
+            or isinstance(verified_declared, bool)
+            or verified_declared < 1
+        ):
+            errors.append({"code": "verified_declared_report_count_invalid"})
+        elif isinstance(declared, int) and not isinstance(declared, bool) and verified_declared != declared:
             errors.append({"code": "verified_report_count_mismatch"})
-        if verified_count != declared:
+        if (
+            not isinstance(verified_count, int)
+            or isinstance(verified_count, bool)
+            or verified_count < 0
+        ):
+            errors.append({"code": "verified_report_count_invalid"})
+        elif isinstance(declared, int) and not isinstance(declared, bool) and verified_count != declared:
             errors.append({"code": "not_all_bundle_reports_verified"})
         if verification.get("readiness") != "EVIDENCE_BUNDLE_CONTENT_VERIFIED":
             errors.append({"code": "evidence_bundle_content_not_verified"})
