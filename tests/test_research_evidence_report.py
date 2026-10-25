@@ -994,3 +994,18 @@ def test_artifact_record_verifies_declared_comparison_count(tmp_path):
     assert record["declared_count_integrity"]["status"] == "VERIFIED"
     assert errors == []
     assert warnings == []
+
+
+
+def test_consolidated_report_exposes_integrity_summary_inventory(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+
+    summary = result["integrity_summary"]
+    assert summary["artifact_section_count"] == len(result["sections"])
+    assert summary["identity_metadata_partial_section_count"] >= 1
+    assert summary["matrix_payload_integrity_status"] == "LEGACY_UNVERIFIED"
+    assert summary["has_integrity_errors"] is False
+    assert summary["has_warnings"] is True
+    assert summary["interpretation"].startswith("Aggregated integrity inventory only.")
