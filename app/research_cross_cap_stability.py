@@ -137,6 +137,13 @@ def _cap_equivalence_diagnostics(
             for fold_index in sorted(left_folds):
                 left = left_folds[fold_index]
                 right = right_folds[fold_index]
+                left_boundary = (left.get("test_start_utc"), left.get("test_end_utc"))
+                right_boundary = (right.get("test_start_utc"), right.get("test_end_utc"))
+                if left_boundary != right_boundary:
+                    raise ValueError(
+                        f"fold {fold_index}: test boundaries differ between "
+                        f"{left_cap:g}h and {right_cap:g}h"
+                    )
                 left_rows = left.get("eligible_timestamp_predictions")
                 right_rows = right.get("eligible_timestamp_predictions")
                 if not isinstance(left_rows, list) or not isinstance(right_rows, list):
