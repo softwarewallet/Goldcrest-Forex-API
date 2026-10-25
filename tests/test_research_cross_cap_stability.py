@@ -157,7 +157,7 @@ def test_cross_cap_stability_fails_when_cap_metrics_do_not_use_common_sample_cou
     result = audit_cross_cap_stability(paths, expected_seeds=SEEDS)
 
     assert result["status"] == "FAIL"
-    assert any("not scored on the common timestamp count" in error for error in result["errors"])
+    assert any("stored audit differs from recomputed source results for experiments" in error for error in result["errors"])
 
 
 def test_cross_cap_stability_fails_when_expected_seed_set_is_incomplete(tmp_path):
