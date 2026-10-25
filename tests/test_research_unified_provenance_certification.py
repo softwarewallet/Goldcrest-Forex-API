@@ -269,6 +269,10 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
 def test_missing_repo_path_blocks_certification(monkeypatch, tmp_path):
     import app.research_unified_provenance_certification as module
 
+    monkeypatch.setattr(module, "run_final_certification", lambda *a, **k: (
+        {"audit_name": "bundle_verification", "status": "PASS", "errors": []},
+        {"audit_name": "final_chain", "status": "PASS", "errors": []},
+    ))
     selected_manifest = manifest()
     inventory_spec = {
         "schema_version": 1,
