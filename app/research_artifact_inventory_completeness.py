@@ -132,7 +132,7 @@ def main() -> int:
         if args.output.exists():
             raise ValueError(f"output_already_exists:{args.output}")
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\\n", encoding="utf-8")
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
         print(json.dumps({
             "status": report["status"],
             "manifest_artifact_count": report["manifest_artifact_count"],
