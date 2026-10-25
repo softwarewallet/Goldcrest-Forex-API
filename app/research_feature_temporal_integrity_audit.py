@@ -29,7 +29,10 @@ def _read_bars(
     raw = path.read_bytes()
     if path.suffix.lower() == ".csv":
         try:
-            records = list(csv.DictReader(raw.decode("utf-8-sig").splitlines()))
+            records = [
+                {str(key).strip().lower(): value for key, value in row.items() if key is not None}
+                for row in csv.DictReader(raw.decode("utf-8-sig").splitlines())
+            ]
         except UnicodeDecodeError as exc:
             raise ValueError("input_csv_invalid") from exc
         if records and not any(key in records[0] for key in ("timestamp", "timestamp_utc", "datetime", "time")):
