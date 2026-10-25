@@ -118,3 +118,21 @@ def test_input_reader_rejects_missing_bars(tmp_path):
 
     with pytest.raises(ValueError, match="input_bars_missing"):
         audit._read_bars(path)
+
+
+
+def test_input_reader_accepts_csv_with_default_instrument_metadata(tmp_path):
+    raw = (
+        "Timestamp,Open,High,Low,Close\n"
+        "2026-01-01T00:00:00Z,1.1,1.2,1.0,1.15\n"
+        "2026-01-01T00:15:00Z,1.15,1.25,1.05,1.2\n"
+    ).encode("utf-8")
+    path = tmp_path / "bars.csv"
+    path.write_bytes(raw)
+
+    bars, digest = audit._read_bars(path, default_symbol="EUR/USD", default_timeframe="M15")
+
+    assert len(bars) == 2
+    assert bars[0].symbol == "EUR/USD"
+    assert bars[0].timeframe == "M15"
+    assert digest == hashlib.sha256(raw).hexdigest()
