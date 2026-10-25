@@ -114,7 +114,18 @@ def test_high_psi_and_mean_shift_raise_warnings():
 def test_invalid_distribution_statistics_and_histogram_fail():
     data = manifest()
     data["distribution_summaries"][0]["reference"]["std"] = -1
-    data["distribution_summaries"][0]["evaluation"]["histogram"]["edges"] = [0, 20, 10, 100]
+    second = {
+        "feature": "atr_14",
+        "reference": {
+            "mean": 1.0, "std": 0.5,
+            "histogram": {"edges": [0, 1, 2], "counts": [10, 20]},
+        },
+        "evaluation": {
+            "mean": 1.2, "std": 0.6,
+            "histogram": {"edges": [0, 2, 1], "counts": [10, 20]},
+        },
+    }
+    data["distribution_summaries"].append(second)
     report = audit(data)
     assert "distribution_std_negative" in codes(report)
     assert "histogram_invalid_or_incompatible" in codes(report)
