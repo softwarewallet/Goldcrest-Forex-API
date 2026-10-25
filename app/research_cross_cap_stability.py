@@ -296,7 +296,14 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
                     raise ValueError(f"{audit_path}: cap {cap} was not scored on the common timestamp count")
                 for metric in PRIMARY_METRICS:
                     _finite_metric(metrics, metric, f"{audit_path} seed {seed} fold {index} cap {cap}")
-    equivalence = _cap_equivalence_diagnostics(sources)\n    return {"seed": seed, "audit_path": str(audit_path.resolve()), "audit": audit, "sources": sources, "cap_equivalence_diagnostics": equivalence}
+    equivalence = _cap_equivalence_diagnostics(sources)
+    return {
+        "seed": seed,
+        "audit_path": str(audit_path.resolve()),
+        "audit": audit,
+        "sources": sources,
+        "cap_equivalence_diagnostics": equivalence,
+    }
 
 
 def _summary(values: Sequence[float]) -> dict[str, Any]:
