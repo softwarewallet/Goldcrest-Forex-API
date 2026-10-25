@@ -79,3 +79,8 @@ The consolidated evidence CLI supports `--strict-warnings`. It still writes the 
 ## Phase 16: Receipt diagnostic schema validation
 
 The consolidated evidence reader validates that receipt-level `errors` and `warnings` fields, when present, are lists containing non-empty strings. Malformed fields or entries are integrity errors and are exposed in each section's `diagnostic_schema` summary. This prevents downstream aggregation from silently ignoring malformed diagnostics. Older receipts may omit these fields; absence alone is not treated as malformed.
+
+
+## Phase 17: Effective section-status propagation
+
+The consolidated report now publishes a `summary.section_statuses` inventory using the effective integrity-adjusted status for every section. Detailed summaries distinguish that effective status from the receipt's own `reported_status`. A receipt that claims `PASS` but fails a hash, scope, identity, or schema check is therefore shown as `FAIL` in the summary rather than leaving a contradictory apparent pass for downstream consumers.
