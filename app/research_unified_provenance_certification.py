@@ -336,17 +336,17 @@ def _write_json_outputs(report_path: Path, report: dict[str, Any],
                         seal: dict[str, Any] | None = None) -> None:
     """Stage JSON outputs before publication and remove partial outputs on failure."""
     payloads: list[tuple[Path, str]] = [
-        (report_path, json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\\n")
+        (report_path, json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")
     ]
     if seal_path is not None and seal is not None:
-        payloads.append((seal_path, json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\\n"))
+        payloads.append((seal_path, json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n"))
     staged: list[tuple[Path, Path]] = []
     published: list[Path] = []
     try:
         for target, payload in payloads:
             target.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", newline="\\n",
+                mode="w", encoding="utf-8", newline="\n",
                 dir=str(target.parent), prefix=f".{target.name}.", suffix=".tmp",
                 delete=False,
             ) as handle:
