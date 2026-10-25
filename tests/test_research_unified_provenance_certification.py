@@ -46,6 +46,19 @@ def manifest(revision=REV):
 def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True):
     import app.research_unified_provenance_certification as module
 
+    if repo_path is None:
+        repo_path = tmp_path / "repo"
+        monkeypatch.setattr(module, "inspect_git_provenance", lambda path: {
+            "audit_name": "research_git_source_provenance",
+            "status": "PASS",
+            "source_revision": REV,
+            "working_tree_clean": True,
+            "dirty_path_count": 0,
+            "dirty_paths": [],
+            "errors": [],
+            **FLAGS,
+        })
+
     provenance_report = {
         "status": "PASS",
         "artifact_count": 1,
@@ -247,3 +260,46 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
     assert captured["inventory_spec"]["source"] == "inventory.json"
     assert captured["inventory_seal"]["source"] == "inventory-seal.json"
     assert output.is_file()
+
+
+
+def test_missing_repo_path_blocks_certification(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+
+    selected_manifest = manifest()
+    inventory_spec = {
+        "schema_version": 1,
+        "audit_name": "research_artifact_inventory_specification",
+        "required_artifacts": [{"artifact_id": "metrics", "path": "metrics.csv"}],
+    }
+    report = module.run_unified_certification(
+        {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
+        provenance_seal=create_manifest_seal(selected_manifest),
+        inventory_spec=inventory_spec,
+        inventory_seal=create_inventory_spec_seal(inventory_spec),
+        evidence_root=tmp_path, artifact_root=tmp_path,
+        current_source_revision=REV, repo_path=None,
+        config_path=tmp_path / "config.json", dataset_path=tmp_path / "dataset",
+    )
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
+    assert report["git_source_provenance"]["status"] == "NOT_CHECKED"
+    assert report["deployment_authorized"] is False
+
+
+def test_git_report_with_invalid_revision_blocks_certification(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+
+    monkeypatch.setattr(module, "inspect_git_provenance", lambda path: {
+        "audit_name": "research_git_source_provenance",
+        "status": "PASS",
+        "source_revision": "not-a-sha",
+        "working_tree_clean": True,
+        "dirty_path_count": 0,
+        "dirty_paths": [],
+        "errors": [],
+        **FLAGS,
+    })
+    report = call(monkeypatch, tmp_path, repo_path=tmp_path / "repo")
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "GIT_SOURCE_PROVENANCE_FAILED" for item in report["errors"])
