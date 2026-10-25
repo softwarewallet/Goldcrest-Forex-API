@@ -85,6 +85,7 @@ def test_experiment_fingerprint_verifier_rejects_tampered_configuration(tmp_path
 def test_experiment_fingerprint_rejects_invalid_dataset_manifest_self_hash(tmp_path):
     dataset_hash, manifest_path, manifest, implementation_paths = _manifest_and_paths(tmp_path)
     manifest["manifest_sha256"] = "0" * 64
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="dataset_manifest_self_hash_mismatch"):
         build_experiment_fingerprint(
