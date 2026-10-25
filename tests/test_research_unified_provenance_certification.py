@@ -42,7 +42,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None):
     import app.research_unified_provenance_certification as module
 
     provenance_report = {
@@ -78,9 +78,15 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         "warnings": [],
     })
     selected_manifest = provenance or manifest()
+    inventory_spec = inventory_override or {
+        "schema_version": 1,
+        "audit_name": "research_artifact_inventory_specification",
+        "required_artifacts": [{"artifact_id": item["artifact_id"], "path": item["path"]} for item in selected_manifest["artifacts"]],
+    }
     return module.run_unified_certification(
         {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
         provenance_seal=create_manifest_seal(selected_manifest) if include_seal else None,
+        inventory_spec=inventory_spec,
         evidence_root=tmp_path, artifact_root=tmp_path,
         current_source_revision=REV, repo_path=repo_path, config_path=tmp_path / "config.json",
         dataset_path=tmp_path / "dataset",
@@ -112,7 +118,7 @@ def test_freshness_gate_failure_blocks_overall_certification(monkeypatch, tmp_pa
 def test_unified_report_retains_all_component_reports(monkeypatch, tmp_path):
     report = call(monkeypatch, tmp_path)
     assert {
-        "provenance_verification", "bundle_verification", "final_certification_chain",
+        "artifact_inventory_completeness", "provenance_manifest_seal_verification", "provenance_verification", "bundle_verification", "final_certification_chain",
         "freshness_audit", "freshness_certification_gate",
     }.issubset(report)
 
@@ -176,3 +182,17 @@ def test_missing_provenance_seal_blocks_certification(monkeypatch, tmp_path):
     assert report["status"] == "FAIL"
     assert report["provenance_manifest_seal_verification"]["status"] == "FAIL"
     assert any(item["code"] == "PROVENANCE_MANIFEST_SEAL_FAILED" for item in report["errors"])
+
+
+def test_inventory_incompleteness_blocks_unified_certification(monkeypatch, tmp_path):
+    incomplete = {
+        "schema_version": 1,
+        "audit_name": "research_artifact_inventory_specification",
+        "required_artifacts": [{"artifact_id": "metrics", "path": "metrics.csv"},
+                               {"artifact_id": "extra", "path": "extra.json"}],
+    }
+    report = call(monkeypatch, tmp_path, inventory_override=incomplete)
+    assert report["status"] == "FAIL"
+    assert report["artifact_inventory_completeness"]["status"] == "FAIL"
+    assert any(item["code"] == "ARTIFACT_INVENTORY_COMPLETENESS_FAILED" for item in report["errors"])
+    assert report["deployment_authorized"] is False
