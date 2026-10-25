@@ -266,7 +266,7 @@ def main() -> int:
         if output.exists():
             raise ValueError(f"output_already_exists:{output}")
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\\n", encoding="utf-8")
+        output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
         print(json.dumps({
             "status": report["status"], "readiness": report["readiness"],
             "report_path": str(output.resolve()), "artifacts_checked": report["artifacts_checked"],
