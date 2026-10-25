@@ -226,11 +226,22 @@ def run_unified_certification(
             "code": "PROVENANCE_MANIFEST_SEAL_FAILED",
             "error_count": len(seal_report["errors"]),
         })
-    if provenance_report["status"] != "PASS":
+    if provenance_report.get("status") != "PASS":
         errors.append({
             "code": "PROVENANCE_VERIFICATION_FAILED",
-            "stale_or_invalid_count": provenance_report["stale_or_invalid_count"],
-            "error_count": len(provenance_report["errors"]),
+            "stale_or_invalid_count": provenance_report.get("stale_or_invalid_count"),
+            "error_count": len(provenance_report.get("errors", [])),
+        })
+    if bundle_verification.get("status") != "PASS":
+        errors.append({
+            "code": "EVIDENCE_BUNDLE_VERIFICATION_FAILED",
+            "error_count": len(bundle_verification.get("errors", [])),
+        })
+    if certification_report.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
+        errors.append({
+            "code": "FINAL_CERTIFICATION_CHAIN_FAILED",
+            "certification_status": certification_report.get("status"),
+            "error_count": len(certification_report.get("errors", [])),
         })
     if gate_report["status"] not in {"PASS", "PASS_WITH_WARNINGS"}:
         errors.append({
