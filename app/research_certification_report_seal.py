@@ -95,7 +95,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("create", "verify"), required=True)
     parser.add_argument("--report", required=True, type=Path)
-    parser.add_argument("--seal", required=True, type=Path)
+    parser.add_argument("--seal", type=Path, help="Required only in verify mode")
     parser.add_argument("--output", type=Path, help="Required for create mode")
     args = parser.parse_args()
     try:
@@ -111,6 +111,8 @@ def main() -> int:
             print(json.dumps({"status": "PASS", "report_sha256": seal["report_sha256"],
                               "seal_path": str(args.output.resolve()), "deployment_authorized": False}, indent=2))
             return 0
+        if args.seal is None:
+            raise ValueError("seal_required_for_verify_mode")
         verification = verify_report_seal(report, _read_object(args.seal))
         print(json.dumps(verification, indent=2, sort_keys=True))
         return 0 if verification["status"] == "PASS" else 1
