@@ -4,6 +4,7 @@ import hashlib
 
 from app.research_unified_provenance_certification import run_unified_certification
 from app.research_provenance_manifest_seal import create_manifest_seal
+from app.research_artifact_inventory_spec_seal import create_inventory_spec_seal
 
 REV = "a" * 40
 CONFIG_HASH = hashlib.sha256(b"config").hexdigest()
@@ -42,7 +43,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True):
     import app.research_unified_provenance_certification as module
 
     provenance_report = {
@@ -87,6 +88,7 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
         provenance_seal=create_manifest_seal(selected_manifest) if include_seal else None,
         inventory_spec=inventory_spec,
+        inventory_seal=create_inventory_spec_seal(inventory_spec) if include_inventory_seal else None,
         evidence_root=tmp_path, artifact_root=tmp_path,
         current_source_revision=REV, repo_path=repo_path, config_path=tmp_path / "config.json",
         dataset_path=tmp_path / "dataset",
@@ -118,7 +120,7 @@ def test_freshness_gate_failure_blocks_overall_certification(monkeypatch, tmp_pa
 def test_unified_report_retains_all_component_reports(monkeypatch, tmp_path):
     report = call(monkeypatch, tmp_path)
     assert {
-        "artifact_inventory_completeness", "provenance_manifest_seal_verification", "provenance_verification", "bundle_verification", "final_certification_chain",
+        "artifact_inventory_spec_seal_verification", "artifact_inventory_completeness", "provenance_manifest_seal_verification", "provenance_verification", "bundle_verification", "final_certification_chain",
         "freshness_audit", "freshness_certification_gate",
     }.issubset(report)
 
@@ -196,3 +198,10 @@ def test_inventory_incompleteness_blocks_unified_certification(monkeypatch, tmp_
     assert report["artifact_inventory_completeness"]["status"] == "FAIL"
     assert any(item["code"] == "ARTIFACT_INVENTORY_COMPLETENESS_FAILED" for item in report["errors"])
     assert report["deployment_authorized"] is False
+
+
+def test_missing_inventory_spec_seal_blocks_certification(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path, include_inventory_seal=False)
+    assert report["status"] == "FAIL"
+    assert report["artifact_inventory_spec_seal_verification"]["status"] == "FAIL"
+    assert any(item["code"] == "INVENTORY_SPEC_SEAL_FAILED" for item in report["errors"])
