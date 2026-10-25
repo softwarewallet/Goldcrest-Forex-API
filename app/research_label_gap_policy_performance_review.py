@@ -60,6 +60,16 @@ def _finite(value: object, label: str) -> float:
 def _check_pass(payload: Mapping[str, Any], label: str) -> None:
     if payload.get("status") not in _PASS:
         raise ValueError(f"{label}_status_not_pass")
+    for field in ("errors", "warnings"):
+        if field not in payload:
+            continue
+        diagnostics = payload[field]
+        if not isinstance(diagnostics, list) or any(
+            not isinstance(item, str) or not item.strip() for item in diagnostics
+        ):
+            raise ValueError(f"{label}_{field}_schema_invalid")
+    if payload.get("errors"):
+        raise ValueError(f"{label}_reports_errors_despite_pass_status")
 
 
 def _check_research_flags(payload: Mapping[str, Any], label: str) -> None:
@@ -158,8 +168,7 @@ def _load_seed_reports(
         seed = item.get("seed")
         if isinstance(seed, bool) or not isinstance(seed, int) or seed in results:
             raise ValueError(f"cap_{cap_hours:g}h_seed_identity_invalid")
-        if item.get("status") not in _PASS:
-            raise ValueError(f"cap_{cap_hours:g}h_seed_{seed}_status_not_pass")
+        _check_pass(item, f"cap_{cap_hours:g}h_seed_{seed}")
         experiments = item.get("experiments")
         if not isinstance(experiments, dict) or not experiments:
             raise ValueError(f"cap_{cap_hours:g}h_seed_{seed}_experiments_missing")
@@ -210,10 +219,24 @@ def _equivalence_group_map(policy_report: Mapping[str, Any]) -> tuple[dict[str, 
             raise ValueError("gap_policy_policy_name_missing")
         if name in policies:
             raise ValueError(f"gap_policy_duplicate_policy:{name}")
-        if not isinstance(mask_hash, str) or len(mask_hash) != 64:
+        if not isinstance(mask_hash, str) or len(mask_hash) != 64 or any(ch not in "0123456789abcdef" for ch in mask_hash.lower()):
             raise ValueError(f"gap_policy_eligible_mask_hash_invalid:{name}")
-        if not isinstance(excluded_hash, str) or len(excluded_hash) != 64:
+        if not isinstance(excluded_hash, str) or len(excluded_hash) != 64 or any(ch not in "0123456789abcdef" for ch in excluded_hash.lower()):
             raise ValueError(f"gap_policy_ineligible_mask_hash_invalid:{name}")
+        counts = {}
+        for field in ("dataset_rows", "eligible_rows", "ineligible_rows"):
+            value = item.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"gap_policy_{field}_invalid:{name}")
+            counts[field] = value
+        if counts["dataset_rows"] <= 0 or counts["eligible_rows"] + counts["ineligible_rows"] != counts["dataset_rows"]:
+            raise ValueError(f"gap_policy_row_count_arithmetic_invalid:{name}")
+        fraction = item.get("eligible_fraction")
+        if isinstance(fraction, bool) or not isinstance(fraction, (int, float)) or not math.isfinite(float(fraction)) or not 0 <= float(fraction) <= 1:
+            raise ValueError(f"gap_policy_eligible_fraction_invalid:{name}")
+        expected_fraction = counts["eligible_rows"] / counts["dataset_rows"]
+        if not math.isclose(float(fraction), expected_fraction, rel_tol=0, abs_tol=1e-8):
+            raise ValueError(f"gap_policy_eligible_fraction_mismatch:{name}")
         policies[name] = item
         group = groups.setdefault(mask_hash, {
             "eligible_row_numbers_sha256": mask_hash,

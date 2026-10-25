@@ -239,3 +239,44 @@ def test_review_rejects_a_changed_threshold_sweep_report(tmp_path):
 
     with pytest.raises(ValueError, match="threshold_sweep_report_hash_mismatch"):
         review_gap_policy_performance(policy, audit)
+
+
+
+def test_review_rejects_malformed_policy_diagnostic_schema(tmp_path):
+    policy, audit, _ = _fixture(tmp_path)
+    payload = json.loads(policy.read_text(encoding="utf-8"))
+    payload["warnings"] = "unexpected-string"
+    _write(policy, payload)
+
+    with pytest.raises(ValueError, match="gap_policy_equivalence_audit_warnings_schema_invalid"):
+        review_gap_policy_performance(policy, audit)
+
+
+def test_review_rejects_passing_policy_with_errors(tmp_path):
+    policy, audit, _ = _fixture(tmp_path)
+    payload = json.loads(policy.read_text(encoding="utf-8"))
+    payload["errors"] = ["contradictory_error"]
+    _write(policy, payload)
+
+    with pytest.raises(ValueError, match="gap_policy_equivalence_audit_reports_errors_despite_pass_status"):
+        review_gap_policy_performance(policy, audit)
+
+
+def test_review_rejects_policy_row_count_arithmetic_mismatch(tmp_path):
+    policy, audit, _ = _fixture(tmp_path)
+    payload = json.loads(policy.read_text(encoding="utf-8"))
+    payload["candidate_policies"][1]["ineligible_rows"] = 3
+    _write(policy, payload)
+
+    with pytest.raises(ValueError, match="gap_policy_row_count_arithmetic_invalid:elapsed_cap_1h"):
+        review_gap_policy_performance(policy, audit)
+
+
+def test_review_rejects_non_hex_eligibility_mask_fingerprint(tmp_path):
+    policy, audit, _ = _fixture(tmp_path)
+    payload = json.loads(policy.read_text(encoding="utf-8"))
+    payload["candidate_policies"][1]["eligible_row_numbers_sha256"] = "g" * 64
+    _write(policy, payload)
+
+    with pytest.raises(ValueError, match="gap_policy_eligible_mask_hash_invalid:elapsed_cap_1h"):
+        review_gap_policy_performance(policy, audit)
