@@ -97,7 +97,7 @@ def test_evaluation_gate_rejects_naive_timestamps_and_reversed_windows(tmp_path:
     report = _report()
     fold = report["experiments"][0]["fold_results"][0]
     fold["test_start_utc"] = "2026-01-01T01:00:00"
-    fold["test_end_utc"] = "2026-01-01T00:00:00Z"
+    fold["validation_end_utc"] = "2026-01-01T01:00:00Z"
     result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
     assert result["status"] == "FAIL"
     codes = {item["code"] for item in result["errors"]}
