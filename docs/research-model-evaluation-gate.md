@@ -49,3 +49,8 @@ The consolidated evidence report now inventories the number of comparisons repre
 ## Phase 10: Manifest-to-receipt consistency
 
 For hash-bound provenance, model-evaluation-gate, and temporal-calibration receipts, the consolidated evidence report checks any status/error/warning summary fields copied into the pipeline manifest against the receipt contents. A mismatch is an integrity error even if the receipt itself is readable. This catches stale or contradictory manifest metadata; it supplements, and does not replace, the artifact hash, scope, run, and source-matrix checks. Legacy manifests that do not record a summary field are not failed solely because that field is absent.
+
+
+## Phase 11: Artifact identity metadata completeness
+
+Each artifact record now reports whether symbol, timeframe, and manifest-path identity metadata were present and matched the current run context. Missing identity fields generate explicit warnings and a `PARTIAL` metadata status rather than being silently treated as verified. A reported-but-mismatched identity remains an error. This is backward-compatible with older receipts and makes provenance limitations visible without overstating what legacy artifacts establish.

@@ -300,20 +300,36 @@ def _artifact_record(
         errors.append(f"{section_name}_scope_mismatch")
     if report.get("run_id") != expected_run_id:
         errors.append(f"{section_name}_run_id_mismatch")
-    if expected_symbol and report.get("symbol") is not None:
-        if str(report.get("symbol")).strip().upper() != expected_symbol.upper():
-            errors.append(f"{section_name}_symbol_mismatch")
-    if expected_timeframe and report.get("timeframe") is not None:
-        if str(report.get("timeframe")).strip().upper() != expected_timeframe.upper():
-            errors.append(f"{section_name}_timeframe_mismatch")
+    identity_fields_present: list[str] = ["run_id"] if report.get("run_id") else []
+    identity_fields_missing: list[str] = []
+    if expected_symbol:
+        if report.get("symbol") is None:
+            identity_fields_missing.append("symbol")
+            warnings.append(f"{section_name}_symbol_not_reported")
+        else:
+            identity_fields_present.append("symbol")
+            if str(report.get("symbol")).strip().upper() != expected_symbol.upper():
+                errors.append(f"{section_name}_symbol_mismatch")
+    if expected_timeframe:
+        if report.get("timeframe") is None:
+            identity_fields_missing.append("timeframe")
+            warnings.append(f"{section_name}_timeframe_not_reported")
+        else:
+            identity_fields_present.append("timeframe")
+            if str(report.get("timeframe")).strip().upper() != expected_timeframe.upper():
+                errors.append(f"{section_name}_timeframe_mismatch")
 
     reported_manifest = report.get("manifest_path")
     if reported_manifest:
+        identity_fields_present.append("manifest_path")
         reported_path = Path(str(reported_manifest))
         if not reported_path.is_absolute():
             reported_path = (path.parent / reported_path).resolve()
         if reported_path.resolve() != expected_manifest.resolve():
             errors.append(f"{section_name}_manifest_path_mismatch")
+    else:
+        identity_fields_missing.append("manifest_path")
+        warnings.append(f"{section_name}_manifest_path_not_reported")
 
     reported_matrix_hash = report.get("experiment_matrix_sha256")
     if reported_matrix_hash is None:
@@ -344,6 +360,11 @@ def _artifact_record(
         "path": str(path.resolve()),
         "sha256": digest,
         "scope": report.get("scope"),
+        "identity_metadata": {
+            "status": "COMPLETE" if not identity_fields_missing else "PARTIAL",
+            "fields_present": identity_fields_present,
+            "fields_missing": identity_fields_missing,
+        },
     }
     if errors:
         record["status"] = "FAIL"

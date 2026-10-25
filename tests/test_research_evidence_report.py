@@ -305,7 +305,8 @@ def test_consolidated_evidence_report_binds_and_summarizes_sources(tmp_path, mon
 
     result = evidence.build_research_evidence_report(manifest)
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert any(item.endswith("_not_reported") for item in result["warnings"])
     assert result["run_id"] == "evidence-run-001"
     assert result["source_matrix_sha256"]
     assert result["actionable"] is False
@@ -415,7 +416,7 @@ def test_legacy_run_accepts_explicit_temporal_calibration_receipt(tmp_path, monk
         manifest_path, temporal_calibration_path=temporal_path
     )
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "PASS_WITH_WARNINGS"
     assert result["sections"]["temporal_calibration"]["status"] == "PASS"
     assert result["summary"]["temporal_calibration"]["matrix_payload_hash_verified"] is True
 
@@ -806,3 +807,73 @@ def test_consolidated_report_accepts_matching_manifest_receipt_summary(tmp_path,
 
     assert "model_evaluation_gate_manifest_status_mismatch" not in result["errors"]
     assert "model_evaluation_gate_manifest_errors_mismatch" not in result["errors"]
+
+
+
+def test_artifact_record_reports_partial_identity_metadata_as_warning(tmp_path):
+    artifact = tmp_path / "receipt.json"
+    _write_json(artifact, {
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "run_id": "run-1",
+        "status": "PASS",
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="model_evaluation_gate",
+        path=artifact,
+        expected_scope="GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        expected_run_id="run-1",
+        expected_symbol="EURUSD",
+        expected_timeframe="M15",
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert errors == []
+    assert record["identity_metadata"]["status"] == "PARTIAL"
+    assert record["identity_metadata"]["fields_missing"] == [
+        "symbol", "timeframe", "manifest_path"
+    ]
+    assert "model_evaluation_gate_symbol_not_reported" in warnings
+    assert "model_evaluation_gate_timeframe_not_reported" in warnings
+    assert "model_evaluation_gate_manifest_path_not_reported" in warnings
+
+
+def test_artifact_record_marks_complete_identity_metadata(tmp_path):
+    artifact = tmp_path / "receipt.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "run_id": "run-1",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
+        "manifest_path": str(manifest.resolve()),
+        "status": "PASS",
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="model_evaluation_gate",
+        path=artifact,
+        expected_scope="GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        expected_run_id="run-1",
+        expected_symbol="EURUSD",
+        expected_timeframe="M15",
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert errors == []
+    assert warnings == []
+    assert record["identity_metadata"]["status"] == "COMPLETE"
+    assert record["identity_metadata"]["fields_missing"] == []
