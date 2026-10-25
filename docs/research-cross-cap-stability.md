@@ -39,3 +39,14 @@ add `--overwrite` after reviewing the target path.
 The audit is descriptive and fail-closed. It does not modify source reports, promote models,
 connect to execution, or enable trading. If a source metric or report is missing or inconsistent,
 the audit returns `FAIL` rather than substituting a metric from a different evaluation cohort.
+
+
+## Common-cohort input integrity
+
+The common-held-out-cohort auditor requires each source comparison report to explicitly
+set `inferential: false`, `automatic_model_selection: false`, `actionable: false`,
+and `execution_connected: false`. When supplied, `errors` and `warnings` must be
+lists of non-empty strings. A report marked `PASS` or `PASS_WITH_WARNINGS` with a
+non-empty `errors` list is rejected. Missing or malformed safety/diagnostic metadata
+is not silently treated as safe. These checks validate report integrity; they do not
+remove legitimate provenance warnings or establish model quality.
