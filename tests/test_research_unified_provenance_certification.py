@@ -266,6 +266,7 @@ def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, 
             "artifact_inventory_completeness": {"status": "PASS"},
             "artifact_inventory_spec_seal_verification": {"status": "PASS"},
             "regeneration_required_count": 0, "errors": [], "deployment_authorized": False,
+            **FLAGS,
         }
     monkeypatch.setattr(module, "run_unified_certification", fake_runner)
     assert module.main() == 0
