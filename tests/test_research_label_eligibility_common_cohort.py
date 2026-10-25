@@ -7,12 +7,21 @@ from pathlib import Path
 from app.research_label_eligibility_common_cohort import audit_common_heldout_cohort
 
 
-def _report(path: Path, cap: float, rows: list[dict], *, symbol: str = "EURUSD") -> Path:
+def _report(
+    path: Path,
+    cap: float,
+    rows: list[dict],
+    *,
+    symbol: str = "EURUSD",
+    baseline_run_id: str = "baseline-365",
+    baseline_dataset_sha256: str = "b" * 64,
+) -> Path:
     timestamps = sorted(row["timestamp_utc"] for row in rows)
     fingerprint = hashlib.sha256(("\n".join(timestamps) + ("\n" if timestamps else "")).encode()).hexdigest()
     report = {
         "status": "PASS",
-        "baseline_run_id": "baseline-365",
+        "baseline_run_id": baseline_run_id,
+        "baseline_dataset_sha256": baseline_dataset_sha256,
         "variant_run_id": f"cap-{cap}",
         "symbol": symbol,
         "timeframe": "M15",
@@ -121,3 +130,64 @@ def test_common_cohort_fails_when_no_timestamp_records_are_present(tmp_path):
     assert result["status"] == "FAIL"
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+
+
+def test_strict_mode_rejects_different_baseline_run_ids_even_when_dataset_hash_matches(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows(), baseline_run_id="baseline-run-a")
+    b = _report(tmp_path / "cap8.json", 8.0, _rows(), baseline_run_id="baseline-run-b")
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("incompatible baseline_run_id" in error for error in result["errors"])
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
+
+
+def test_dataset_hash_equivalence_mode_allows_distinct_ids_and_preserves_provenance(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows(), baseline_run_id="baseline-run-a")
+    b = _report(tmp_path / "cap8.json", 8.0, _rows(), baseline_run_id="baseline-run-b")
+
+    result = audit_common_heldout_cohort([a, b], allow_baseline_id_variation=True)
+
+    assert result["status"] == "PASS"
+    assert result["baseline_run_id"] is None
+    assert result["baseline_run_ids"] == ["baseline-run-a", "baseline-run-b"]
+    assert result["baseline_identity_mode"] == "dataset_hash_equivalence"
+    assert result["baseline_dataset_sha256"] == "b" * 64
+    assert any("baseline run IDs differ" in warning for warning in result["warnings"])
+    assert result["automatic_model_selection"] is False
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
+
+
+def test_dataset_hash_equivalence_mode_rejects_different_dataset_hashes(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows(), baseline_run_id="baseline-run-a")
+    b = _report(
+        tmp_path / "cap8.json",
+        8.0,
+        _rows(),
+        baseline_run_id="baseline-run-b",
+        baseline_dataset_sha256="c" * 64,
+    )
+
+    result = audit_common_heldout_cohort([a, b], allow_baseline_id_variation=True)
+
+    assert result["status"] == "FAIL"
+    assert any("incompatible baseline_dataset_sha256" in error for error in result["errors"])
+    assert result["actionable"] is False
+
+
+def test_dataset_hash_equivalence_mode_requires_valid_baseline_dataset_hash(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    payload = json.loads(b.read_text())
+    payload.pop("baseline_dataset_sha256")
+    b.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_common_heldout_cohort([a, b], allow_baseline_id_variation=True)
+
+    assert result["status"] == "FAIL"
+    assert any("baseline_dataset_sha256 is required" in error for error in result["errors"])
+    assert result["actionable"] is False
