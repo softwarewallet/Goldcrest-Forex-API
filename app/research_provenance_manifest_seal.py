@@ -31,8 +31,13 @@ def canonical_manifest_bytes(manifest: dict[str, Any]) -> bytes:
 
 
 def create_manifest_seal(manifest: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest_must_be_json_object")
     if manifest.get("audit_name") != "research_artifact_provenance_manifest":
         raise ValueError("manifest_audit_name_invalid")
+    for flag in FALSE_FLAGS:
+        if manifest.get(flag) is not False:
+            raise ValueError(f"manifest_safety_flag_not_explicitly_false:{flag}")
     raw = canonical_manifest_bytes(manifest)
     revision = manifest.get("source_revision")
     if not isinstance(revision, str) or len(revision) != 40 or any(c not in "0123456789abcdefABCDEF" for c in revision):
