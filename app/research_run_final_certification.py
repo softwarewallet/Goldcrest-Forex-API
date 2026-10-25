@@ -49,6 +49,7 @@ def _write_pair_atomically(
     if second_path.exists():
         raise ValueError(f"output_already_exists:{second_path}")
     staged: list[tuple[Path, Path]] = []
+    published: list[tuple[Path, int, int]] = []
     try:
         for destination, payload in (
             (first_path, first_payload),
@@ -68,12 +69,28 @@ def _write_pair_atomically(
                 stream.flush()
                 os.fsync(stream.fileno())
                 staged.append((Path(stream.name), destination))
-        # Recheck before publishing so an existing output is never overwritten.
+
+        # Refuse pre-existing destinations before publishing. Hard-link publication is
+        # atomic per file and fails if a destination appears after this preflight; unlike
+        # os.replace(), it cannot silently overwrite a concurrently-created output.
         if any(destination.exists() for _, destination in staged):
             raise ValueError("output_created_during_run")
         for temporary, destination in staged:
-            os.replace(temporary, destination)
+            os.link(temporary, destination)
+            published_stat = destination.stat()
+            published.append((destination, published_stat.st_dev, published_stat.st_ino))
+            temporary.unlink()
     except Exception:
+        # A pair spanning paths/directories cannot be a single filesystem transaction.
+        # Roll back only files this attempt published, and only while each path still
+        # refers to the inode we created (never remove a replacement made by another actor).
+        for destination, device, inode in reversed(published):
+            try:
+                current = destination.stat()
+                if current.st_dev == device and current.st_ino == inode:
+                    destination.unlink()
+            except OSError:
+                pass
         for temporary, _ in staged:
             try:
                 temporary.unlink(missing_ok=True)

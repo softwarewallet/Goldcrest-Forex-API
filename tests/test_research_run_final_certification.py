@@ -103,3 +103,29 @@ def test_pair_writer_writes_both_reports(tmp_path):
     _write_pair_atomically(first, {"status": "PASS"}, second, {"status": "PASS"})
     assert json.loads(first.read_text(encoding="utf-8"))["status"] == "PASS"
     assert json.loads(second.read_text(encoding="utf-8"))["status"] == "PASS"
+
+
+def test_pair_writer_rolls_back_first_output_if_second_publish_fails(tmp_path, monkeypatch):
+    import app.research_run_final_certification as module
+
+    first = tmp_path / "nested" / "verification.json"
+    second = tmp_path / "nested" / "final.json"
+    real_link = module.os.link
+    calls = 0
+
+    def fail_on_second_link(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated_second_publish_failure")
+        return real_link(source, destination)
+
+    monkeypatch.setattr(module.os, "link", fail_on_second_link)
+    with pytest.raises(OSError, match="simulated_second_publish_failure"):
+        _write_pair_atomically(
+            first, {"status": "PASS"}, second, {"status": "PASS"}
+        )
+
+    assert not first.exists()
+    assert not second.exists()
+    assert list(first.parent.glob(".*.tmp")) == []
