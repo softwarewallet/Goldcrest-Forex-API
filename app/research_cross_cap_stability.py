@@ -195,8 +195,7 @@ def audit_cross_cap_stability(
 
         reference_key = str(REFERENCE_CAP_HOURS)
         per_seed = []
-        seed_delta_values: dict[tuple[str, str, str], list[float]] = {}
-        seed_fold_direction: dict[tuple[str, str, str], list[float]] = {}
+        seed_delta_values: dict[tuple[str, str, str, str], list[float]] = {}
         experiment_keys: set[tuple[str, str]] | None = None
         for item in loaded:
             audit = item["audit"]
@@ -224,7 +223,6 @@ def audit_cross_cap_stability(
                                 delta = _finite_metric(metrics, metric, "cap metrics") - _finite_metric(reference, metric, "reference metrics")
                                 deltas[metric] = delta
                                 fold_delta_by_metric_cap.setdefault((cap_key, metric), []).append(delta)
-                                seed_fold_direction.setdefault((model, cap_key, metric), []).append(delta)
                         fold_caps[cap_key] = {
                             "metrics": {metric: metrics[metric] for metric in (
                                 "sample_count", "positive_count", "negative_count", "prevalence",
@@ -253,7 +251,7 @@ def audit_cross_cap_stability(
                         if not values:
                             raise ValueError(f"seed {item['seed']} has no fold deltas for {model}/{feature}/{cap_key}/{metric}")
                         seed_mean_delta = statistics.fmean(values)
-                        key = (model, cap_key, metric)
+                        key = (model, feature, cap_key, metric)
                         seed_delta_values.setdefault(key, []).append(seed_mean_delta)
                         direction = METRIC_DIRECTIONS[metric]
                         favorable = seed_mean_delta < -_NEUTRAL_TOLERANCE if direction == "lower_is_better" else seed_mean_delta > _NEUTRAL_TOLERANCE
@@ -296,13 +294,14 @@ def audit_cross_cap_stability(
             })
 
         cross_seed = []
-        for (model, cap_key, metric), values in sorted(seed_delta_values.items()):
+        for (model, feature, cap_key, metric), values in sorted(seed_delta_values.items()):
             direction = METRIC_DIRECTIONS[metric]
             favorable = sum(v < -_NEUTRAL_TOLERANCE for v in values) if direction == "lower_is_better" else sum(v > _NEUTRAL_TOLERANCE for v in values)
             adverse = sum(v > _NEUTRAL_TOLERANCE for v in values) if direction == "lower_is_better" else sum(v < -_NEUTRAL_TOLERANCE for v in values)
             neutral = len(values) - favorable - adverse
             cross_seed.append({
                 "model_type": model,
+                "feature_variant": feature,
                 "cap_hours": float(cap_key),
                 "reference_cap_hours": REFERENCE_CAP_HOURS,
                 "metric": metric,
@@ -340,7 +339,7 @@ def audit_cross_cap_stability(
             "execution_connected": False,
             "interpretation": "Metrics are recomputed by the source common-cohort audits on the same held-out timestamp intersection across all three caps within each seed and fold. Deltas are cap metric minus the 1-hour metric; lower log loss/Brier and higher accuracy are directionally favorable.",
         }
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError, OverflowError) as exc:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError, OverflowError, AttributeError) as exc:
         return {
             "schema_version": 1,
             "scope": "GOLDCREST_CROSS_CAP_STABILITY_AUDIT",
