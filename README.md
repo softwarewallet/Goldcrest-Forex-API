@@ -186,3 +186,8 @@ python -m app.research_cross_cap_stability \
 The audit is descriptive and non-actionable; it summarizes fold deltas within each seed before
 cross-seed aggregation and does not authorize model selection or trading. See
 `docs/research-cross-cap-stability.md` for interpretation and safeguards.
+
+
+## Offline model evaluation integrity gate
+
+Validate persisted walk-forward experiment matrices for metric arithmetic, fold coverage, timezone-aware temporal boundaries, and explicit non-actionable/no-test-selection safeguards without changing the source report. See `docs/research-model-evaluation-gate.md` and run `python -m app.research_model_evaluation_gate --experiment-matrix data/research/runs/<run-id>_experiment_matrix.json --json`.
