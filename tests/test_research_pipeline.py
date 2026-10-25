@@ -124,6 +124,14 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert stored["temporal_calibration_audit_errors"] == temporal_audit["errors"]
     assert stored["temporal_calibration_audit_warnings"] == temporal_audit["warnings"]
     assert stored["strict_temporal_calibration_audit"] is False
+    evaluation_gate_path = Path(stored["model_evaluation_gate_path"])
+    assert evaluation_gate_path.is_file()
+    evaluation_gate = json.loads(evaluation_gate_path.read_text(encoding="utf-8"))
+    assert evaluation_gate["status"] == "FAIL"  # deliberately incomplete mocked matrix
+    assert stored["model_evaluation_gate_sha256"] == research_pipeline._sha256(evaluation_gate_path)
+    assert stored["model_evaluation_gate_status"] == evaluation_gate["status"]
+    assert stored["model_evaluation_gate_errors"] == evaluation_gate["errors"]
+    assert stored["strict_model_evaluation_gate"] is False
     assert result["validation_status"] == "FAIL"  # deliberately incomplete mocked experiment report
     assert Path(result["validation_report_path"]).is_file()
     validation_report = json.loads(Path(result["validation_report_path"]).read_text(encoding="utf-8"))
