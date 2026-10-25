@@ -49,13 +49,23 @@ def run_unified_certification(
 ) -> dict[str, Any]:
     git_report: dict[str, Any] | None = None
     git_error: str | None = None
-    if repo_path is not None:
+    if repo_path is None:
+        git_error = "ValueError:repo_path_required_for_git_source_provenance"
+    else:
         try:
             git_report = inspect_git_provenance(repo_path)
-            current_source_revision = git_report["source_revision"]
-        except (OSError, ValueError) as exc:
+            resolved_revision = git_report.get("source_revision")
+            if not isinstance(resolved_revision, str) or len(resolved_revision) != 40 or any(char not in "0123456789abcdef" for char in resolved_revision):
+                raise ValueError("git_source_revision_invalid")
+            current_source_revision = resolved_revision
+            if git_report.get("status") != "PASS" or git_report.get("working_tree_clean") is not True:
+                # Preserve the report for diagnostics, but never treat a dirty or internally
+                # inconsistent Git result as a valid source identity.
+                git_error = "ValueError:git_source_tree_not_clean"
+        except (OSError, ValueError, KeyError, TypeError) as exc:
             git_error = f"{type(exc).__name__}:{exc}"
     if current_source_revision is None:
+        # Diagnostic placeholder only; git_error below guarantees this cannot certify.
         current_source_revision = "0" * 40
     seal_report = verify_manifest_seal(provenance_manifest, provenance_seal) if provenance_seal is not None else {
         "audit_name": "research_provenance_manifest_seal_verification",
