@@ -205,3 +205,44 @@ def test_missing_inventory_spec_seal_blocks_certification(monkeypatch, tmp_path)
     assert report["status"] == "FAIL"
     assert report["artifact_inventory_spec_seal_verification"]["status"] == "FAIL"
     assert any(item["code"] == "INVENTORY_SPEC_SEAL_FAILED" for item in report["errors"])
+
+
+def test_cli_passes_all_seals_and_inventory_spec_to_unified_runner(monkeypatch, tmp_path):
+    import sys
+    import app.research_unified_provenance_certification as module
+
+    output = tmp_path / "out" / "certification.json"
+    monkeypatch.setattr(sys, "argv", [
+        "research_unified_provenance_certification",
+        "--readiness-report", str(tmp_path / "readiness.json"),
+        "--evidence-bundle", str(tmp_path / "bundle.json"),
+        "--evidence-root", str(tmp_path),
+        "--provenance-manifest", str(tmp_path / "provenance.json"),
+        "--provenance-seal", str(tmp_path / "provenance-seal.json"),
+        "--inventory-spec", str(tmp_path / "inventory.json"),
+        "--inventory-seal", str(tmp_path / "inventory-seal.json"),
+        "--artifact-root", str(tmp_path),
+        "--repo-path", str(tmp_path),
+        "--config-path", str(tmp_path / "config.json"),
+        "--dataset-path", str(tmp_path / "dataset"),
+        "--output", str(output),
+    ])
+    import pathlib
+    monkeypatch.setattr(module, "_read_object", lambda path: {"source": pathlib.Path(path).name})
+    captured = {}
+    def fake_runner(*args, **kwargs):
+        captured.update(kwargs)
+        return {
+            "status": "PASS", "readiness": "CERTIFIED_CURRENT", "artifact_count": 1,
+            "stale_or_invalid_artifact_count": 0,
+            "provenance_manifest_seal_verification": {"status": "PASS"},
+            "artifact_inventory_completeness": {"status": "PASS"},
+            "artifact_inventory_spec_seal_verification": {"status": "PASS"},
+            "regeneration_required_count": 0, "errors": [], "deployment_authorized": False,
+        }
+    monkeypatch.setattr(module, "run_unified_certification", fake_runner)
+    assert module.main() == 0
+    assert captured["provenance_seal"]["source"] == "provenance-seal.json"
+    assert captured["inventory_spec"]["source"] == "inventory.json"
+    assert captured["inventory_seal"]["source"] == "inventory-seal.json"
+    assert output.is_file()
