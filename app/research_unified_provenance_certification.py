@@ -48,6 +48,13 @@ def run_unified_certification(
     config_path: Path,
     dataset_path: Path,
 ) -> dict[str, Any]:
+    if not isinstance(readiness, dict):
+        readiness = {}
+    if not isinstance(bundle, dict):
+        bundle = {}
+    if not isinstance(provenance_manifest, dict):
+        provenance_manifest = {}
+
     git_report: dict[str, Any] | None = None
     git_error: str | None = None
     if repo_path is None:
@@ -74,28 +81,50 @@ def run_unified_certification(
         "manifest_sha256": None,
         "errors": [{"code": "PROVENANCE_SEAL_REQUIRED"}],
     }
-    inventory_report = audit_artifact_inventory_completeness(provenance_manifest, inventory_spec) if inventory_spec is not None else {
-        "audit_name": "research_artifact_inventory_completeness_audit",
-        "status": "FAIL",
-        "errors": [{"code": "INDEPENDENT_INVENTORY_SPEC_REQUIRED"}],
-        "manifest_artifact_count": None,
-        "expected_artifact_count": None,
-        "missing_or_mislocated_artifacts": [],
-        "unexpected_or_mislocated_artifacts": [],
-    }
+    try:
+        inventory_report = audit_artifact_inventory_completeness(provenance_manifest, inventory_spec) if inventory_spec is not None else {
+            "audit_name": "research_artifact_inventory_completeness_audit",
+            "status": "FAIL",
+            "errors": [{"code": "INDEPENDENT_INVENTORY_SPEC_REQUIRED"}],
+            "manifest_artifact_count": None,
+            "expected_artifact_count": None,
+            "missing_or_mislocated_artifacts": [],
+            "unexpected_or_mislocated_artifacts": [],
+        }
+    except (OSError, ValueError, TypeError) as exc:
+        inventory_report = {
+            "audit_name": "research_artifact_inventory_completeness_audit",
+            "status": "FAIL",
+            "errors": [{"code": "INVENTORY_AUDIT_EXECUTION_FAILED", "error": f"{type(exc).__name__}:{exc}"}],
+            "manifest_artifact_count": None,
+            "expected_artifact_count": None,
+            "missing_or_mislocated_artifacts": [],
+            "unexpected_or_mislocated_artifacts": [],
+        }
     inventory_seal_report = verify_inventory_spec_seal(inventory_spec, inventory_seal) if inventory_spec is not None and inventory_seal is not None else {
         "audit_name": "research_artifact_inventory_specification_seal_verification",
         "status": "FAIL",
         "inventory_spec_sha256": None,
         "errors": [{"code": "INVENTORY_SPEC_SEAL_REQUIRED"}],
     }
-    provenance_report = verify_provenance(
-        provenance_manifest,
-        root=artifact_root,
-        current_source_revision=current_source_revision,
-        config_path=config_path,
-        dataset_path=dataset_path,
-    )
+    try:
+        provenance_report = verify_provenance(
+            provenance_manifest,
+            root=artifact_root,
+            current_source_revision=current_source_revision,
+            config_path=config_path,
+            dataset_path=dataset_path,
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        provenance_report = {
+            "audit_name": "research_artifact_provenance_verification",
+            "status": "FAIL",
+            "artifact_count": 0,
+            "current_count": 0,
+            "stale_or_invalid_count": 0,
+            "artifacts": [],
+            "errors": [{"code": "PROVENANCE_AUDIT_EXECUTION_FAILED", "error": f"{type(exc).__name__}:{exc}"}],
+        }
 
     captured_artifacts = provenance_manifest.get("artifacts", [])
     if not isinstance(captured_artifacts, list):
@@ -153,9 +182,23 @@ def run_unified_certification(
             "regeneration_order": [],
             "errors": [{"code": "FRESHNESS_AUDIT_EXECUTION_FAILED", "error": f"{type(exc).__name__}:{exc}"}],
         }
-    bundle_verification, certification_report = run_final_certification(
-        readiness, bundle, evidence_root=evidence_root
-    )
+    try:
+        bundle_verification, certification_report = run_final_certification(
+            readiness, bundle, evidence_root=evidence_root
+        )
+    except (OSError, ValueError, TypeError) as exc:
+        failure = {"code": "FINAL_CERTIFICATION_EXECUTION_FAILED", "error": f"{type(exc).__name__}:{exc}"}
+        bundle_verification = {
+            "audit_name": "research_evaluation_certification_evidence_bundle_verification",
+            "status": "FAIL",
+            "errors": [failure],
+        }
+        certification_report = {
+            "audit_name": "research_final_certification_chain",
+            "status": "FAIL",
+            "readiness": "NOT_CERTIFIED",
+            "errors": [failure],
+        }
     gate_report = gate_freshness_certification(freshness_report, certification_report)
 
     errors: list[dict[str, Any]] = list(fingerprint_errors)
