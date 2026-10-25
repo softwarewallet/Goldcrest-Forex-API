@@ -78,26 +78,67 @@ def _chronology_integrity(
     invalid = 0
     missing = 0
     timestamps_by_fold: dict[int, list[datetime]] = {index: [] for index in fold_indices}
+    # Compare all available fold-window boundaries and held-out counts, not only
+    # test starts. Partial legacy schemas remain usable but are explicitly reported.
+    boundary_aliases = {
+        "train_start_utc": ("train_start_utc", "train_start"),
+        "train_end_utc": ("train_end_utc", "train_end"),
+        "validation_start_utc": ("validation_start_utc", "validation_start"),
+        "validation_end_utc": ("validation_end_utc", "validation_end"),
+        "test_start_utc": ("test_start_utc", "test_start"),
+        "test_end_utc": ("test_end_utc", "test_end"),
+    }
+    boundary_values: dict[int, list[dict[str, datetime | None]]] = {index: [] for index in fold_indices}
+    sample_counts_by_fold: dict[int, list[object]] = {index: [] for index in fold_indices}
+    metadata_fields_seen: set[str] = set()
+    window_mismatch = False
+    sample_count_mismatch = False
     for candidate in candidates:
         for index in fold_indices:
             fold = indexed[candidate][index]
-            raw = fold.get("test_start_utc", fold.get("test_start"))
-            if raw is None:
+            normalized: dict[str, datetime | None] = {}
+            for canonical, aliases in boundary_aliases.items():
+                raw = next((fold.get(alias) for alias in aliases if fold.get(alias) is not None), None)
+                if raw is None:
+                    normalized[canonical] = None
+                    continue
+                metadata_fields_seen.add(canonical)
+                parsed = _parse_utc_timestamp(raw)
+                normalized[canonical] = parsed
+                if parsed is None:
+                    invalid += 1
+            boundary_values[index].append(normalized)
+            raw_start = normalized["test_start_utc"]
+            if raw_start is None and not any(fold.get(k) is not None for k in boundary_aliases["test_start_utc"]):
                 missing += 1
-                continue
-            parsed = _parse_utc_timestamp(raw)
-            if parsed is None:
-                invalid += 1
-                continue
-            observed += 1
-            timestamps_by_fold[index].append(parsed)
+            elif raw_start is not None:
+                observed += 1
+                timestamps_by_fold[index].append(raw_start)
+            metrics, _ = _test_metrics_with_source(fold)
+            sample_counts_by_fold[index].append(
+                metrics.get("sample_count") if isinstance(metrics, Mapping) else None
+            )
+
+    for index in fold_indices:
+        rows = boundary_values[index]
+        for field in boundary_aliases:
+            values = [row.get(field) for row in rows]
+            present = [value for value in values if value is not None]
+            if present and len(present) == len(rows) and len(set(present)) > 1:
+                window_mismatch = True
+        counts = sample_counts_by_fold[index]
+        present_counts = [value for value in counts if value is not None]
+        if present_counts and len(present_counts) == len(counts) and len(set(present_counts)) > 1:
+            sample_count_mismatch = True
 
     if expected == 0:
         status = "NOT_EVALUATED"
-    elif observed == 0 and invalid == 0:
-        status = "DECLARED_FOLD_ORDER_ONLY"
     elif invalid:
         status = "INVALID_TEST_START_TIMESTAMPS"
+    elif window_mismatch or sample_count_mismatch:
+        status = "CROSS_CANDIDATE_WINDOW_MISMATCH"
+    elif observed == 0:
+        status = "DECLARED_FOLD_ORDER_ONLY"
     elif missing:
         status = "PARTIAL_TIMESTAMP_COVERAGE"
     else:
@@ -116,6 +157,27 @@ def _chronology_integrity(
                 else "FOLD_ORDER_TIMESTAMP_MISMATCH"
             )
 
+    window_identity = {
+        "status": (
+            "WINDOW_IDENTITY_MISMATCH" if window_mismatch or sample_count_mismatch
+            else "VERIFIED_AVAILABLE_BOUNDARIES" if len(metadata_fields_seen) == len(boundary_aliases)
+            else "PARTIAL_WINDOW_METADATA" if metadata_fields_seen
+            else "NO_WINDOW_METADATA"
+        ),
+        "boundary_fields_observed": sorted(metadata_fields_seen),
+        "boundary_field_count": len(metadata_fields_seen),
+        "expected_boundary_field_count": len(boundary_aliases),
+        "window_mismatch": window_mismatch,
+        "sample_count_mismatch": sample_count_mismatch,
+        "interpretation": (
+            "Available cross-candidate boundary fields and held-out sample counts match within each fold."
+            if not window_mismatch and not sample_count_mismatch and metadata_fields_seen
+            else "At least one available boundary or held-out sample count differs between candidates."
+            if window_mismatch or sample_count_mismatch
+            else "The input does not record fold-window metadata; only declared fold order can be used."
+        ),
+    }
+
     fold_starts = []
     for index in fold_indices:
         values = timestamps_by_fold[index]
@@ -129,6 +191,7 @@ def _chronology_integrity(
         })
     return {
         "status": status,
+        "window_identity": window_identity,
         "expected_candidate_fold_timestamps": expected,
         "observed_candidate_fold_timestamps": observed,
         "missing_timestamp_count": missing,
@@ -223,6 +286,7 @@ def build_oos_period_robustness_audit(
         "INVALID_TEST_START_TIMESTAMPS",
         "CROSS_CANDIDATE_WINDOW_MISMATCH",
         "FOLD_ORDER_TIMESTAMP_MISMATCH",
+        "CROSS_CANDIDATE_WINDOW_MISMATCH",
     }
     common_coverage = {
         "candidate_fold_coverage": coverage,
