@@ -8,6 +8,7 @@ downstream model pipelines, label construction, session calendars, or execution 
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 from datetime import datetime
@@ -22,13 +23,23 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _read_bars(path: Path) -> tuple[list[ForexBar], str]:
+def _read_bars(
+    path: Path, *, default_symbol: str = "EUR/USD", default_timeframe: str = "M15"
+) -> tuple[list[ForexBar], str]:
     raw = path.read_bytes()
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("input_json_invalid") from exc
-    records = payload.get("bars") if isinstance(payload, dict) else payload
+    if path.suffix.lower() == ".csv":
+        try:
+            records = list(csv.DictReader(raw.decode("utf-8-sig").splitlines()))
+        except UnicodeDecodeError as exc:
+            raise ValueError("input_csv_invalid") from exc
+        if records and not any(key in records[0] for key in ("timestamp", "timestamp_utc", "datetime", "time")):
+            raise ValueError("input_csv_timestamp_column_missing")
+    else:
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("input_json_invalid") from exc
+        records = payload.get("bars") if isinstance(payload, dict) else payload
     if not isinstance(records, list) or not records:
         raise ValueError("input_bars_missing")
     bars: list[ForexBar] = []
@@ -36,13 +47,13 @@ def _read_bars(path: Path) -> tuple[list[ForexBar], str]:
         if not isinstance(row, dict):
             raise ValueError(f"bar_record_invalid:{index}")
         try:
-            stamp = row["timestamp"]
+            stamp = next(row[key] for key in ("timestamp", "timestamp_utc", "datetime", "time") if key in row)
             if not isinstance(stamp, str):
                 raise TypeError
             timestamp = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
             bars.append(ForexBar(
-                symbol=str(row["symbol"]),
-                timeframe=str(row["timeframe"]),
+                symbol=str(row.get("symbol") or default_symbol),
+                timeframe=str(row.get("timeframe") or default_timeframe),
                 timestamp=timestamp,
                 open=float(row["open"]),
                 high=float(row["high"]),
@@ -213,8 +224,10 @@ def audit_feature_temporal_integrity(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-json", required=True, type=Path,
-                        help="JSON array of OHLC bars, or object containing a bars array")
+    parser.add_argument("--input", required=True, type=Path,
+                        help="JSON (array or bars envelope) or CSV with timestamp/open/high/low/close columns")
+    parser.add_argument("--symbol", default="EUR/USD", help="Default symbol when input rows omit it")
+    parser.add_argument("--timeframe", default="M15", help="Default timeframe when input rows omit it")
     parser.add_argument("--output", type=Path,
                         help="Output JSON path; defaults beside input with an audit suffix")
     parser.add_argument("--horizon-bars", type=int, default=1)
@@ -223,9 +236,11 @@ def main() -> int:
     parser.add_argument("--sample-count", type=int, default=24,
                         help="Number of deterministic cutoffs, plus fixed boundary samples")
     args = parser.parse_args()
-    output = args.output or args.input_json.with_name(args.input_json.stem + "_feature_temporal_integrity_audit.json")
+    output = args.output or args.input.with_name(args.input.stem + "_feature_temporal_integrity_audit.json")
     try:
-        bars, dataset_digest = _read_bars(args.input_json)
+        bars, dataset_digest = _read_bars(
+            args.input, default_symbol=args.symbol, default_timeframe=args.timeframe
+        )
         report = audit_feature_temporal_integrity(
             bars,
             source_data_sha256=dataset_digest,
