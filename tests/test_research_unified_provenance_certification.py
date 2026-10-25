@@ -43,7 +43,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False):
     import app.research_unified_provenance_certification as module
 
     if repo_path is None:
@@ -70,7 +70,10 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
     if provenance and provenance.get("source_revision") != REV:
         provenance_report["status"] = "FAIL"
         provenance_report["stale_or_invalid_count"] = 1
-    monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: provenance_report)
+    if provenance_error:
+        monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: (_ for _ in ()).throw(ValueError("invalid_provenance_manifest")))
+    else:
+        monkeypatch.setattr(module, "verify_provenance", lambda *a, **k: provenance_report)
     if fingerprint_error:
         monkeypatch.setattr(module, "fingerprint_path", lambda path: (_ for _ in ()).throw(FileNotFoundError("missing_input")) if str(path).endswith("config.json") else DATASET_HASH)
     else:
@@ -134,6 +137,7 @@ def test_provenance_failure_blocks_overall_certification(monkeypatch, tmp_path):
 def test_freshness_gate_failure_blocks_overall_certification(monkeypatch, tmp_path):
     report = call(monkeypatch, tmp_path, gate_status="FAIL")
     assert report["status"] == "FAIL"
+    assert any(item["code"] == "FINAL_CERTIFICATION_CHAIN_FAILED" for item in report["errors"])
     assert any(item["code"] == "FRESHNESS_CERTIFICATION_GATE_FAILED" for item in report["errors"])
 
 
@@ -343,7 +347,7 @@ def test_invalid_inventory_spec_returns_consolidated_failure(monkeypatch, tmp_pa
 
 
 def test_invalid_provenance_manifest_returns_consolidated_failure(monkeypatch, tmp_path):
-    report = call(monkeypatch, tmp_path, provenance={"audit_name": "wrong_manifest", "artifacts": [{"artifact_id": "metrics", "path": "metrics.csv"}]}, include_seal=False)
+    report = call(monkeypatch, tmp_path, provenance={"audit_name": "wrong_manifest", "artifacts": [{"artifact_id": "metrics", "path": "metrics.csv"}]}, include_seal=False, provenance_error=True)
     assert report["status"] == "FAIL"
     assert report["provenance_verification"]["status"] == "FAIL"
     assert any(item["code"] == "PROVENANCE_AUDIT_EXECUTION_FAILED"
