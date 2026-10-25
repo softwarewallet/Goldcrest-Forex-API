@@ -70,6 +70,15 @@ def _number(value: object) -> int | float | None:
     return value
 
 
+
+def _is_sha256_hex(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdefABCDEF" for character in value)
+    )
+
+
 def _add_issue(target: list[str], message: str) -> None:
     if message not in target:
         target.append(message)
@@ -391,11 +400,7 @@ def _artifact_record(
         *_OPTIONAL_REPORTS.keys(),
     }
     if reported_matrix_hash is not None:
-        if (
-            not isinstance(reported_matrix_hash, str)
-            or len(reported_matrix_hash) != 64
-            or any(character not in "0123456789abcdefABCDEF" for character in reported_matrix_hash)
-        ):
+        if not _is_sha256_hex(reported_matrix_hash):
             errors.append(f"{section_name}_source_matrix_hash_invalid")
         elif expected_matrix_sha256 is not None and reported_matrix_hash != expected_matrix_sha256:
             errors.append(f"{section_name}_source_matrix_hash_mismatch")
@@ -1267,6 +1272,8 @@ def build_research_evidence_report(
     timeframe = str(manifest.get("timeframe", "")).strip().upper() or None
     matrix_hash = manifest.get("experiment_matrix_report_sha256")
     matrix_path = _resolve_path(manifest.get("experiment_matrix_report"), manifest_file.parent)
+    if matrix_path is not None and not _is_sha256_hex(matrix_hash):
+        errors.append("experiment_matrix_report_sha256_missing_or_invalid")
     if matrix_path is None:
         matrix_path = manifest_file.parent / f"{run_id}_experiment_matrix.json"
     matrix_payload_integrity = _verify_matrix_payload_hash(matrix_path)
@@ -1314,6 +1321,8 @@ def build_research_evidence_report(
     ):
         path = _resolve_path(manifest.get(path_field), manifest_file.parent)
         declared = bool(manifest.get(path_field) or manifest.get(hash_field))
+        if declared and not _is_sha256_hex(manifest.get(hash_field)):
+            errors.append(f"{name}_manifest_sha256_missing_or_invalid")
         if path is None:
             sections[name] = {
                 "status": "MISSING" if declared else "NOT_PROVIDED",
@@ -1360,11 +1369,15 @@ def build_research_evidence_report(
         if temporal_calibration_path is not None
         else _resolve_path(manifest.get("temporal_calibration_audit_path"), manifest_file.parent)
     )
-    temporal_declared = bool(
-        temporal_calibration_path is not None
-        or manifest.get("temporal_calibration_audit_path")
+    manifest_temporal_declared = bool(
+        manifest.get("temporal_calibration_audit_path")
         or manifest.get("temporal_calibration_audit_sha256")
     )
+    temporal_declared = bool(temporal_calibration_path is not None or manifest_temporal_declared)
+    if manifest_temporal_declared and not _is_sha256_hex(
+        manifest.get("temporal_calibration_audit_sha256")
+    ):
+        errors.append("temporal_calibration_audit_manifest_sha256_missing_or_invalid")
     if temporal_path is None and temporal_calibration_path is None and standard_temporal_path.is_file():
         temporal_path = standard_temporal_path.resolve()
     if temporal_path is None:

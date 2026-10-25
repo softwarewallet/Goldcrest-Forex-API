@@ -1181,3 +1181,23 @@ def test_artifact_record_rejects_malformed_source_matrix_hash(tmp_path):
     assert report is not None
     assert record["status"] == "FAIL"
     assert "model_evaluation_gate_source_matrix_hash_invalid" in errors
+
+
+
+def test_consolidated_report_requires_manifest_hash_for_declared_model_gate(tmp_path, monkeypatch):
+    manifest_path = _build_run(tmp_path, monkeypatch)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("model_evaluation_gate_sha256", None)
+    _write_json(manifest_path, manifest)
+
+    result = evidence.build_research_evidence_report(manifest_path)
+
+    assert "model_evaluation_gate_manifest_sha256_missing_or_invalid" in result["errors"]
+
+
+def test_sha256_hex_validator_accepts_only_64_hex_characters():
+    assert evidence._is_sha256_hex("a" * 64)
+    assert evidence._is_sha256_hex("ABCDEF0123456789" * 4)
+    assert not evidence._is_sha256_hex("a" * 63)
+    assert not evidence._is_sha256_hex("g" * 64)
+    assert not evidence._is_sha256_hex(123)
