@@ -224,7 +224,7 @@ def test_audit_uses_separate_fold_eligibility_counts_with_window_only_signature(
             {"fold_index": 0, "test_start_utc": "2026-01-01T00:00:00Z",
              "test_end_utc": "2026-01-07T00:00:00Z", "eligible_test_rows": 80}
         ]
-    source.write_text(json.dumps(payload, sort_keys=True) + "\\n", encoding="utf-8")
+    source.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 
     result = audit_threshold_report(source)
 
