@@ -183,23 +183,38 @@ def recover_seed_report(source_path: Path, cap: float, output_path: Path) -> dic
 def recover_threshold_report(source_path: Path, output_path: Path, recovered_reports: dict[float, tuple[dict[str, Any], Path]]) -> dict[str, Any]:
     source = _read_json(source_path)
     _safety_check(source, "threshold_report")
+    if source.get("status") not in PASS:
+        raise ValueError("threshold_report_status_not_pass")
+    source_hash = source.get("raw_ohlc_sha256")
+    if not isinstance(source_hash, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", source_hash):
+        raise ValueError("threshold_report_raw_ohlc_hash_invalid")
+
     report = copy.deepcopy(source)
     cap_records = report.get("cap_results")
     if not isinstance(cap_records, list) or not cap_records:
         raise ValueError("threshold_report_cap_results_missing")
 
     found: set[float] = set()
+    seen_cap_values: set[float] = set()
     for record in cap_records:
         if not isinstance(record, dict):
             raise ValueError("threshold_report_cap_record_invalid")
         value = record.get("max_label_elapsed_hours")
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)) or float(value) <= 0:
             continue
-        cap = next((c for c in recovered_reports if math.isclose(float(value), c, rel_tol=0, abs_tol=1e-9)), None)
+        numeric_value = float(value)
+        if numeric_value in seen_cap_values:
+            raise ValueError(f"threshold_report_duplicate_cap:{numeric_value:g}")
+        seen_cap_values.add(numeric_value)
+        cap = next((c for c in recovered_reports if math.isclose(numeric_value, c, rel_tol=0, abs_tol=1e-9)), None)
         if cap is None:
             continue
+        if record.get("status") not in PASS:
+            raise ValueError(f"threshold_cap_not_pass:{cap:g}")
         seed_report, path = recovered_reports[cap]
         rows = seed_report["fold_eligibility_counts"]
+        if seed_report.get("raw_ohlc_sha256") != source_hash.lower():
+            raise ValueError(f"threshold_cap_raw_hash_mismatch:{cap:g}")
         record["seed_sweep_report_path"] = str(path.resolve())
         record["fold_eligibility_counts"] = copy.deepcopy(rows)
         record["fold_window_signature"] = [
@@ -211,12 +226,22 @@ def recover_threshold_report(source_path: Path, output_path: Path, recovered_rep
         raise ValueError(f"threshold_cap_coverage_mismatch:{sorted(found)}")
     windows = {
         tuple((r["fold_index"], r["test_start_utc"], r["test_end_utc"])
-              for r in report["fold_eligibility_counts"])
-        for report, _ in recovered_reports.values()
+              for r in recovered["fold_eligibility_counts"])
+        for recovered, _ in recovered_reports.values()
     }
-    hashes = {report["raw_ohlc_sha256"] for report, _ in recovered_reports.values()}
-    if len(windows) != 1 or len(hashes) != 1:
-        raise ValueError("recovered_reports_disagree_across_caps")
+    hashes = {recovered["raw_ohlc_sha256"] for recovered, _ in recovered_reports.values()}
+    if len(windows) != 1 or len(hashes) != 1 or next(iter(hashes)) != source_hash.lower():
+        raise ValueError("recovered_reports_disagree_with_threshold_source")
+
+    requested_caps = report.get("requested_caps_hours")
+    if isinstance(requested_caps, list):
+        requested_numeric = {
+            float(value) for value in requested_caps
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        }
+        if not all(any(math.isclose(value, cap, rel_tol=0, abs_tol=1e-9) for value in requested_numeric)
+                   for cap in recovered_reports):
+            raise ValueError("threshold_requested_caps_do_not_cover_recovery")
 
     report["fold_eligibility_metadata_recovery"] = {
         "method": "validated_existing_comparison_artifacts",
