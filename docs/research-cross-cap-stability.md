@@ -24,6 +24,13 @@ add `--overwrite` after reviewing the target path.
 
 - `per_seed_results` retains model, fold, common timestamp count, timestamp fingerprint,
   metrics by cap, and metric deltas relative to the 1-hour cap.
+- Each fold also retains the eligible timestamp count for each cap and the number
+  excluded when forming the shared evaluation cohort. `eligibility_accounting_by_cap`
+  reconciles these counts per seed and model/feature group. Counts summed across folds
+  are explicitly marked as observations, not unique timestamps, because fold windows may overlap.
+- A passing audit with malformed diagnostic fields or a non-empty `errors` list is rejected.
+  Fold-window boundaries are checked during cap-equivalence diagnostics as well as during
+  common-cohort recomputation.
 - `cross_seed_summary` first averages fold deltas within each seed, then summarizes those
   five seed-level values using mean, median, population standard deviation, minimum, and maximum.
   This avoids treating overlapping fold windows as independent seeds.
