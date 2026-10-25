@@ -8,7 +8,10 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import statistics
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -306,15 +309,78 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_report_no_clobber(
+    output_path: str | Path,
+    payload: Mapping[str, Any],
+    input_paths: Sequence[str | Path],
+) -> Path:
+    """Publish one JSON report without overwriting inputs or concurrent outputs."""
+    output = Path(output_path).expanduser().resolve()
+    inputs = {Path(path).expanduser().resolve() for path in input_paths}
+    if output in inputs:
+        raise ValueError("output_must_not_alias_input")
+    if output.exists():
+        raise ValueError(f"output_already_exists:{output}")
+
+    serialized = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    temporary: Path | None = None
+    published_identity: tuple[int, int] | None = None
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output.parent,
+            prefix=f".{output.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            stream.write(serialized)
+            stream.flush()
+            os.fsync(stream.fileno())
+            temporary = Path(stream.name)
+
+        # A hard link atomically fails if another process created the destination
+        # after preflight; unlike replace(), it cannot clobber that file.
+        os.link(temporary, output)
+        stat = output.stat()
+        published_identity = (stat.st_dev, stat.st_ino)
+        temporary.unlink()
+        temporary = None
+        return output
+    except Exception:
+        if published_identity is not None:
+            try:
+                current = output.stat()
+                if (current.st_dev, current.st_ino) == published_identity:
+                    output.unlink()
+            except OSError:
+                pass
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    report = audit_common_heldout_cohort(
-        args.comparison_report,
-        allow_baseline_id_variation=args.allow_baseline_id_variation_with_matching_dataset_hash,
-    )
-    output = Path(args.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    try:
+        report = audit_common_heldout_cohort(
+            args.comparison_report,
+            allow_baseline_id_variation=args.allow_baseline_id_variation_with_matching_dataset_hash,
+        )
+        output = _write_report_no_clobber(args.output, report, args.comparison_report)
+    except (OSError, ValueError, TypeError) as exc:
+        print(json.dumps({
+            "status": "FAIL",
+            "error": f"{type(exc).__name__}:{exc}",
+            "actionable": False,
+            "execution_connected": False,
+        }, indent=2), file=sys.stderr)
+        return 2
+
     print(json.dumps({"status": report["status"], "output": str(output),
                       "errors": report.get("errors", []), "actionable": False}, indent=2))
     return 0 if report["status"] == "PASS" else 2
