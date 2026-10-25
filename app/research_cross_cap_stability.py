@@ -52,6 +52,10 @@ def _finite_metric(metrics: Mapping[str, Any], metric: str, context: str) -> flo
     return float(value)
 
 
+def _valid_sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(char in "0123456789abcdefABCDEF" for char in value)
+
+
 def _validate_safety(value: Mapping[str, Any], context: str) -> None:
     for field in ("automatic_model_selection", "actionable", "execution_connected"):
         if value.get(field) is not False:
@@ -67,6 +71,10 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
         raise ValueError(f"{audit_path}: unexpected audit scope")
     if audit.get("baseline_identity_mode") != "dataset_hash_equivalence":
         raise ValueError(f"{audit_path}: expected dataset_hash_equivalence identity mode")
+    if not _valid_sha256(audit.get("baseline_dataset_sha256")):
+        raise ValueError(f"{audit_path}: invalid baseline dataset SHA-256")
+    if not _valid_sha256(audit.get("raw_ohlc_sha256")):
+        raise ValueError(f"{audit_path}: invalid raw OHLC SHA-256")
     caps = audit.get("caps_hours")
     if not isinstance(caps, list) or sorted(float(x) for x in caps) != list(CAPS_HOURS):
         raise ValueError(f"{audit_path}: caps must be exactly {list(CAPS_HOURS)}")
@@ -89,7 +97,7 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
     if source_caps != list(CAPS_HOURS):
         raise ValueError(f"{audit_path}: source reports do not cover the three required caps")
     source_hashes = {item[2].get("baseline_dataset_sha256") for item in sources}
-    if len(source_hashes) != 1 or not isinstance(next(iter(source_hashes)), str):
+    if len(source_hashes) != 1 or not _valid_sha256(next(iter(source_hashes))):
         raise ValueError(f"{audit_path}: source baseline dataset hashes do not match")
     if audit.get("baseline_dataset_sha256") != next(iter(source_hashes)):
         raise ValueError(f"{audit_path}: audit/source baseline dataset hash mismatch")
@@ -175,6 +183,14 @@ def audit_cross_cap_stability(
         if seen_seeds != set(expected_seeds):
             raise ValueError(f"seed set mismatch: expected {sorted(expected_seeds)}, received {sorted(seen_seeds)}")
         loaded.sort(key=lambda item: item["seed"])
+        first_audit = loaded[0]["audit"]
+        for item in loaded[1:]:
+            audit = item["audit"]
+            for field in ("symbol", "timeframe", "label_horizon_bars", "raw_ohlc_sha256", "caps_hours"):
+                if audit.get(field) != first_audit.get(field):
+                    raise ValueError(f"seed {item[\u0027seed\u0027]}: cross-seed provenance mismatch for {field}")
+        # baseline_dataset_sha256 and baseline_run_ids are intentionally validated within
+        # each seed only; they are not required to match across independently seeded runs.
 
         reference_key = str(REFERENCE_CAP_HOURS)
         per_seed = []
