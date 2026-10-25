@@ -42,7 +42,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True):
     import app.research_unified_provenance_certification as module
 
     provenance_report = {
@@ -80,7 +80,7 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
     selected_manifest = provenance or manifest()
     return module.run_unified_certification(
         {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
-        provenance_seal=create_manifest_seal(selected_manifest),
+        provenance_seal=create_manifest_seal(selected_manifest) if include_seal else None,
         evidence_root=tmp_path, artifact_root=tmp_path,
         current_source_revision=REV, repo_path=repo_path, config_path=tmp_path / "config.json",
         dataset_path=tmp_path / "dataset",
@@ -172,15 +172,7 @@ def test_git_inspection_error_blocks_overall_certification(monkeypatch, tmp_path
 
 
 def test_missing_provenance_seal_blocks_certification(monkeypatch, tmp_path):
-    import app.research_unified_provenance_certification as module
-    from app.research_provenance_manifest_seal import create_manifest_seal
-
-    selected_manifest = manifest()
-    report = module.run_unified_certification(
-        {"audit_name": "readiness"}, {"audit_name": "bundle"}, selected_manifest,
-        evidence_root=tmp_path, artifact_root=tmp_path, current_source_revision=REV,
-        config_path=tmp_path / "config.json", dataset_path=tmp_path / "dataset",
-    )
+    report = call(monkeypatch, tmp_path, include_seal=False)
     assert report["status"] == "FAIL"
     assert report["provenance_manifest_seal_verification"]["status"] == "FAIL"
     assert any(item["code"] == "PROVENANCE_MANIFEST_SEAL_FAILED" for item in report["errors"])
