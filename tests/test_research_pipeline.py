@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import research_pipeline
+from app.research_experiment_fingerprint import verify_experiment_fingerprint
 
 
 def test_pipeline_requires_exactly_one_input_source(tmp_path):
@@ -139,6 +140,12 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert stored["feature_source_audit_sha256"] == research_pipeline._sha256(feature_source_audit_path)
     assert stored["feature_schema_sha256"] == feature_source_audit["feature_schema_sha256_declared"]
     assert stored["feature_implementation_sha256"] == feature_source_audit["feature_implementation_sha256_declared"]
+    assert stored["experiment_fingerprint_status"] == "PASS"
+    fingerprint_path = Path(stored["experiment_fingerprint_path"])
+    fingerprint_receipt = json.loads(fingerprint_path.read_text(encoding="utf-8"))
+    assert verify_experiment_fingerprint(fingerprint_receipt)["status"] == "PASS"
+    assert stored["experiment_fingerprint_sha256"] == fingerprint_receipt["experiment_fingerprint_sha256"]
+    assert stored["experiment_fingerprint_file_sha256"] == research_pipeline._sha256(fingerprint_path)
     audit_path = tmp_path / "run" / "unit-test_provenance_audit.json"
     assert audit_path.exists()
     audit = json.loads(audit_path.read_text(encoding="utf-8"))
