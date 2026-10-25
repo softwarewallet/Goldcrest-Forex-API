@@ -13,6 +13,8 @@ import statistics
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.research_label_eligibility_common_cohort import audit_common_heldout_cohort
+
 CAPS_HOURS = (1.0, 1.5, 8.0)
 REFERENCE_CAP_HOURS = 1.0
 PRIMARY_METRICS = ("log_loss", "brier_score", "accuracy_at_fixed_half")
@@ -108,6 +110,19 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
     expected_ids = list(dict.fromkeys(item[2].get("baseline_run_id") for item in sources))
     if audit.get("baseline_run_ids") != expected_ids:
         raise ValueError(f"{audit_path}: baseline run ID provenance does not match source reports")
+
+    # Re-run the formal cohort audit against current source files. This detects stale audit
+    # outputs if a comparison report was replaced after the original audit was generated.
+    recomputed = audit_common_heldout_cohort(
+        [str(path) for _, path, _ in sources],
+        allow_baseline_id_variation=True,
+    )
+    if recomputed.get("status") != "PASS":
+        raise ValueError(f"{audit_path}: source reports no longer pass common-cohort audit: {recomputed.get(\u0027errors\u0027, [])}")
+    for field in ("baseline_dataset_sha256", "baseline_run_ids", "symbol", "timeframe",
+                  "label_horizon_bars", "raw_ohlc_sha256", "caps_hours", "experiments"):
+        if audit.get(field) != recomputed.get(field):
+            raise ValueError(f"{audit_path}: stored audit differs from recomputed source results for {field}")
 
     experiments = audit.get("experiments")
     if not isinstance(experiments, list) or not experiments:
