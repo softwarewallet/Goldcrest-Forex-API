@@ -1222,18 +1222,16 @@ def build_research_evidence_report(
         warnings.extend(section_warnings)
 
 
-    _check_manifest_receipt_consistency(
-        section_name="temporal_calibration_audit",
-        manifest={
-            # Pipeline manifest uses the explicit *_audit field names for this
-            # receipt; map them to the shared consistency-check convention.
-            "temporal_calibration_audit_status": manifest.get("temporal_calibration_audit_status"),
-            "temporal_calibration_audit_errors": manifest.get("temporal_calibration_audit_errors"),
-            "temporal_calibration_audit_warnings": manifest.get("temporal_calibration_audit_warnings"),
-        },
-        receipt=records.get("temporal_calibration"),
-        errors=errors,
+    declared_temporal_path = _resolve_path(
+        manifest.get("temporal_calibration_audit_path"), manifest_file.parent
     )
+    if declared_temporal_path is not None and temporal_path == declared_temporal_path:
+        _check_manifest_receipt_consistency(
+            section_name="temporal_calibration_audit",
+            manifest=manifest,
+            receipt=records.get("temporal_calibration"),
+            errors=errors,
+        )
 
 
     validation_path = (
