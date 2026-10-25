@@ -197,3 +197,6 @@ The offline pipeline also writes a hash-addressed `<run-id>_model_evaluation_gat
 
 
 The consolidated evidence report now verifies and summarizes the model evaluation gate receipt alongside provenance and temporal calibration evidence. For new runs it checks the receipt's recorded hash, run identity, and source-matrix hash; legacy manifests without the gate are marked as incomplete evidence rather than treated as having passed the gate.
+
+
+The model evaluation integrity gate also checks that candidates sharing a fold index use identical UTC-normalized train/validation/test boundaries and the same held-out sample count. This prevents structurally mismatched folds from being silently treated as paired comparisons; it does not establish statistical significance or model superiority. See `docs/research-model-evaluation-gate.md`.

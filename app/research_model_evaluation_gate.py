@@ -9,7 +9,7 @@ import argparse
 import hashlib
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +87,8 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
         experiments = []
 
     seen_experiment_ids: set[str] = set()
+    # Candidates in a fixed-fold matrix must use identical windows and sample counts.
+    common_fold_reference: dict[int, tuple[tuple[str, ...], object]] = {}
     checked_folds = 0
     checked_metrics = 0
     expected_fold_count = payload.get("fold_count")
@@ -205,6 +207,31 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
                     if _finite_number(prevalence) and abs(float(prevalence) - expected_prevalence) > 1e-8:
                         error("prevalence_inconsistent", f"{fold_loc}.test_metrics.prevalence",
                               "prevalence must equal positive_count / sample_count.")
+
+            # Compare common-fold provenance across all experiments. Fold index alone
+            # is insufficient: boundaries and evaluated sample count must also agree.
+            if isinstance(index, int) and not isinstance(index, bool):
+                boundary_fields = (
+                    "train_start_utc", "train_end_utc",
+                    "validation_start_utc", "validation_end_utc",
+                    "test_start_utc", "test_end_utc",
+                )
+                if all(field in parsed_times for field in boundary_fields):
+                    boundaries = tuple(
+                        parsed_times[field].astimezone(timezone.utc).isoformat()
+                        for field in boundary_fields
+                    )
+                    sample_value = values.get("sample_count") if isinstance(metrics, dict) else None
+                    reference = common_fold_reference.get(index)
+                    if reference is None:
+                        common_fold_reference[index] = (boundaries, sample_value)
+                    elif reference != (boundaries, sample_value):
+                        error(
+                            "common_fold_evaluation_mismatch",
+                            fold_loc,
+                            "Experiments sharing a fold index must use identical train/validation/test "
+                            "boundaries and test sample counts.",
+                        )
 
     result = {
         "schema_version": 1,
