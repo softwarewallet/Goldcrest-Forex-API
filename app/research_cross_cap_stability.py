@@ -118,7 +118,8 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
         allow_baseline_id_variation=True,
     )
     if recomputed.get("status") != "PASS":
-        raise ValueError(f"{audit_path}: source reports no longer pass common-cohort audit: {recomputed.get(\u0027errors\u0027, [])}")
+        source_errors = recomputed.get("errors", [])
+        raise ValueError(f"{audit_path}: source reports no longer pass common-cohort audit: {source_errors}")
     for field in ("baseline_dataset_sha256", "baseline_run_ids", "symbol", "timeframe",
                   "label_horizon_bars", "raw_ohlc_sha256", "caps_hours", "experiments"):
         if audit.get(field) != recomputed.get(field):
