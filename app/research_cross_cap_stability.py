@@ -63,6 +63,19 @@ def _validate_safety(value: Mapping[str, Any], context: str) -> None:
         if value.get(field) is not False:
             raise ValueError(f"{context}: {field} must be false")
 
+def _validate_diagnostics(value: Mapping[str, Any], context: str) -> None:
+    """Reject malformed or contradictory diagnostics on a passing audit."""
+    for field in ("errors", "warnings"):
+        if field not in value:
+            continue
+        diagnostics = value[field]
+        if not isinstance(diagnostics, list) or any(
+            not isinstance(item, str) or not item.strip() for item in diagnostics
+        ):
+            raise ValueError(f"{context}: {field} must be a list of non-empty strings")
+    if value.get("errors"):
+        raise ValueError(f"{context}: errors must be empty when status is passing")
+
 
 
 def _nested_equal(left: Any, right: Any, *, tolerance: float = 1e-12) -> bool:
@@ -206,6 +219,7 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
     if audit.get("status") != "PASS":
         raise ValueError(f"{audit_path}: common-cohort audit status must be PASS")
     _validate_safety(audit, str(audit_path))
+    _validate_diagnostics(audit, str(audit_path))
     if audit.get("scope") != "GOLDCREST_COMMON_HELDOUT_COHORT_AUDIT":
         raise ValueError(f"{audit_path}: unexpected audit scope")
     if audit.get("baseline_identity_mode") != "dataset_hash_equivalence":
@@ -281,8 +295,28 @@ def _validate_audit_and_sources(audit_path: Path, seed: int) -> dict[str, Any]:
             if isinstance(index, bool) or not isinstance(index, int) or index < 0 or index in seen_folds:
                 raise ValueError(f"{audit_path}: invalid/duplicate fold index")
             seen_folds.add(index)
-            if fold.get("common_timestamp_count") != fold.get("baseline_metrics_on_common_cohort", {}).get("sample_count"):
+            common_count = fold.get("common_timestamp_count")
+            if isinstance(common_count, bool) or not isinstance(common_count, int) or common_count < 1:
+                raise ValueError(f"{audit_path}: invalid common timestamp count")
+            if common_count != fold.get("baseline_metrics_on_common_cohort", {}).get("sample_count"):
                 raise ValueError(f"{audit_path}: common cohort count disagrees with baseline metric sample count")
+            eligible_counts = fold.get("per_cap_eligible_timestamp_count")
+            excluded_counts = fold.get("per_cap_excluded_to_common_count")
+            expected_cap_keys = {str(cap) for cap in CAPS_HOURS}
+            if not isinstance(eligible_counts, dict) or set(eligible_counts) != expected_cap_keys:
+                raise ValueError(f"{audit_path}: per-cap eligible timestamp counts are incomplete")
+            if not isinstance(excluded_counts, dict) or set(excluded_counts) != expected_cap_keys:
+                raise ValueError(f"{audit_path}: per-cap excluded-to-common counts are incomplete")
+            for cap in CAPS_HOURS:
+                cap_key = str(cap)
+                eligible_count = eligible_counts[cap_key]
+                excluded_count = excluded_counts[cap_key]
+                if (isinstance(eligible_count, bool) or not isinstance(eligible_count, int)
+                        or eligible_count < common_count):
+                    raise ValueError(f"{audit_path}: invalid eligible timestamp count for cap {cap}")
+                if (isinstance(excluded_count, bool) or not isinstance(excluded_count, int)
+                        or excluded_count < 0 or excluded_count != eligible_count - common_count):
+                    raise ValueError(f"{audit_path}: inconsistent excluded-to-common count for cap {cap}")
             per_cap = fold.get("variant_metrics_on_common_cohort_by_cap")
             if not isinstance(per_cap, dict) or set(per_cap) != {str(cap) for cap in CAPS_HOURS}:
                 raise ValueError(f"{audit_path}: per-cap metrics are incomplete")
@@ -396,6 +430,8 @@ def audit_cross_cap_stability(
                         "test_start_utc": fold.get("test_start_utc"),
                         "test_end_utc": fold.get("test_end_utc"),
                         "common_timestamp_count": fold["common_timestamp_count"],
+                        "per_cap_eligible_timestamp_count": dict(fold["per_cap_eligible_timestamp_count"]),
+                        "per_cap_excluded_to_common_count": dict(fold["per_cap_excluded_to_common_count"]),
                         "common_cohort_timestamp_fingerprint_sha256": fold.get("common_cohort_timestamp_fingerprint_sha256"),
                         "baseline_metrics_on_common_cohort": fold["baseline_metrics_on_common_cohort"],
                         "by_cap": fold_caps,
@@ -431,11 +467,29 @@ def audit_cross_cap_stability(
                             "seed_mean_direction": "favorable" if favorable else ("adverse" if adverse else "neutral"),
                             "fold_count": len(values),
                         })
+                eligibility_accounting = {}
+                for cap in CAPS_HOURS:
+                    cap_key = str(cap)
+                    eligible_observations = sum(
+                        fold["per_cap_eligible_timestamp_count"][cap_key] for fold in folds_out
+                    )
+                    common_observations = sum(fold["common_timestamp_count"] for fold in folds_out)
+                    excluded_observations = sum(
+                        fold["per_cap_excluded_to_common_count"][cap_key] for fold in folds_out
+                    )
+                    eligibility_accounting[cap_key] = {
+                        "eligible_timestamp_observations_across_folds": eligible_observations,
+                        "common_timestamp_observations_across_folds": common_observations,
+                        "excluded_to_common_observations_across_folds": excluded_observations,
+                        "arithmetic_reconciles": eligible_observations == common_observations + excluded_observations,
+                        "counts_are_unique_timestamps": False,
+                    }
                 seed_experiments.append({
                     "model_type": model,
                     "feature_variant": feature,
                     "fold_count": len(folds_out),
                     "fold_results": folds_out,
+                    "eligibility_accounting_by_cap": eligibility_accounting,
                     "seed_level_cap_deltas": seed_cap_summaries,
                     "actionable": False,
                 })
