@@ -23,8 +23,19 @@ _EPS = 1e-9
 
 
 def _check_status(payload: Mapping[str, Any], label: str) -> None:
-    if payload.get("status") not in _PASS:
+    status = payload.get("status")
+    if status not in _PASS:
         raise ValueError(f"{label}_status_not_pass")
+    for field in ("errors", "warnings"):
+        if field not in payload:
+            continue
+        diagnostics = payload[field]
+        if not isinstance(diagnostics, list) or any(
+            not isinstance(item, str) or not item.strip() for item in diagnostics
+        ):
+            raise ValueError(f"{label}_{field}_schema_invalid")
+    if payload.get("errors"):
+        raise ValueError(f"{label}_reports_errors_despite_pass_status")
 
 
 def _check_flags(payload: Mapping[str, Any], label: str) -> None:
@@ -169,8 +180,9 @@ def audit_gap_policy_equivalence(
     raw_timestamps, errors = _load_raw_timestamps(raw_path)
     data_rows = _load_dataset(dataset_path, timeframe)
     warnings: list[str] = []
-    for payload in inputs.values():
-        warnings.extend(str(item) for item in payload.get("warnings", []) if isinstance(item, str))
+    for label, payload in inputs.items():
+        _check_status(payload, label)
+        warnings.extend(payload.get("warnings", []))
     raw_index: dict[datetime, int] = {}
     for index, timestamp in enumerate(raw_timestamps):
         if timestamp in raw_index:
@@ -257,8 +269,13 @@ def audit_gap_policy_equivalence(
         if source is None:
             continue
         source_rows = source.get("affected_label_rows")
-        parsed_rows = sorted(v for v in source_rows if isinstance(v, int) and not isinstance(v, bool)) if isinstance(source_rows, list) else []
+        source_rows_valid = isinstance(source_rows, list) and all(
+            isinstance(value, int) and not isinstance(value, bool) and value >= 2
+            for value in source_rows
+        )
+        parsed_rows = sorted(source_rows) if source_rows_valid else []
         checks = (
+            source_rows_valid,
             parsed_rows == current["affected_label_rows"],
             source.get("gap_excess_class") == current["gap_excess_class"],
             isinstance(source.get("interval_hours"), (int, float))
