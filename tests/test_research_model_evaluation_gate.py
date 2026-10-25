@@ -55,6 +55,9 @@ def test_evaluation_gate_accepts_consistent_non_actionable_report(tmp_path: Path
     assert result["folds_checked"] == 1
     assert result["fold_metric_objects_checked"] == 1
     assert result["actionable"] is False
+    assert result["scope"] == "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE"
+    assert result["run_id"] == "fixture-evaluation-gate"
+    assert result["source_matrix_sha256"]
 
 
 def test_evaluation_gate_rejects_test_metric_selection(tmp_path: Path) -> None:
