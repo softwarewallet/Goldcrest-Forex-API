@@ -34,3 +34,8 @@ The common-fold check detects mismatched candidate windows before paired or comp
 ## Chronological out-of-sample window identity
 
 The early/middle/late OOS period diagnostic cross-checks every available train, validation, and test boundary across candidates sharing a fold index, in addition to checking chronological test-start order. Where all candidates record held-out sample counts, those counts must also match. A mismatch withholds the period summaries. Legacy matrices with partial or absent boundary metadata are explicitly reported as partial/unknown; they are not silently described as having fully verified windows. This is a structural audit, not evidence that overlapping folds are statistically independent.
+
+
+## Dependence-qualified baseline uncertainty
+
+The consolidated evidence interpretation does not classify paired bootstrap intervals as positive or negative interval evidence when the baseline-analysis receipt reports repeated held-out timestamps across walk-forward folds. It preserves the point estimates and reports how many intervals were withheld from classification. The numeric intervals remain in the source receipt for auditability, but overlapping/repeated held-out observations can make fold-level forecast errors dependent; this guard prevents the summary from implying that the interval evidence is independent or stronger than the diagnostics support. This is a conservative interpretation guard, not a new significance test and not proof of independence when no repeated timestamps are detected.

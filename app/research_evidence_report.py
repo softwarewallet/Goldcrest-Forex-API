@@ -365,10 +365,19 @@ def build_evidence_interpretation(
         "intervals_excluding_zero_negative": 0,
         "intervals_including_zero": 0,
         "intervals_unavailable": 0,
+        "intervals_dependence_limited": 0,
         "positive_point_estimates": 0,
         "negative_point_estimates": 0,
         "zero_point_estimates": 0,
     }
+    baseline_dependence_limited = bool(
+        isinstance(baseline, dict)
+        and isinstance(baseline.get("warnings"), list)
+        and any(
+            "held_out_timestamps_repeat_across_folds" in str(item)
+            for item in baseline.get("warnings", [])
+        )
+    )
     if isinstance(baseline, dict) and baseline.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
         experiments = baseline.get("experiments")
         for experiment in experiments if isinstance(experiments, list) else []:
@@ -401,6 +410,11 @@ def build_evidence_interpretation(
                     ):
                         baseline_counts["intervals_unavailable"] += 1
                         continue
+                    if baseline_dependence_limited:
+                        # Keep the numeric interval in the source report, but do not classify
+                        # it as evidence when the same held-out timestamps recur across folds.
+                        baseline_counts["intervals_dependence_limited"] += 1
+                        continue
                     low, high = float(interval[0]), float(interval[1])
                     baseline_counts["comparisons_evaluated"] += 1
                     if low > 0:
@@ -409,7 +423,11 @@ def build_evidence_interpretation(
                         baseline_counts["intervals_excluding_zero_negative"] += 1
                     else:
                         baseline_counts["intervals_including_zero"] += 1
-    if baseline_counts["comparisons_evaluated"] == 0:
+    if baseline_counts["comparisons_evaluated"] == 0 and baseline_counts["intervals_dependence_limited"] > 0:
+        baseline_status = "DEPENDENCE_LIMITED_INTERVALS_NOT_CLASSIFIED"
+    elif baseline_counts["intervals_dependence_limited"] > 0:
+        baseline_status = "PARTIAL_DEPENDENCE_LIMITED_INTERVAL_EVIDENCE"
+    elif baseline_counts["comparisons_evaluated"] == 0:
         baseline_status = "UNAVAILABLE"
     elif baseline_counts["intervals_excluding_zero_positive"] == 0 and baseline_counts["intervals_excluding_zero_negative"] == 0:
         baseline_status = "NO_CLEAR_INTERVAL_SEPARATION_FROM_TESTED_BASELINES"

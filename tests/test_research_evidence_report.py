@@ -421,6 +421,39 @@ def test_legacy_run_accepts_explicit_temporal_calibration_receipt(tmp_path, monk
 
 
 
+def test_evidence_interpretation_withholds_interval_classification_when_fold_timestamps_repeat():
+    baseline = {
+        "status": "PASS_WITH_WARNINGS",
+        "warnings": ["held_out_timestamps_repeat_across_folds; forecast errors may be dependent across fold fits"],
+        "experiments": [{
+            "experiment_id": "model-a",
+            "probability_loss_comparisons": [{
+                "baseline": "constant_probability_0_5",
+                "metrics": {
+                    "log_loss": {
+                        "improvement_baseline_minus_model": 0.01,
+                        "confidence_interval_95": [0.002, 0.02],
+                    },
+                    "brier_score": {
+                        "improvement_baseline_minus_model": 0.01,
+                        "confidence_interval_95": [0.001, 0.02],
+                    },
+                },
+            }],
+        }],
+    }
+
+    result = evidence.build_evidence_interpretation(
+        baseline=baseline, calibration=None, regimes=None, temporal_stability=None
+    )
+
+    comparison = result["baseline_comparison"]
+    assert comparison["status"] == "DEPENDENCE_LIMITED_INTERVALS_NOT_CLASSIFIED"
+    assert comparison["intervals_dependence_limited"] == 2
+    assert comparison["comparisons_evaluated"] == 0
+    assert comparison["positive_point_estimates"] == 2
+
+
 def test_evidence_interpretation_detects_inconclusive_baselines_and_upward_ece():
     baseline = {
         "status": "PASS_WITH_WARNINGS",
