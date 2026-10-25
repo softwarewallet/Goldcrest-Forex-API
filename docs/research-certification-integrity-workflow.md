@@ -65,3 +65,10 @@ python -m app.research_certification_report_seal \
 ```
 
 A valid seal proves canonical content consistency only. Certification passing does not prove strategy profitability, predictive validity, statistical significance, or suitability for deployment.
+
+
+## Input and output preflight
+
+Before audit execution, the unified CLI checks that each JSON input is an existing file, the evidence/artifact roots and Git checkout are existing directories, and the config/dataset inputs are existing files or directories. It rejects missing or incorrectly typed inputs with a path-specific JSON error rather than beginning partial certification work. Report and report-seal paths must be distinct from input paths and from each other, and must not already exist.
+
+Report JSON and its optional detached seal are staged in temporary files in their respective output directories before publication. If publication fails partway through, files published by that attempt are removed. This reduces partial-output risk but is not a filesystem-wide atomic transaction across two different directories; retain and verify the seal independently.
