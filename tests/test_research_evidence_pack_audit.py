@@ -413,3 +413,27 @@ def test_release_readiness_role_rejects_warning_status(tmp_path):
 
     assert report["status"] == "FAIL"
     assert any(item["code"] == "release_readiness_not_clean_pass" for item in report["errors"])
+
+
+def test_evidence_pack_accepts_multiple_registered_release_receipts(tmp_path):
+    digest = sha(b"dataset")
+    manifest = write_pack(
+        tmp_path,
+        [
+            ("experiment_registry", registry_report()),
+            ("validation_workflow", workflow_report(digest)),
+            ("release_readiness_run_a", release_readiness_report("run-a", digest)),
+            ("release_readiness_run_b", release_readiness_report("run-b", digest)),
+        ],
+        required_roles=[
+            "experiment_registry",
+            "validation_workflow",
+            "release_readiness_run_a",
+            "release_readiness_run_b",
+        ],
+    )
+
+    report = audit(tmp_path, manifest)
+
+    assert report["status"] == "PASS"
+    assert report["run_ids_reconciled"] == ["run-a", "run-b"]
