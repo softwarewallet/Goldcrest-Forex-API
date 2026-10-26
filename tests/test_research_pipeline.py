@@ -23,6 +23,27 @@ def test_pipeline_requires_exactly_one_input_source(tmp_path):
         )
 
 
+@pytest.mark.parametrize(
+    "terms_reference",
+    [
+        "",
+        "   ",
+        "<EXACT PROVIDER TERMS REFERENCE FROM PREVIOUS RUN>",
+        "TODO: add provider terms",
+        "PLACEHOLDER",
+    ],
+)
+def test_pipeline_rejects_blank_or_placeholder_provider_terms(tmp_path, terms_reference):
+    with pytest.raises(ValueError, match="actual applicable provider terms"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD", timeframe="M15", horizon_bars=4, class_1_means="UP",
+            terms_reference=terms_reference, source_version="test", output_dir=tmp_path,
+            run_id="terms-reference-test", ohlc_csv=tmp_path / "does-not-exist.csv",
+            retrieved_at_utc="2026-10-21T00:00:00Z",
+            initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
+        )
+
+
 def test_feature_names_excludes_contract_columns(tmp_path):
     dataset = tmp_path / "dataset.csv"
     dataset.write_text(
