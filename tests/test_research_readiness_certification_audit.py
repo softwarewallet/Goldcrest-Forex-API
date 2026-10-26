@@ -270,3 +270,53 @@ def test_readiness_rejects_status_warning_mismatch(tmp_path, status, warnings):
 
     assert report["status"] == "FAIL"
     assert "status_warnings_mismatch" in str(report)
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_readiness_malformed_upstream_status_fails_closed_without_raising(tmp_path, status):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_backend_parity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["status"] = status
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = run_audit(tmp_path, manifest_for(reports))
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "status_unknown_or_missing"
+        and error["audit_name"] == "feature_backend_parity"
+        for error in report["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("prefix_invariance", []),
+        ("future_perturbation_invariance", {"all_passed": True}),
+        ("chronological_partition_isolation", None),
+    ],
+)
+def test_malformed_temporal_evidence_fails_closed_without_raising(tmp_path, field, value):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_temporal_integrity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload[field] = value
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = run_audit(tmp_path, manifest_for(reports))
+    assert report["status"] == "FAIL"
+    assert report["readiness"] == "NOT_READY"
+
+
+def test_readiness_missing_warnings_collection_fails_closed(tmp_path):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_backend_parity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.pop("warnings")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = run_audit(tmp_path, manifest_for(reports))
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "upstream_warnings_field_invalid"
+        and error["audit_name"] == "feature_backend_parity"
+        for error in report["errors"]
+    )
