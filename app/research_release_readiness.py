@@ -201,8 +201,10 @@ def audit_research_release_readiness(
                 errors.append(f"required_receipt_status_not_clean_pass:{path_field}")
             if receipt.get("errors") != []:
                 errors.append(f"required_receipt_contains_errors:{path_field}")
-            if receipt.get("actionable") is not False or receipt.get("execution_connected") is not False:
-                errors.append(f"required_receipt_safety_flags_invalid:{path_field}")
+            for safety_flag in ("actionable", "execution_connected", "automatic_model_selection",
+                                "automatic_winner_selection", "test_metrics_used_for_selection"):
+                if safety_flag in receipt and receipt.get(safety_flag) is not False:
+                    errors.append(f"required_receipt_safety_flag_invalid:{path_field}:{safety_flag}")
             expected_hash_field = {
                 "raw_ohlc_audit_path": "raw_ohlc_audit_sha256",
                 "feature_source_audit_path": "feature_source_audit_sha256",
@@ -250,8 +252,22 @@ def audit_research_release_readiness(
                 errors.append("pipeline_completion_receipt_manifest_hash_mismatch")
             if completion.get("status") != "PASS" or completion.get("errors") != [] or completion.get("warnings") != []:
                 errors.append("pipeline_completion_receipt_not_clean_pass")
-            if _sha256(completion_bytes) == "":
-                errors.append("pipeline_completion_receipt_hash_unavailable")
+            if completion.get("schema_version") != 2:
+                errors.append("pipeline_completion_receipt_schema_not_source_bound")
+            source_specs = (
+                ("validation_report_sha256", manifest_file.parent / f"{run_id}_validation_report.json"),
+                ("reproducibility_audit_sha256", reproducibility_path),
+                ("model_evaluation_gate_sha256", _resolve_path(manifest.get("model_evaluation_gate_path"), manifest_file.parent)),
+            )
+            for hash_field, source_path in source_specs:
+                if source_path is None or not source_path.is_file():
+                    errors.append(f"pipeline_completion_source_missing:{hash_field}")
+                else:
+                    try:
+                        if completion.get(hash_field) != _sha256(source_path.read_bytes()):
+                            errors.append(f"pipeline_completion_source_hash_mismatch:{hash_field}")
+                    except OSError:
+                        errors.append(f"pipeline_completion_source_unreadable:{hash_field}")
             for flag in ("actionable", "execution_connected", "model_qualified", "deployment_authorized"):
                 if completion.get(flag) is not False:
                     errors.append(f"pipeline_completion_{flag}_must_be_false")
@@ -282,9 +298,19 @@ def audit_research_release_readiness(
         "checks": checks,
         "errors": sorted(set(errors)),
         "warnings": sorted(set(warnings)),
+        "dataset_fingerprints": (
+            {manifest["dataset_sha256"]: [run_id]}
+            if isinstance(manifest.get("dataset_sha256"), str)
+            and re.fullmatch(r"[0-9a-fA-F]{64}", manifest["dataset_sha256"])
+            else {}
+        ),
         "actionable": False,
+        "inferential": False,
+        "statistical_significance_claimed": False,
         "execution_connected": False,
+        "model_training_performed": False,
         "automatic_model_selection": False,
+        "automatic_repair_performed": False,
         "model_qualified": False,
         "deployment_authorized": False,
         "scope_limitations": [
