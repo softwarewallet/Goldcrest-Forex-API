@@ -66,6 +66,8 @@ def fixture(tmp_path, timestamps=("2026-01-01T00:00:00Z", "2026-01-31T23:45:00Z"
         "audit_name": "research_experiment_registry",
         "registry_id": "registry-lineage-test",
         "status": "PASS",
+        "errors": [],
+        "warnings": [],
         "run_results": [{
             "run_id": run["run_id"],
             "status": "PASS",
@@ -168,3 +170,33 @@ def test_manifest_strict_json_rejects_ambiguous_or_nonstandard_values(tmp_path, 
     report = audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
     assert report["status"] == "FAIL"
     assert any(error["code"] == "manifest_json_invalid" for error in report["errors"])
+
+def test_registry_missing_errors_array_fails_closed(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry.pop("errors")
+    with pytest.raises(ValueError, match="registry_report_errors_schema_invalid"):
+        audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+
+
+def test_registry_report_with_errors_fails_closed(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry["errors"] = [{"code": "upstream_integrity_error"}]
+    with pytest.raises(ValueError, match="registry_report_contains_errors"):
+        audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+
+
+@pytest.mark.parametrize("warnings", [{"not": "a-list"}, [""], [None], ["valid", 1]])
+def test_registry_malformed_warnings_fail_closed(tmp_path, warnings):
+    plan, registry = fixture(tmp_path)
+    registry["warnings"] = warnings
+    with pytest.raises(ValueError, match="registry_report_warnings_schema_invalid"):
+        audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+
+def test_registry_warnings_are_propagated(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry["status"] = "PASS_WITH_WARNINGS"
+    registry["warnings"] = ["registry_notice"]
+    report = audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert "registry_report_has_warnings" in report["warnings"]
+
