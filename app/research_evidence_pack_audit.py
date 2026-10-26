@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +59,8 @@ def audit_research_evidence_pack(
         or len(set(required_roles)) != len(required_roles)
     ):
         raise ValueError("required_roles_invalid")
+    if not REQUIRED_ROLES.issubset(set(required_roles)):
+        raise ValueError("required_roles_must_include_core_roles")
 
     root = base_dir.resolve()
     errors: list[dict[str, Any]] = []
@@ -135,7 +139,11 @@ def audit_research_evidence_pack(
 
             if role == "experiment_registry":
                 supplied, validated = payload.get("runs_supplied"), payload.get("runs_validated")
-                if not isinstance(supplied, int) or not isinstance(validated, int) or supplied < 1 or validated != supplied:
+                if (
+                    not isinstance(supplied, int) or isinstance(supplied, bool)
+                    or not isinstance(validated, int) or isinstance(validated, bool)
+                    or supplied < 1 or validated != supplied
+                ):
                     item_errors.append("registry_run_coverage_incomplete")
                 run_results = payload.get("run_results")
                 if not isinstance(run_results, list) or len(run_results) != validated:
@@ -155,7 +163,7 @@ def audit_research_evidence_pack(
                 checked = payload.get("artifacts_checked")
                 missing = payload.get("missing_required_audits")
                 fingerprints = payload.get("dataset_fingerprints")
-                if not isinstance(checked, int) or checked < 1:
+                if not isinstance(checked, int) or isinstance(checked, bool) or checked < 1:
                     item_errors.append("validation_artifact_coverage_missing")
                 if missing != []:
                     item_errors.append("validation_required_audit_coverage_incomplete")
@@ -224,26 +232,56 @@ def audit_research_evidence_pack(
     }
 
 
-def main() -> int:
+def _write_json_no_clobber(output_path: Path, report: dict[str, Any]) -> Path:
+    """Publish one JSON receipt atomically without replacing a concurrent destination."""
+    destination = output_path.expanduser().resolve()
+    if destination.exists():
+        raise ValueError(f"output_already_exists:{destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(report, stream, indent=2, sort_keys=True, allow_nan=False)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, destination)
+        temporary.unlink()
+        temporary = None
+        return destination
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path, help="JSON evidence-pack manifest")
     parser.add_argument("--output", type=Path, help="New report path; existing files are never overwritten")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
-        raw = args.input.read_bytes()
+        input_path = args.input.expanduser().resolve()
+        raw = input_path.read_bytes()
         manifest = json.loads(raw.decode("utf-8"))
         report = audit_research_evidence_pack(
-            manifest, manifest_sha256=_sha256(raw), base_dir=args.input.resolve().parent
+            manifest, manifest_sha256=_sha256(raw), base_dir=input_path.parent
         )
-        output = args.output or args.input.with_name(args.input.stem + "_evidence_pack_audit.json")
-        if output.exists():
-            raise ValueError(f"output_already_exists:{output}")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        output = (args.output or input_path.with_name(input_path.stem + "_evidence_pack_audit.json")).expanduser().resolve()
+        if output == input_path:
+            raise ValueError("output_must_not_alias_input")
+        published = _write_json_no_clobber(output, report)
         print(json.dumps({
             "status": report["status"],
             "readiness": report["readiness"],
-            "report_path": str(output.resolve()),
+            "report_path": str(published),
             "reports_validated": report["reports_validated"],
             "error_count": len(report["errors"]),
             "execution_connected": False,
