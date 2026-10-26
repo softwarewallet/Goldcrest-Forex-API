@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from app.research_pipeline_completion_audit import audit_pipeline_completion, main
+from app.research_pipeline_completion_audit import audit_pipeline_completion, main, _read_object_with_hash
 
 
 FLAGS = {
@@ -230,3 +230,15 @@ def test_completion_audit_cli_does_not_clobber_concurrent_output(tmp_path, monke
     assert output.read_text(encoding="utf-8") == "created concurrently"
     assert "FileExistsError" in capsys.readouterr().err
     assert list(tmp_path.glob(".completion.json.*.tmp")) == []
+
+
+
+def test_report_hash_is_for_the_exact_bytes_parsed(tmp_path):
+    path = tmp_path / "report.json"
+    raw = b'{"status":"PASS","run_id":"snapshot-test"}\\n'
+    path.write_bytes(raw)
+
+    payload, digest = _read_object_with_hash(path)
+
+    assert payload == {"status": "PASS", "run_id": "snapshot-test"}
+    assert digest == hashlib.sha256(raw).hexdigest()
