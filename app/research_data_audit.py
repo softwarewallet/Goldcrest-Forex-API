@@ -14,9 +14,9 @@ import statistics
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
-from app.research_strict_json import strict_json_loads, Sequence
+from app.research_strict_json import strict_json_loads
 
 def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     payload = strict_json_loads(raw.decode("utf-8"))
