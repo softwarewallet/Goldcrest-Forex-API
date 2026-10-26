@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import pytest
 import hashlib
 import json
 from datetime import datetime
@@ -152,3 +153,18 @@ def test_unsafe_row_path_fails(tmp_path):
     report = audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
     assert report["status"] == "FAIL"
     assert any(e["code"] == "evaluation_rows_path_must_be_confined" for e in report["errors"])
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"schema_version":1,"schema_version":1}',
+    b'{"evaluation_evidence":{"row_count":NaN}}',
+    b'{"evaluation_evidence":{"row_count":Infinity}}',
+    b'{"evaluation_evidence":{"row_count":-Infinity}}',
+])
+def test_manifest_strict_json_rejects_ambiguous_or_nonstandard_values(tmp_path, raw):
+    plan, registry = fixture(tmp_path)
+    (tmp_path / "manifest.json").write_bytes(raw)
+    registry["run_results"][0]["manifest_sha256"] = sha(raw)
+    report = audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "manifest_json_invalid" for error in report["errors"])
