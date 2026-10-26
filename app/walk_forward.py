@@ -62,6 +62,15 @@ def generate_walk_forward_folds(
     for name, value in sizes.items():
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
             raise ValueError(f"{name} must be an integer >= 1")
+    # Each effective test partition contains test_bars - horizon_bars rows after
+    # the boundary purge. If the fold step is shorter, adjacent folds score some
+    # of the same observations. Reject this before any model tuning or fitting.
+    effective_test_bars = test_bars - horizon_bars
+    if effective_test_bars > 0 and step_bars < effective_test_bars:
+        raise ValueError(
+            "step_bars would cause overlapping test windows across folds; "
+            "set step_bars >= test_bars - horizon_bars"
+        )
     if not bars:
         raise ValueError("bars must not be empty")
     if len({(bar.symbol, bar.timeframe) for bar in bars}) != 1:
