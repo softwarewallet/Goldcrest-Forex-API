@@ -214,3 +214,9 @@ def test_gap_policy_audit_rejects_pass_status_with_errors(tmp_path):
         assert "duration_profile_reports_errors_despite_pass_status" in str(exc)
     else:
         raise AssertionError("Expected contradictory report status to be rejected")
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_gap_policy_status_checker_rejects_malformed_status(status):
+    with pytest.raises(ValueError, match="status_not_pass"):
+        gap_audit._check_status({"status": status}, "fixture")
