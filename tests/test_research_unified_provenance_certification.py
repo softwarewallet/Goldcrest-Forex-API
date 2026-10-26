@@ -506,3 +506,23 @@ def test_component_verifier_exceptions_return_consolidated_failure(
         + report["artifact_inventory_spec_seal_verification"].get("errors", [])
         + report["freshness_certification_gate"].get("errors", [])
     ))
+
+
+def test_output_publication_does_not_clobber_target_created_after_staging(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+    import pytest
+
+    report_path = tmp_path / "report.json"
+    competitor_payload = '{"owner":"concurrent-writer"}\\n'
+
+    def concurrent_writer_then_link_failure(source, target):
+        from pathlib import Path
+        Path(target).write_text(competitor_payload, encoding="utf-8")
+        raise FileExistsError(target)
+
+    monkeypatch.setattr(module.os, "link", concurrent_writer_then_link_failure)
+    with pytest.raises(ValueError, match="output_already_exists"):
+        module._write_json_outputs(report_path, {"status": "PASS"}, None, None)
+
+    assert report_path.read_text(encoding="utf-8") == competitor_payload
+    assert not list(tmp_path.glob("*.tmp"))
