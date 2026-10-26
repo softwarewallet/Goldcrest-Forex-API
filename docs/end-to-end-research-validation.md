@@ -631,3 +631,13 @@ the receipt file hash and manifest fingerprint identifier, and binds the receipt
 OHLC and prepared-dataset hashes. It also verifies the dataset-manifest file hash, canonical
 content hash, feature-schema fingerprint, and feature-implementation fingerprint. Tampering or a
 cross-run mismatch fails the audit. Legacy manifests without a fingerprint remain readable.
+
+
+## Run-auditor model-evaluation receipt binding
+
+The cross-artifact run auditor verifies the model-evaluation gate receipt when declared by a
+pipeline manifest. It checks the receipt file hash, run identity, gate scope, recorded status,
+and exact SHA-256 binding to the persisted experiment matrix. A clean run audit requires the
+gate to report PASS with no errors and to retain explicit non-actionable, no-winner-selection,
+and no-test-metric-selection flags. This verifies the receipt linkage; it does not rerun the
+gate or establish predictive validity.
