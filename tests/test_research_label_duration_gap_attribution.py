@@ -5,6 +5,8 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.research_label_duration_gap_attribution import audit_label_duration_gap_attribution
 
 
@@ -124,3 +126,22 @@ def test_gap_attribution_rejects_changed_raw_file_hash(tmp_path):
         assert "baseline_raw_ohlc_file_hash_mismatch" in str(exc)
     else:
         raise AssertionError("Expected changed raw OHLC SHA-256 to be rejected")
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"audit_name":"first","audit_name":"shadowed"}',
+        b'{"metric":NaN}',
+        b'{"metric":Infinity}',
+        b'{"metric":-Infinity}',
+    ],
+)
+def test_label_duration_reader_rejects_ambiguous_json(tmp_path, raw):
+    from app.research_label_duration_gap_attribution import _read_json
+
+    path = tmp_path / "audit.json"
+    path.write_bytes(raw)
+
+    with pytest.raises(ValueError):
+        _read_json(path)
+
