@@ -282,12 +282,27 @@ def _write_v2_completion_receipt(manifest_path: Path):
     evaluation_path = manifest_path.parent / f"{run_id}_model_evaluation_gate.json"
     _write_json(validation_path, {"status": "PASS", "run_id": run_id, "actionable": False})
     _write_json(reproducibility_path, {"status": "PASS", "run_id": run_id, "actionable": False})
-    _write_json(evaluation_path, {"status": "PASS", "run_id": run_id, "actionable": False})
+    _write_json(evaluation_path, {
+        "schema_version": 1,
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "status": "PASS",
+        "run_id": run_id,
+        "source_matrix_sha256": _sha(Path(manifest["experiment_matrix_report"])),
+        "experiment_count": 1,
+        "folds_checked": 1,
+        "fold_metric_objects_checked": 1,
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+        "automatic_winner_selection": False,
+        "test_metrics_used_for_selection": False,
+    })
 
     manifest.update({
         "reproducibility_audit_path": str(reproducibility_path),
         "model_evaluation_gate_path": str(evaluation_path),
         "model_evaluation_gate_sha256": _sha(evaluation_path),
+        "model_evaluation_gate_status": "PASS",
     })
     manifest.pop("pipeline_manifest_sha256", None)
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False)
