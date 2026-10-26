@@ -143,6 +143,12 @@ def audit_research_artifact_bundle(
                 or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
             ):
                 entry_errors.append("upstream_warnings_field_invalid")
+            if status == "PASS" and isinstance(upstream_warnings, list) and upstream_warnings:
+                entry_errors.append("status_warnings_mismatch")
+            elif status == "PASS_WITH_WARNINGS" and (
+                not isinstance(upstream_warnings, list) or not upstream_warnings
+            ):
+                entry_errors.append("status_warnings_mismatch")
             for flag in SAFE_FALSE_FLAGS:
                 if flag in payload and payload[flag] is not False:
                     entry_errors.append(f"safety_flag_not_false:{flag}")
