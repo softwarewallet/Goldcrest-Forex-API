@@ -230,3 +230,23 @@ to verify supplied report hashes, required experiment-registry and validation-wo
 dataset fingerprint consistency, and explicit non-actionable safety flags. The audit publishes
 its output atomically without replacing existing files. See
 `docs/research-evidence-pack-audit.md` for the manifest contract and exit codes.
+
+
+## End-to-end research release readiness
+
+Run the fail-closed release gate after a research run and its evidence have been reviewed:
+
+```bash
+python -m app.research_release_readiness \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json \
+  --provider-terms-evidence data/research/runs/<run-id>_provider_terms_review.json \
+  --output data/research/runs/<run-id>_release_readiness.json \
+  --json
+```
+
+The gate requires clean PASS statuses for all required audits, consistent cross-artifact hashes,
+a clean completion receipt, and a human-reviewed provider-terms evidence record whose source
+file hash matches. Any unresolved warning or missing evidence fails closed. The evidence record
+does not independently determine legal applicability. A PASS is not a model-quality,
+profitability, or live-deployment certification. See
+`docs/research-release-readiness.md`.
