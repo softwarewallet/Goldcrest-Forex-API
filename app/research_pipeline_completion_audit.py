@@ -135,7 +135,7 @@ def audit_pipeline_completion(
         elif validation.get("status") not in _PASS or validation_errors:
             warnings.append("validation_report_contains_quality_or_integrity_findings")
         validation_warnings = validation.get("warnings")
-        if validation_warnings is not None and (
+        if "warnings" in validation and (
             not isinstance(validation_warnings, list)
             or any(not isinstance(item, str) or not item.strip() for item in validation_warnings)
         ):
@@ -191,7 +191,7 @@ def audit_pipeline_completion(
             if evaluation_errors:
                 warnings.append("model_evaluation_gate_reports_errors")
         evaluation_warnings = evaluation.get("warnings")
-        if evaluation_warnings is not None and (
+        if "warnings" in evaluation and (
             not isinstance(evaluation_warnings, list)
             or any(not isinstance(item, str) or not item.strip() for item in evaluation_warnings)
         ):
