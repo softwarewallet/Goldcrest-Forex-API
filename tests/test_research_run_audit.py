@@ -856,3 +856,54 @@ def test_audit_detects_artifact_mutation_after_snapshot(tmp_path, monkeypatch):
     )
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+def test_run_audit_rejects_duplicate_json_keys_in_manifest(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    raw = manifest_path.read_text(encoding="utf-8")
+    assert '"run_id": "run-001",' in raw
+    manifest_path.write_text(
+        raw.replace(
+            '"run_id": "run-001",',
+            '"run_id": "run-001",\\n  "run_id": "shadow-run",',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert result["errors"] == ["manifest_unreadable:ValueError"]
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
+
+
+def test_run_audit_rejects_duplicate_json_keys_in_referenced_artifact(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest_path = Path(manifest["dataset_manifest_path"])
+    original = dataset_manifest_path.read_text(encoding="utf-8").strip()
+    assert original.startswith("{") and original.endswith("}")
+    duplicate = (
+        original[:-1]
+        + ', "output_dataset_sha256": "'
+        + manifest["dataset_sha256"]
+        + '"}'
+    )
+    dataset_manifest_path.write_text(duplicate + "\\n", encoding="utf-8")
+    manifest["dataset_manifest_sha256"] = _sha(dataset_manifest_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    canonical = json.dumps(
+        manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        canonical.encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "dataset_manifest_path_invalid_json:ValueError" in result["errors"]
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
