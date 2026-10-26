@@ -290,3 +290,17 @@ def test_upstream_status_must_match_warning_collection(status, warnings):
         and error["report"] == "row_window_lineage"
         for error in report["errors"]
     )
+
+
+@pytest.mark.parametrize("bad_status", [["PASS"], {"value": "PASS"}])
+def test_unhashable_upstream_status_fails_closed(bad_status):
+    values = fixtures()
+    values[1]["status"] = bad_status
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_report_not_passing" and error["report"] == "registry"
+        for error in report["errors"]
+    )

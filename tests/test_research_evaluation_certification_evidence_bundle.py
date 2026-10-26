@@ -332,3 +332,41 @@ def test_verifier_rejects_status_warning_mismatch_after_bundle_reseal(tmp_path):
         and item["role"] == "registry"
         for item in report["errors"]
     )
+
+
+def test_builder_rejects_unhashable_report_status(tmp_path):
+    paths = fixture(tmp_path)
+    payload = json.loads(paths["registry"].read_text(encoding="utf-8"))
+    payload["status"] = ["PASS"]
+    paths["registry"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="report_not_passing:registry"):
+        build_evidence_bundle(paths)
+
+
+def test_verifier_rejects_unhashable_report_status_without_raising(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    payload = json.loads(paths["registry"].read_text(encoding="utf-8"))
+    payload["status"] = {"value": "PASS"}
+    paths["registry"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    from app.research_evaluation_certification_evidence_bundle import _sha, _canonical
+    entry = bundle["reports"]["registry"]
+    raw = paths["registry"].read_bytes()
+    entry["sha256"] = _sha(raw)
+    entry["size_bytes"] = len(raw)
+    entry["identity"] = {
+        "audit_name": payload["audit_name"], "status": payload["status"],
+        "plan_id": payload["plan_id"], "plan_sha256": payload["plan_sha256"],
+        "registry_id": payload["registry_id"], "deployment_authorized": payload.get("deployment_authorized"),
+    }
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "bundle_report_identity_or_status_mismatch" and error["role"] == "registry"
+        for error in report["errors"]
+    )
