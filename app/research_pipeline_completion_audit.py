@@ -199,7 +199,7 @@ def _report(
 ):
     status = "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS"
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "audit_name": "research_pipeline_completion_audit",
         "scope": "OFFLINE_RESEARCH_PIPELINE_COMPLETION",
         "status": status,
