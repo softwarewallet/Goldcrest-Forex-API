@@ -96,7 +96,7 @@ def run_research_pipeline(
         not normalized_terms_reference
         or re.search(r"<[^>]+>", normalized_terms_reference) is not None
         or re.search(
-            r"\\b(?:TODO|TBD|PLACEHOLDER|REPLACE THIS|EXACT PROVIDER TERMS REFERENCE)\\b",
+            r"\b(?:TODO|TBD|PLACEHOLDER|REPLACE THIS|EXACT PROVIDER TERMS REFERENCE)\b",
             normalized_terms_reference,
             flags=re.IGNORECASE,
         ) is not None
