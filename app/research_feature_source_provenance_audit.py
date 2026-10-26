@@ -12,6 +12,32 @@ from pathlib import Path
 from typing import Any
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 _EXPECTED_SCOPE = "OFFLINE_RESEARCH_DATASET_PREPARATION"
 _EXPECTED_IMPLEMENTATION_FILE = "app/causal_ta_features.py"
 _METADATA_FIELDS = {
@@ -52,7 +78,7 @@ def audit_feature_source_provenance(
     manifest: dict[str, Any] = {}
 
     try:
-        loaded = json.loads(manifest_file.read_text(encoding="utf-8"))
+        loaded = _load_json_object(manifest_file.read_bytes(), source=str(manifest_file))
         if not isinstance(loaded, dict):
             raise ValueError("manifest_root_must_be_object")
         manifest = loaded
