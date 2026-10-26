@@ -253,3 +253,14 @@ def test_final_certification_reader_rejects_duplicate_json_keys(tmp_path):
 
     with pytest.raises(ValueError, match="duplicate_json_key:audit_name"):
         _read_object(report_path)
+
+
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity"])
+def test_final_certification_reader_rejects_nonstandard_json_constants(tmp_path, token):
+    from app.research_final_certification_chain_audit import _read_object
+
+    report_path = tmp_path / "readiness.json"
+    report_path.write_text('{"audit_name":"research_reproducibility_readiness","metric":' + token + '}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="nonstandard_json_constant"):
+        _read_object(report_path)
