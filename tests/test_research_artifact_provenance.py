@@ -143,8 +143,8 @@ def test_verifier_rejects_padded_artifact_identity_and_path(tmp_path):
     report = verify(manifest, root, config, dataset)
     assert report["status"] == "FAIL"
     assert any(item["code"] == "ARTIFACT_ID_INVALID_OR_DUPLICATE" for item in report["errors"])
-    metrics = next(item for item in report["artifacts"] if item["artifact_id"] == "metrics")
-    assert "MISSING_OR_INVALID_ARTIFACT_PATH" in metrics["reasons"]
+    padded_path_item = next(item for item in report["artifacts"] if item["path"] == " metrics.csv ")
+    assert "MISSING_OR_INVALID_ARTIFACT_PATH" in padded_path_item["reasons"]
 
 
 def test_verifier_fails_when_safety_flag_is_not_false(tmp_path):
