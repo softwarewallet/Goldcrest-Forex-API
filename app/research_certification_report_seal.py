@@ -7,6 +7,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -32,16 +34,20 @@ def canonical_report_bytes(report: dict[str, Any]) -> bytes:
     if report.get("status") not in {"PASS", "PASS_WITH_WARNINGS", "FAIL"}:
         raise ValueError("certification_report_status_invalid")
     errors = report.get("errors")
-    if not isinstance(errors, list):
-        raise ValueError("certification_report_errors_must_be_list")
-    if report.get("status") in {"PASS", "PASS_WITH_WARNINGS"} and errors:
+    if not isinstance(errors, list) or any(not isinstance(item, dict) for item in errors):
+        raise ValueError("certification_report_errors_must_be_list_of_objects")
+    status = report["status"]
+    if status in {"PASS", "PASS_WITH_WARNINGS"} and errors:
         raise ValueError("passing_certification_report_must_not_contain_errors")
-    warnings = report.get("warnings")
-    if "warnings" in report and (
-        not isinstance(warnings, list)
-        or any(not isinstance(item, str) or not item.strip() for item in warnings)
+    warnings = report.get("warnings", [])
+    if not isinstance(warnings, list) or any(
+        not isinstance(item, str) or not item.strip() for item in warnings
     ):
         raise ValueError("certification_report_warnings_invalid")
+    if status == "PASS" and warnings:
+        raise ValueError("pass_report_must_not_contain_warnings")
+    if status == "PASS_WITH_WARNINGS" and not warnings:
+        raise ValueError("pass_with_warnings_report_requires_warnings")
     for flag in FALSE_FLAGS:
         if report.get(flag) is not False:
             raise ValueError(f"certification_report_safety_flag_not_explicitly_false:{flag}")
@@ -112,6 +118,42 @@ def _read_object(path: Path) -> dict[str, Any]:
     return payload
 
 
+
+def _write_json_no_clobber(path: Path, payload: str) -> None:
+    """Atomically publish a JSON file without overwriting a concurrent writer."""
+    temporary: Path | None = None
+    published = False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=str(path.parent),
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary = Path(handle.name)
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            raise ValueError(f"output_already_exists:{path}") from None
+        published = True
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                # A successfully published target is already durable; a leftover
+                # staging file is safe to clean up on the next maintenance pass.
+                if not published:
+                    raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("create", "verify"), required=True)
@@ -127,8 +169,10 @@ def main() -> int:
             seal = create_report_seal(report)
             if args.output.exists():
                 raise ValueError(f"output_already_exists:{args.output}")
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+            _write_json_no_clobber(
+                args.output,
+                json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n",
+            )
             print(json.dumps({"status": "PASS", "report_sha256": seal["report_sha256"],
                               "seal_path": str(args.output.resolve()), "deployment_authorized": False}, indent=2))
             return 0

@@ -168,3 +168,47 @@ def test_unexpected_seal_metadata_is_rejected():
     assert verified["status"] == "FAIL"
     assert any(item.get("code") == "REPORT_SEAL_UNEXPECTED_FIELD"
                and item.get("field") == "producer_verified" for item in verified["errors"])
+
+
+
+@pytest.mark.parametrize(
+    "status,warnings",
+    [
+        ("PASS", ["unexpected warning"]),
+        ("PASS_WITH_WARNINGS", []),
+    ],
+)
+def test_report_status_must_match_warning_collection(status, warnings):
+    payload = report()
+    payload["status"] = status
+    payload["warnings"] = warnings
+    with pytest.raises(ValueError):
+        create_report_seal(payload)
+
+
+@pytest.mark.parametrize("errors", ["not-a-list", [None], ["unstructured error"]])
+def test_report_errors_must_be_structured_objects(errors):
+    payload = report()
+    payload["status"] = "FAIL"
+    payload["errors"] = errors
+    with pytest.raises(ValueError, match="errors_must_be_list_of_objects"):
+        create_report_seal(payload)
+
+
+def test_seal_writer_does_not_clobber_target_created_after_staging(monkeypatch, tmp_path):
+    import app.research_certification_report_seal as module
+
+    target = tmp_path / "certification.seal.json"
+    competitor_payload = '{"owner":"concurrent-writer"}\\n'
+
+    def concurrent_writer_then_link_failure(source, destination):
+        from pathlib import Path
+        Path(destination).write_text(competitor_payload, encoding="utf-8")
+        raise FileExistsError(destination)
+
+    monkeypatch.setattr(module.os, "link", concurrent_writer_then_link_failure)
+    with pytest.raises(ValueError, match="output_already_exists"):
+        module._write_json_no_clobber(target, '{"status":"PASS"}\\n')
+
+    assert target.read_text(encoding="utf-8") == competitor_payload
+    assert not list(tmp_path.glob("*.tmp"))
