@@ -79,12 +79,21 @@ def run_unified_certification(
     if current_source_revision is None:
         # Diagnostic placeholder only; git_error below guarantees this cannot certify.
         current_source_revision = "0" * 40
-    seal_report = verify_manifest_seal(provenance_manifest, provenance_seal) if provenance_seal is not None else {
-        "audit_name": "research_provenance_manifest_seal_verification",
-        "status": "FAIL",
-        "manifest_sha256": None,
-        "errors": [{"code": "PROVENANCE_SEAL_REQUIRED"}],
-    }
+    try:
+        seal_report = verify_manifest_seal(provenance_manifest, provenance_seal) if provenance_seal is not None else {
+            "audit_name": "research_provenance_manifest_seal_verification",
+            "status": "FAIL",
+            "manifest_sha256": None,
+            "errors": [{"code": "PROVENANCE_SEAL_REQUIRED"}],
+        }
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        seal_report = {
+            "audit_name": "research_provenance_manifest_seal_verification",
+            "status": "FAIL",
+            "manifest_sha256": None,
+            "errors": [{"code": "PROVENANCE_SEAL_VERIFICATION_EXECUTION_FAILED",
+                        "error": f"{type(exc).__name__}:{exc}"}],
+        }
     try:
         inventory_report = audit_artifact_inventory_completeness(provenance_manifest, inventory_spec) if inventory_spec is not None else {
             "audit_name": "research_artifact_inventory_completeness_audit",
@@ -105,12 +114,21 @@ def run_unified_certification(
             "missing_or_mislocated_artifacts": [],
             "unexpected_or_mislocated_artifacts": [],
         }
-    inventory_seal_report = verify_inventory_spec_seal(inventory_spec, inventory_seal) if inventory_spec is not None and inventory_seal is not None else {
-        "audit_name": "research_artifact_inventory_specification_seal_verification",
-        "status": "FAIL",
-        "inventory_spec_sha256": None,
-        "errors": [{"code": "INVENTORY_SPEC_SEAL_REQUIRED"}],
-    }
+    try:
+        inventory_seal_report = verify_inventory_spec_seal(inventory_spec, inventory_seal) if inventory_spec is not None and inventory_seal is not None else {
+            "audit_name": "research_artifact_inventory_specification_seal_verification",
+            "status": "FAIL",
+            "inventory_spec_sha256": None,
+            "errors": [{"code": "INVENTORY_SPEC_SEAL_REQUIRED"}],
+        }
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        inventory_seal_report = {
+            "audit_name": "research_artifact_inventory_specification_seal_verification",
+            "status": "FAIL",
+            "inventory_spec_sha256": None,
+            "errors": [{"code": "INVENTORY_SPEC_SEAL_VERIFICATION_EXECUTION_FAILED",
+                        "error": f"{type(exc).__name__}:{exc}"}],
+        }
     try:
         provenance_report = verify_provenance(
             provenance_manifest,
@@ -203,7 +221,16 @@ def run_unified_certification(
             "readiness": "NOT_CERTIFIED",
             "errors": [failure],
         }
-    gate_report = gate_freshness_certification(freshness_report, certification_report)
+    try:
+        gate_report = gate_freshness_certification(freshness_report, certification_report)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        gate_report = {
+            "audit_name": "research_freshness_certification_gate",
+            "status": "FAIL",
+            "errors": [{"code": "FRESHNESS_CERTIFICATION_GATE_EXECUTION_FAILED",
+                        "error": f"{type(exc).__name__}:{exc}"}],
+            "warnings": [],
+        }
 
     errors: list[dict[str, Any]] = list(fingerprint_errors)
     if git_error is not None or (git_report is not None and git_report.get("status") != "PASS"):
