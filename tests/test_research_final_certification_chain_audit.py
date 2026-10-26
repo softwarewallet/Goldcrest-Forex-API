@@ -67,6 +67,26 @@ def test_complete_chain_passes():
     assert report["deployment_authorized"] is False
 
 
+@pytest.mark.parametrize("malformed_status", [["PASS"], {"value": "PASS"}, None, 1])
+@pytest.mark.parametrize("report_name", ["readiness", "bundle", "verification"])
+def test_malformed_status_values_fail_closed_without_raising(report_name, malformed_status):
+    readiness, bundle, verification = fixtures()
+    payload = {
+        "readiness": readiness,
+        "bundle": bundle,
+        "verification": verification,
+    }[report_name]
+    payload["status"] = malformed_status
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_report_not_passing" and error["report"] == report_name
+        for error in report["errors"]
+    )
+
+
 def test_plan_identity_mismatch_fails():
     readiness, bundle, verification = fixtures()
     bundle["plan_sha256"] = "c" * 64
