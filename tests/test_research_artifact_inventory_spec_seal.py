@@ -85,3 +85,18 @@ def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, 
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("artifact_id", " metrics ", "artifact_id_must_be_canonical_unpadded"),
+        ("path", " reports/metrics.json ", "path_must_be_canonical_unpadded"),
+        ("path", "../metrics.json", "safe_normalized_posix"),
+    ],
+)
+def test_inventory_spec_seal_rejects_noncanonical_artifact_identity(field, value, error):
+    payload = spec()
+    payload["required_artifacts"][0][field] = value
+    with pytest.raises(ValueError, match=error):
+        create_inventory_spec_seal(payload)

@@ -162,3 +162,22 @@ def test_empty_artifact_inventory_cannot_pass_completeness_gate(
             spec(spec_entries),
         )
 
+
+
+@pytest.mark.parametrize(
+    ("manifest_entries", "spec_entries", "expected_error"),
+    [
+        ([{"artifact_id": " metrics ", "path": "reports/metrics.json"}],
+         [{"artifact_id": " metrics ", "path": "reports/metrics.json"}],
+         "artifact_id_must_be_canonical_unpadded"),
+        ([{"artifact_id": "metrics", "path": " reports/metrics.json "}],
+         [{"artifact_id": "metrics", "path": " reports/metrics.json "}],
+         "path_must_be_canonical_unpadded"),
+    ],
+)
+def test_padded_inventory_identities_are_rejected(manifest_entries, spec_entries, expected_error):
+    with pytest.raises(ValueError, match=expected_error):
+        audit_artifact_inventory_completeness(
+            manifest(manifest_entries),
+            spec(spec_entries),
+        )

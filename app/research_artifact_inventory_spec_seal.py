@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
@@ -38,6 +38,24 @@ def canonical_inventory_spec_bytes(spec: dict[str, Any]) -> bytes:
     entries = spec.get("required_artifacts")
     if not isinstance(entries, list):
         raise ValueError("inventory_spec_required_artifacts_must_be_list")
+    if not entries:
+        raise ValueError("inventory_spec_artifacts_must_not_be_empty")
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ValueError(f"inventory_spec_artifact_entry_must_be_object:{index}")
+        artifact_id = entry.get("artifact_id")
+        if not isinstance(artifact_id, str) or not artifact_id.strip():
+            raise ValueError(f"inventory_spec_artifact_id_required:{index}")
+        if artifact_id != artifact_id.strip():
+            raise ValueError(f"inventory_spec_artifact_id_must_be_canonical_unpadded:{index}")
+        path = entry.get("path")
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError(f"inventory_spec_artifact_path_required:{index}")
+        if path != path.strip():
+            raise ValueError(f"inventory_spec_artifact_path_must_be_canonical_unpadded:{index}")
+        parsed_path = PurePosixPath(path)
+        if parsed_path.is_absolute() or ".." in parsed_path.parts or path == "." or "\\" in path or parsed_path.as_posix() != path:
+            raise ValueError(f"inventory_spec_artifact_path_must_be_safe_normalized_posix:{index}")
     return (json.dumps(spec, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
                        allow_nan=False) + "\n").encode("utf-8")
 

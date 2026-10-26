@@ -24,6 +24,8 @@ FALSE_FLAGS = {
 def _safe_relative_path(value: Any, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label}_path_required")
+    if value != value.strip():
+        raise ValueError(f"{label}_path_must_be_canonical_unpadded")
     path = PurePosixPath(value)
     if path.is_absolute() or ".." in path.parts or "." == value or "\\" in value:
         raise ValueError(f"{label}_path_must_be_safe_relative_posix_path")
@@ -48,6 +50,8 @@ def _index(entries: Any, label: str) -> tuple[dict[str, str], list[dict[str, str
         artifact_id = item.get("artifact_id")
         if not isinstance(artifact_id, str) or not artifact_id.strip():
             raise ValueError(f"{label}_artifact_id_required:{position}")
+        if artifact_id != artifact_id.strip():
+            raise ValueError(f"{label}_artifact_id_must_be_canonical_unpadded:{position}")
         path = _safe_relative_path(item.get("path"), label)
         if artifact_id in by_id:
             errors.append({"code": "DUPLICATE_ARTIFACT_ID", "inventory": label, "artifact_id": artifact_id})
