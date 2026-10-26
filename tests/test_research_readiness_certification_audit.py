@@ -357,3 +357,21 @@ def test_readiness_rejects_invalid_upstream_schema_version(tmp_path, schema_vers
         and error["audit_name"] == "feature_backend_parity"
         for error in report["errors"]
     )
+
+
+@pytest.mark.parametrize("noncanonical_path", [
+    "./feature_temporal_integrity.json",
+    " feature_temporal_integrity.json",
+    "feature_temporal_integrity.json ",
+    "subdir//feature_temporal_integrity.json",
+])
+def test_noncanonical_manifest_paths_fail_closed(tmp_path, noncanonical_path):
+    reports = standard_reports(tmp_path)
+    manifest = manifest_for(reports)
+    manifest["artifacts"][0]["path"] = noncanonical_path
+    report = run_audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "artifact_path_must_be_canonical_relative_posix"
+        for error in report["errors"]
+    )

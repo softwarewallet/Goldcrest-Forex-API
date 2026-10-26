@@ -257,3 +257,22 @@ def test_bundle_audit_rejects_invalid_upstream_schema_version(tmp_path, schema_v
         and error["audit_name"] == "feature_temporal_integrity"
         for error in report["errors"]
     )
+
+
+@pytest.mark.parametrize("noncanonical_path", [
+    "./feature_temporal_integrity.json",
+    " feature_temporal_integrity.json",
+    "feature_temporal_integrity.json ",
+    "subdir//feature_temporal_integrity.json",
+])
+def test_noncanonical_manifest_paths_fail_closed(tmp_path, noncanonical_path):
+    report = audit_research_artifact_bundle(
+        {"artifacts": [{"audit_name": "feature_temporal_integrity", "path": noncanonical_path}]},
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+    assert report["status"] == "FAIL"
+    assert any(
+        item["code"] == "artifact_path_must_be_canonical_relative_posix"
+        for item in report["errors"]
+    )
