@@ -255,6 +255,7 @@ class FakeClient:
         self.host, self.port, self.protocol = host, port, protocol
         self.responses = responses
         self.sent = []
+        self.send_timeouts = []
         self.connected_callback = None
 
     def setConnectedCallback(self, callback):
@@ -269,8 +270,9 @@ class FakeClient:
     def startService(self):
         self.connected_callback(self)
 
-    def send(self, request):
+    def send(self, request, **kwargs):
         self.sent.append(request)
+        self.send_timeouts.append(kwargs.get("responseTimeoutInSeconds"))
         name = type(request).__name__
         return FakeDeferred(self.responses[name])
 
@@ -397,8 +399,9 @@ def test_history_download_paginates_with_older_sdk_count_fallback(tmp_path, monk
     older_page = SimpleNamespace(trendbar=[bar(latest_minute - 30)])
 
     class PagedFakeClient(FakeClient):
-        def send(self, request):
+        def send(self, request, **kwargs):
             self.sent.append(request)
+            self.send_timeouts.append(kwargs.get("responseTimeoutInSeconds"))
             name = type(request).__name__
             if name == "ProtoOAGetTrendbarsReq":
                 response = self.responses[name].pop(0)
@@ -473,8 +476,9 @@ def test_transient_ctrader_request_timeout_retries_with_bounded_attempts(tmp_pat
             return self
 
     class RetryClient(FakeClient):
-        def send(self, request):
+        def send(self, request, **kwargs):
             self.sent.append(request)
+            self.send_timeouts.append(kwargs.get("responseTimeoutInSeconds"))
             name = type(request).__name__
             if name == "ProtoOAApplicationAuthReq" and sum(
                 type(item).__name__ == name for item in self.sent
@@ -513,5 +517,7 @@ def test_transient_ctrader_request_timeout_retries_with_bounded_attempts(tmp_pat
     )
     auth_requests = [request for request in clients[0].sent if type(request).__name__ == "ProtoOAApplicationAuthReq"]
     assert len(auth_requests) == 2
+    assert clients[0].send_timeouts == [ctrader_history_ingest._SEND_RESPONSE_TIMEOUT_SECONDS] * len(clients[0].sent)
+    assert ctrader_history_ingest._SEND_RESPONSE_TIMEOUT_SECONDS > 5
     assert report["pagination"]["complete"] is True
     assert output.is_file()
