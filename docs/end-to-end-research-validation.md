@@ -580,3 +580,28 @@ The fingerprint is an identity/reproducibility aid, not a model-quality score or
 After the pipeline manifest and validation receipt are persisted, the pipeline writes a separate cross-artifact reproducibility audit. It rechecks the pipeline-manifest self-hash, experiment-fingerprint self-hash and file linkage, raw OHLC and dataset bytes, dataset-manifest file/content hashes, feature-source receipt, major audit/matrix artifact hashes, configuration agreement, and the current hashes of all source files captured in the experiment fingerprint. A mismatch is recorded as `FAIL`; the CLI returns a nonzero exit code so a run with broken artifact linkage is not reported as clean.
 
 The reproducibility audit is intentionally a separate receipt: its status/hash is returned by the run but not embedded back into the already-hashed pipeline manifest, avoiding a circular hash dependency. A passing audit establishes cross-artifact consistency only. Model quality and research acceptance remain separate gates.
+
+## Identical-metric diagnostics across label caps
+
+The common held-out cohort audit now records pairwise diagnostics for every supplied pair
+of elapsed-time caps and every model/feature variant. It reports how many folds have
+identical per-timestamp predicted probabilities and how many have identical recomputed
+metric vectors on the shared held-out timestamps. An all-fold match adds a warning that
+calls for inspection of run configuration, model/training provenance, and prediction-level
+artifacts before interpreting the result.
+
+This is a diagnostic, not an automatic failure or model-selection rule: identical metrics
+can occur for legitimate reasons, and identical metrics alone do not prove that the
+training datasets or model artifacts are identical. The report preserves
+`automatic_model_selection=false`, `actionable=false`, and
+`execution_connected=false`. Run it with the existing command:
+
+```bash
+python -m app.research_label_eligibility_common_cohort \
+  --comparison-report data/research/runs/<cap-1-comparison>.json \
+  --comparison-report data/research/runs/<cap-2-comparison>.json \
+  --output data/research/runs/<new-common-cohort-audit>.json
+```
+
+Use a new output filename; audit reports refuse to overwrite an existing file or any input.
+
