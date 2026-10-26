@@ -265,7 +265,7 @@ def test_duplicate_json_key_in_required_report_fails_closed(tmp_path):
     manifest.write_text(
         original.replace(
             '"run_id": "eurusd-m15-test",',
-            '"run_id": "run-001",\\n  "run_id": "shadow-run",',
+            '"run_id": "eurusd-m15-test",\n  "run_id": "shadow-run",',
             1,
         ),
         encoding="utf-8",
