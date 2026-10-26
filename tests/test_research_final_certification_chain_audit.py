@@ -402,3 +402,35 @@ def test_final_chain_rejects_invalid_schema_versions(report_name, schema_version
         and error["report"] == report_name
         for error in report["errors"]
     )
+
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value", "expected_code"),
+    [
+        ("plan_id", "../plan", "plan_id_invalid"),
+        ("plan_id", ".plan", "plan_id_invalid"),
+        ("plan_id", "métrics", "plan_id_invalid"),
+        ("plan_id", "x" * 129, "plan_id_invalid"),
+        ("plan_id", "plan\\nid", "plan_id_invalid"),
+        ("registry_id", "registry/name", "registry_id_invalid"),
+        ("registry_id", "métrics", "registry_id_invalid"),
+        ("registry_id", "x" * 129, "registry_id_invalid"),
+    ],
+)
+def test_final_chain_rejects_noncanonical_plan_and_registry_identities(field, bad_value, expected_code):
+    readiness, bundle, verification = fixtures()
+    readiness[field] = bad_value
+    bundle[field] = bad_value
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == expected_code and error["report"] == "readiness"
+        for error in report["errors"]
+    )
+    assert any(
+        error["code"] == expected_code and error["report"] == "bundle"
+        for error in report["errors"]
+    )
