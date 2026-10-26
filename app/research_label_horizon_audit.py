@@ -15,14 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.research_strict_json import strict_json_loads
+
 def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     payload = strict_json_loads(raw.decode("utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{source}")
     return payload
 
-
-from app.research_strict_json import strict_json_loads
 
 from app.research_baseline_analysis import (
     _BASELINES,
@@ -56,8 +56,6 @@ _METRIC_BASELINES = {
 
 def _read_json(path: Path) -> dict[str, Any]:
     value = _load_json_object(path.read_bytes(), source=str(path))
-    if not isinstance(value, dict):
-        raise ValueError(f"{path.name} must contain a JSON object")
     return value
 
 
