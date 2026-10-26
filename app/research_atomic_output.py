@@ -35,3 +35,34 @@ def write_text_no_clobber(path: Path, payload: str) -> None:
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+
+def write_text_atomic_replace(path: Path, payload: str) -> None:
+    """Atomically replace an output when the caller's contract permits updates.
+
+    Unlike write_text_no_clobber, this helper deliberately preserves overwrite
+    semantics while ensuring readers see either the old complete file or the new
+    complete file, never a partially written payload.
+    """
+    temporary: Path | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\\n",
+            dir=str(path.parent),
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary = Path(handle.name)
+        os.replace(temporary, path)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
