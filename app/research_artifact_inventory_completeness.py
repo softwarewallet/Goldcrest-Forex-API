@@ -107,6 +107,8 @@ def audit_artifact_inventory_completeness(
         errors.append({"code": "UNEXPECTED_ARTIFACTS_PRESENT", "count": len(unexpected)})
     canonical_spec = (json.dumps(inventory_spec, sort_keys=True, separators=(",", ":"),
                                  ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
+    canonical_manifest = (json.dumps(manifest, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
     status = "FAIL" if errors else "PASS"
     return {
         "schema_version": 1,
@@ -114,6 +116,7 @@ def audit_artifact_inventory_completeness(
         "status": status,
         "readiness": "INVENTORY_INCOMPLETE" if errors else "INVENTORY_COMPLETE",
         "manifest_artifact_count": len(manifest_normalized),
+        "manifest_sha256": hashlib.sha256(canonical_manifest).hexdigest(),
         "expected_artifact_count": len(spec_normalized),
         "missing_or_mislocated_artifacts": missing,
         "unexpected_or_mislocated_artifacts": unexpected,
