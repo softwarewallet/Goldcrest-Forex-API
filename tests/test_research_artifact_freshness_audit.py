@@ -163,13 +163,13 @@ def test_duplicate_artifact_path_fails_closed():
 
 
 @pytest.mark.parametrize("field,value,error", [
-    ("artifact_id", " padded ", "artifact_id_must_be_nonempty_and_canonical"),
+    ("artifact_id", " padded ", "artifact_id_must_match_canonical_identifier_pattern"),
     ("path", " reports/metrics.json ", "artifact_path_must_be_canonical_relative_posix_path"),
     ("path", "../outside.json", "artifact_path_must_be_canonical_relative_posix_path"),
     ("path", "/tmp/outside.json", "artifact_path_must_be_canonical_relative_posix_path"),
     ("path", "reports\\\\metrics.json", "artifact_path_must_be_canonical_relative_posix_path"),
-    ("depends_on", [" plan "], "dependencies_must_be_canonical_string_list"),
-    ("depends_on", [""], "dependencies_must_be_canonical_string_list"),
+    ("depends_on", [" plan "], "dependencies_must_be_canonical_identifier_list"),
+    ("depends_on", [""], "dependencies_must_be_canonical_identifier_list"),
 ])
 def test_rejects_noncanonical_manifest_identity_paths_and_dependencies(field, value, error):
     if field == "artifact_id":
@@ -227,3 +227,37 @@ def test_cli_output_does_not_overwrite_existing_target(monkeypatch, tmp_path):
 
     assert module.main() == 2
     assert output.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize(
+    "artifact_id",
+    [
+        "",
+        " padded ",
+        "/metrics",
+        ".metrics",
+        "-metrics",
+        "metrics/report",
+        "metrics\\\\report",
+        "métrics",
+        "x" * 129,
+    ],
+)
+def test_rejects_noncanonical_artifact_identifiers(artifact_id):
+    with pytest.raises(ValueError, match="artifact_id_must_match_canonical_identifier_pattern"):
+        audit(manifest(artifact(artifact_id)))
+
+
+@pytest.mark.parametrize("dependency", [" padded ", "/plan", "plan/report", "x" * 129])
+def test_rejects_noncanonical_dependency_identifiers(dependency):
+    with pytest.raises(ValueError, match="dependencies_must_be_canonical_identifier_list"):
+        audit(manifest(artifact("metrics", depends_on=[dependency])))
+
+
+def test_accepts_canonical_identifier_punctuation():
+    report = audit(manifest(
+        artifact("feature_set:v2"),
+        artifact("metrics.v2", depends_on=["feature_set:v2"]),
+    ))
+    assert report["status"] == "PASS"
+    assert report["regeneration_order"] == []
