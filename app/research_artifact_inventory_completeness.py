@@ -36,6 +36,8 @@ def _safe_relative_path(value: Any, label: str) -> str:
 def _index(entries: Any, label: str) -> tuple[dict[str, str], list[dict[str, str]], list[dict[str, Any]]]:
     if not isinstance(entries, list):
         raise ValueError(f"{label}_artifacts_must_be_list")
+    if not entries:
+        raise ValueError(f"{label}_artifacts_must_not_be_empty")
     by_id: dict[str, str] = {}
     paths: dict[str, str] = {}
     normalized: list[dict[str, str]] = []
