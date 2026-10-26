@@ -5,6 +5,7 @@ import json
 import pytest
 
 from app.research_label_eligibility_threshold_sweep import (
+    _read_json,
     _fold_signature,
     _fold_window_signature,
     choose_threshold_report_path,
@@ -75,3 +76,19 @@ def test_cross_cap_fold_window_signature_ignores_cap_dependent_eligible_counts()
         [0, "2026-01-01T00:00:00Z", "2026-01-07T00:00:00Z"],
         [1, "2026-01-07T00:00:00Z", "2026-01-14T00:00:00Z"],
     ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)
