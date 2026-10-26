@@ -24,6 +24,7 @@ def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
 
 REVISION_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 FALSE_FLAGS = {
     "actionable": False,
     "inferential": False,
@@ -107,16 +108,22 @@ def audit_artifact_freshness(
         if not isinstance(item, dict):
             raise ValueError("artifact_entry_must_be_object")
         artifact_id = item.get("artifact_id")
-        if not isinstance(artifact_id, str) or not artifact_id.strip() or artifact_id != artifact_id.strip():
-            raise ValueError("artifact_id_must_be_nonempty_and_canonical")
+        if (
+            not isinstance(artifact_id, str)
+            or artifact_id != artifact_id.strip()
+            or ARTIFACT_ID_RE.fullmatch(artifact_id) is None
+        ):
+            raise ValueError("artifact_id_must_match_canonical_identifier_pattern")
         if artifact_id in by_id:
             raise ValueError(f"duplicate_artifact_id:{artifact_id}")
         dependencies = item.get("depends_on", [])
         if not isinstance(dependencies, list) or any(
-            not isinstance(dep, str) or not dep.strip() or dep != dep.strip()
+            not isinstance(dep, str)
+            or ARTIFACT_ID_RE.fullmatch(dep) is None
+            or dep != dep.strip()
             for dep in dependencies
         ):
-            raise ValueError(f"dependencies_must_be_canonical_string_list:{artifact_id}")
+            raise ValueError(f"dependencies_must_be_canonical_identifier_list:{artifact_id}")
         if len(dependencies) != len(set(dependencies)):
             raise ValueError(f"duplicate_dependency:{artifact_id}")
         artifact_path = item.get("path")
