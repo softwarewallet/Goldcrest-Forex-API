@@ -72,7 +72,8 @@ def audit_artifact_inventory_completeness(
         raise ValueError("provenance_manifest_invalid")
     if not isinstance(inventory_spec, dict) or inventory_spec.get("audit_name") != "research_artifact_inventory_specification":
         raise ValueError("inventory_specification_invalid")
-    if inventory_spec.get("schema_version") != 1:
+    schema_version = inventory_spec.get("schema_version")
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version != 1:
         raise ValueError("inventory_specification_schema_version_unsupported")
     manifest_entries = manifest.get("artifacts")
     spec_entries = inventory_spec.get("required_artifacts")
