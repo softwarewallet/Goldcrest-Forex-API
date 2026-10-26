@@ -9,7 +9,7 @@ import argparse
 import hashlib
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
@@ -41,6 +41,8 @@ def _sha256(raw: bytes) -> str:
 
 def fingerprint_path(path: Path) -> str:
     """Hash one file or a directory tree deterministically; reject symlinks and special files."""
+    if path.is_symlink():
+        raise ValueError(f"symlink_not_allowed_in_fingerprint:{path}")
     target = path.resolve(strict=True)
     if target.is_file():
         return _sha256(target.read_bytes())
@@ -66,6 +68,15 @@ def fingerprint_path(path: Path) -> str:
 
 def _valid_fingerprint(value: Any) -> bool:
     return isinstance(value, str) and SHA256_RE.fullmatch(value) is not None
+
+
+def _canonical_artifact_path(value: Any) -> str:
+    if not isinstance(value, str) or not value or value != value.strip() or "\\" in value:
+        raise ValueError("artifact_path_must_be_canonical_relative_posix_path")
+    path = PurePosixPath(value)
+    if path.is_absolute() or ".." in path.parts or value in {".", ""} or path.as_posix() != value:
+        raise ValueError("artifact_path_must_be_canonical_relative_posix_path")
+    return value
 
 
 def audit_artifact_freshness(
@@ -95,17 +106,21 @@ def audit_artifact_freshness(
         if not isinstance(item, dict):
             raise ValueError("artifact_entry_must_be_object")
         artifact_id = item.get("artifact_id")
-        if not isinstance(artifact_id, str) or not artifact_id.strip():
-            raise ValueError("artifact_id_required")
+        if not isinstance(artifact_id, str) or not artifact_id.strip() or artifact_id != artifact_id.strip():
+            raise ValueError("artifact_id_must_be_nonempty_and_canonical")
         if artifact_id in by_id:
             raise ValueError(f"duplicate_artifact_id:{artifact_id}")
         dependencies = item.get("depends_on", [])
-        if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
-            raise ValueError(f"dependencies_must_be_string_list:{artifact_id}")
+        if not isinstance(dependencies, list) or any(
+            not isinstance(dep, str) or not dep.strip() or dep != dep.strip()
+            for dep in dependencies
+        ):
+            raise ValueError(f"dependencies_must_be_canonical_string_list:{artifact_id}")
         if len(dependencies) != len(set(dependencies)):
             raise ValueError(f"duplicate_dependency:{artifact_id}")
         artifact_path = item.get("path")
-        if isinstance(artifact_path, str) and artifact_path.strip():
+        if artifact_path is not None:
+            artifact_path = _canonical_artifact_path(artifact_path)
             if artifact_path in path_to_id:
                 raise ValueError(f"duplicate_artifact_path:{artifact_path}")
             path_to_id[artifact_path] = artifact_id
@@ -154,7 +169,7 @@ def audit_artifact_freshness(
             reasons.append("MISSING_OR_INVALID_DATASET_FINGERPRINT")
         elif recorded_dataset != current_dataset_sha256:
             reasons.append("STALE_DATASET")
-        if item.get("path") is None or not isinstance(item.get("path"), str) or not item.get("path").strip():
+        if item.get("path") is None:
             reasons.append("MISSING_ARTIFACT_PATH")
         results[artifact_id] = {
             "artifact_id": artifact_id,
