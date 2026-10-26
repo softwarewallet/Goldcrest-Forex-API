@@ -662,3 +662,13 @@ OHLC artifact, and cross-checks feature schema/source hashes against the pipelin
 The prepared dataset's byte hash remains independently checked. Legacy manifests without
 these newer fields remain readable; a present but invalid self-hash or mismatched raw snapshot
 is a hard audit failure.
+
+
+## Model-evaluation cross-report consistency
+
+Beyond file hashes and source-matrix binding, the run auditor cross-checks the evaluation
+receipt's symbol/timeframe against the pipeline manifest. When the experiment matrix contains
+its experiment/fold arrays, it also verifies the reported experiment count, folds checked, and
+fold-metric object count against the persisted matrix structure. This catches receipts that
+are individually hash-consistent but summarize a different run or a different set of matrix
+records.
