@@ -154,7 +154,7 @@ def audit_research_readiness(
                         entry_errors.append("expected_report_sha256_invalid")
                     elif digest != expected_digest.lower():
                         entry_errors.append("report_sha256_mismatch")
-                decoded = _load_json_object(raw, source=str(path))
+                decoded = _load_json_object(raw, source=str(resolved))
                 if not isinstance(decoded, dict):
                     entry_errors.append("report_root_not_object")
                 else:
