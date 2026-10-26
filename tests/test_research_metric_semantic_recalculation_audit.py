@@ -4,8 +4,10 @@ import csv
 import hashlib
 import json
 
+import pytest
+
 from app.research_experiment_plan import build_experiment_plan
-from app.research_metric_semantic_recalculation_audit import audit_metric_semantics
+from app.research_metric_semantic_recalculation_audit import audit_metric_semantics, _load_json_object
 
 
 def sha(raw: bytes) -> str:
@@ -132,3 +134,12 @@ def test_unsafe_rows_path_fails(tmp_path):
     report = audit_metric_semantics(plan, registry, registry_root=tmp_path)
     assert report["status"] == "FAIL"
     assert any(e["code"] == "evaluation_rows_path_must_be_confined" for e in report["errors"])
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="metric-manifest.json")
