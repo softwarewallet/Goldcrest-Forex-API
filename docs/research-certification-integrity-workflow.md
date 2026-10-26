@@ -97,3 +97,8 @@ The evidence-bundle, evaluation-integrity, readiness, artifact-bundle, unified-p
 ## Strict JSON parsing for provenance and evaluation readers
 
 The artifact freshness audit, artifact-inventory specification seal, backtest-result integrity audit, evaluation-output integrity audit, and evaluation-window lineage audit reject duplicate object keys and non-standard JSON numeric constants (`NaN`, `Infinity`, and `-Infinity`) when reading manifests and report artifacts. These inputs are treated as invalid rather than allowing parser-specific ambiguity to influence provenance, integrity, or readiness conclusions. Regression tests cover malformed top-level and nested manifest values. This hardening is limited to offline research validation; it does not change model selection, model training, or trading/execution behavior.
+
+
+## Strict JSON parsing in certification workflow gates
+
+The freshness certification gate, reproducibility readiness audit, consolidated validation workflow audit, research report audit, and experiment-matrix provenance auditor now reject duplicate JSON object keys and non-standard numeric constants (`NaN`, `Infinity`, `-Infinity`) in JSON artifacts they read. The experiment-matrix provenance auditor also calculates the source SHA-256 from the exact byte snapshot it parsed, preventing a separate second read from binding the receipt to different bytes. This is offline provenance/integrity hardening only; no model training, automatic model selection, broker access, or trading execution behavior changes.
