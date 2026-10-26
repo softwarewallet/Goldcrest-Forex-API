@@ -25,6 +25,9 @@ def write_report(tmp_path, name="feature_temporal_integrity", status="PASS"):
         "inferential": False,
         "model_training_performed": False,
         "execution_connected": False,
+        "statistical_significance_claimed": False,
+        "automatic_repair_performed": False,
+        "deployment_authorized": False,
     }
     path = tmp_path / f"{name}.json"
     raw = json.dumps(payload, sort_keys=True).encode()
@@ -274,5 +277,41 @@ def test_noncanonical_manifest_paths_fail_closed(tmp_path, noncanonical_path):
     assert report["status"] == "FAIL"
     assert any(
         item["code"] == "artifact_path_must_be_canonical_relative_posix"
+        for item in report["errors"]
+    )
+
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "actionable",
+        "automatic_model_selection",
+        "inferential",
+        "statistical_significance_claimed",
+        "execution_connected",
+        "model_training_performed",
+        "automatic_repair_performed",
+        "deployment_authorized",
+    ],
+)
+@pytest.mark.parametrize("mode", ["missing", "true"])
+def test_bundle_requires_every_safety_flag_to_be_explicitly_false(tmp_path, flag, mode):
+    path, payload, _ = write_report(tmp_path)
+    if mode == "missing":
+        payload.pop(flag, None)
+    else:
+        payload[flag] = True
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    report = audit_research_artifact_bundle(
+        {"artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}]},
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+
+    assert report["status"] == "FAIL"
+    assert any(
+        item["code"] == f"safety_flag_not_false:{flag}"
         for item in report["errors"]
     )
