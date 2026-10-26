@@ -239,9 +239,25 @@ def audit_common_heldout_cohort(
                 if set(fmap) != expected_folds:
                     raise ValueError(f"{path}: fold index matrix differs for {key}")
             per_fold = []
-            aggregate_by_cap: dict[str, list[dict[str, Any]]] = {
-                str(cap): [] for cap in caps
-            }
+            cap_pair_diagnostics: dict[str, dict[str, Any]] = {}
+            cap_pair_state: dict[tuple[str, str], dict[str, Any]] = {}
+            for left_index, left_cap in enumerate(caps):
+                for right_cap in caps[left_index + 1:]:
+                    pair_key = f"{left_cap:g}h_vs_{right_cap:g}h"
+                    cap_pair_diagnostics[pair_key] = {
+                        "left_cap_hours": left_cap,
+                        "right_cap_hours": right_cap,
+                        "folds_compared": 0,
+                        "folds_with_identical_common_cohort_probabilities": 0,
+                        "folds_with_identical_common_cohort_metrics": 0,
+                        "identical_probabilities_all_folds": False,
+                        "identical_metrics_all_folds": False,
+                        "comparison_tolerance": 1e-12,
+                        "interpretation": "Diagnostic only; identical held-out predictions or metrics do not establish identical training data or explain why results match.",
+                    }
+                    cap_pair_state[(str(left_cap), str(right_cap))] = {
+                        "folds": 0, "probability_equal": 0, "metrics_equal": 0,
+                    }
             for fold_index in sorted(expected_folds):
                 folds = [fmap[fold_index] for _, fmap in fold_maps]
                 boundaries = {(f["test_start_utc"], f["test_end_utc"]) for f in folds}
@@ -273,8 +289,30 @@ def audit_common_heldout_cohort(
                         cap_rows[str(cap)].append({"label": row["label"], "p": row["variant_probability_class_1"]})
                 baseline_metrics = _metrics(baseline_rows, "p")
                 cap_metrics = {str(cap): _metrics(cap_rows[str(cap)], "p") for cap in caps}
-                for cap, (path, _), mapping in zip(caps, loaded, maps):
-                    aggregate_by_cap[str(cap)].extend(cap_rows[str(cap)])
+                for left_index, left_cap in enumerate(caps):
+                    for right_cap in caps[left_index + 1:]:
+                        left_key, right_key = str(left_cap), str(right_cap)
+                        pair_key = f"{left_cap:g}h_vs_{right_cap:g}h"
+                        left_rows, right_rows = cap_rows[left_key], cap_rows[right_key]
+                        probabilities_equal = len(left_rows) == len(right_rows) and all(
+                            abs(float(left["p"]) - float(right["p"])) <= 1e-12
+                            for left, right in zip(left_rows, right_rows)
+                        )
+                        left_metrics, right_metrics = cap_metrics[left_key], cap_metrics[right_key]
+                        metrics_equal = all(
+                            left_metrics[name] == right_metrics[name]
+                            or abs(float(left_metrics[name]) - float(right_metrics[name])) <= 1e-12
+                            for name in _metrics(left_rows, "p")
+                            if name in left_metrics and name in right_metrics
+                        )
+                        state = cap_pair_state[(left_key, right_key)]
+                        state["folds"] += 1
+                        state["probability_equal"] += int(probabilities_equal)
+                        state["metrics_equal"] += int(metrics_equal)
+                        diagnostic = cap_pair_diagnostics[pair_key]
+                        diagnostic["folds_compared"] += 1
+                        diagnostic["folds_with_identical_common_cohort_probabilities"] += int(probabilities_equal)
+                        diagnostic["folds_with_identical_common_cohort_metrics"] += int(metrics_equal)
                 per_fold.append({
                     "fold_index": fold_index,
                     "test_start_utc": folds[0]["test_start_utc"],
@@ -289,13 +327,38 @@ def audit_common_heldout_cohort(
                     "variant_metrics_on_common_cohort_by_cap": cap_metrics,
                     "actionable": False,
                 })
-            # Flatten common rows across folds from per-fold metrics is not valid for exact
-            # aggregate recomputation when folds overlap; retain fold-level metrics as primary.
+            for left_index, left_cap in enumerate(caps):
+                for right_cap in caps[left_index + 1:]:
+                    left_key, right_key = str(left_cap), str(right_cap)
+                    pair_key = f"{left_cap:g}h_vs_{right_cap:g}h"
+                    state = cap_pair_state[(left_key, right_key)]
+                    diagnostic = cap_pair_diagnostics[pair_key]
+                    folds_compared = state["folds"]
+                    diagnostic["identical_probabilities_all_folds"] = (
+                        folds_compared > 0 and state["probability_equal"] == folds_compared
+                    )
+                    diagnostic["identical_metrics_all_folds"] = (
+                        folds_compared > 0 and state["metrics_equal"] == folds_compared
+                    )
+                    if diagnostic["identical_probabilities_all_folds"]:
+                        warnings.append(
+                            f"{key[0]}/{key[1]}: common-cohort predicted probabilities are identical "
+                            f"for caps {left_cap:g}h and {right_cap:g}h in every compared fold; "
+                            "inspect run/configuration/training provenance before interpreting the result"
+                        )
+                    elif diagnostic["identical_metrics_all_folds"]:
+                        warnings.append(
+                            f"{key[0]}/{key[1]}: common-cohort metric vectors are identical for caps "
+                            f"{left_cap:g}h and {right_cap:g}h in every compared fold; inspect "
+                            "prediction-level differences and training provenance"
+                        )
+            # Fold observations may overlap; keep fold-level diagnostics as primary.
             results.append({
                 "model_type": key[0],
                 "feature_variant": key[1],
                 "fold_count": len(per_fold),
                 "fold_results": per_fold,
+                "identical_cap_diagnostics": list(cap_pair_diagnostics.values()),
                 "interpretation": "Each cap and the baseline are scored on the intersection of eligible held-out timestamps shared by every supplied report within each fold.",
                 "actionable": False,
             })
