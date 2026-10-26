@@ -73,6 +73,8 @@ def test_complete_pipeline_reports_pass_integrity_gate(tmp_path):
     assert report["readiness"] == "RUN_INTEGRITY_VERIFIED"
     assert report["model_qualified"] is False
     assert report["deployment_authorized"] is False
+    assert report["validation_report_sha256"] == hashlib.sha256(validation.read_bytes()).hexdigest()
+    assert report["reproducibility_audit_sha256"] == hashlib.sha256(reproducibility.read_bytes()).hexdigest()
 
 
 def test_reproducibility_failure_blocks_completion(tmp_path):
