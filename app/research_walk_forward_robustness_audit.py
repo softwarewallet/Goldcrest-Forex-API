@@ -15,6 +15,22 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 METRIC_DIRECTIONS = {"maximize", "minimize", "descriptive"}
 
 
@@ -294,7 +310,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         raw = args.input.read_bytes()
-        manifest = json.loads(raw.decode("utf-8"))
+        manifest = _load_json_object(raw, source=str(args.input))
         report = audit_walk_forward_robustness(
             manifest,
             manifest_sha256=_sha256(raw),
