@@ -22,7 +22,7 @@ def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     return payload
 
 
-REVISION_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 FALSE_FLAGS = {
     "actionable": False,
@@ -68,7 +68,7 @@ def fingerprint_path(path: Path) -> tuple[str, int, str]:
 def _validate_revision(value: Any) -> str:
     if not isinstance(value, str) or not REVISION_RE.fullmatch(value):
         raise ValueError("source_revision_must_be_full_40_character_git_sha")
-    return value.lower()
+    return value
 
 
 def capture_provenance(
@@ -94,13 +94,13 @@ def capture_provenance(
             raise ValueError("artifact_spec_must_be_object")
         artifact_id = entry.get("artifact_id")
         relative_path = entry.get("path")
-        if not isinstance(artifact_id, str) or not artifact_id.strip():
-            raise ValueError("artifact_id_required")
+        if not isinstance(artifact_id, str) or not artifact_id.strip() or artifact_id != artifact_id.strip():
+            raise ValueError("artifact_id_must_be_nonempty_and_canonical")
         if artifact_id in seen:
             raise ValueError(f"duplicate_artifact_id:{artifact_id}")
         seen.add(artifact_id)
-        if not isinstance(relative_path, str) or not relative_path.strip():
-            raise ValueError(f"artifact_path_required:{artifact_id}")
+        if not isinstance(relative_path, str) or not relative_path.strip() or relative_path != relative_path.strip():
+            raise ValueError(f"artifact_path_must_be_nonempty_and_canonical:{artifact_id}")
         supplied = Path(relative_path)
         if supplied.is_absolute():
             raise ValueError(f"artifact_path_must_be_relative:{artifact_id}")
@@ -112,8 +112,11 @@ def capture_provenance(
             raise ValueError(f"artifact_path_outside_root:{artifact_id}")
         digest, size, kind = fingerprint_path(resolved)
         dependencies = entry.get("depends_on", [])
-        if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
-            raise ValueError(f"dependencies_must_be_string_list:{artifact_id}")
+        if not isinstance(dependencies, list) or any(
+            not isinstance(dep, str) or not dep.strip() or dep != dep.strip()
+            for dep in dependencies
+        ):
+            raise ValueError(f"dependencies_must_be_canonical_string_list:{artifact_id}")
         captured.append({
             "artifact_id": artifact_id,
             "path": supplied.as_posix(),
@@ -215,7 +218,7 @@ def verify_provenance(
             errors.append({"code": "ARTIFACT_ENTRY_INVALID"})
             continue
         artifact_id = item.get("artifact_id")
-        if not isinstance(artifact_id, str) or artifact_id in seen:
+        if not isinstance(artifact_id, str) or not artifact_id.strip() or artifact_id != artifact_id.strip() or artifact_id in seen:
             errors.append({"code": "ARTIFACT_ID_INVALID_OR_DUPLICATE", "artifact_id": artifact_id})
             continue
         seen.add(artifact_id)
@@ -225,7 +228,7 @@ def verify_provenance(
             reasons.append("STALE_CODE_REVISION")
         if not SHA256_RE.fullmatch(item.get("sha256", "")):
             reasons.append("MISSING_OR_INVALID_ARTIFACT_HASH")
-        if not isinstance(path_text, str) or not path_text or Path(path_text).is_absolute():
+        if not isinstance(path_text, str) or not path_text or path_text != path_text.strip() or Path(path_text).is_absolute():
             reasons.append("MISSING_OR_INVALID_ARTIFACT_PATH")
         else:
             candidate = root / Path(path_text)
