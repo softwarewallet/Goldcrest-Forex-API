@@ -75,6 +75,17 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
             raise ValueError(f"audit_name_mismatch:{role}")
         if payload.get("status") not in allowed_statuses:
             raise ValueError(f"report_not_passing:{role}")
+        report_errors = payload.get("errors")
+        if not isinstance(report_errors, list):
+            raise ValueError(f"report_errors_schema_invalid:{role}")
+        if report_errors:
+            raise ValueError(f"report_contains_errors:{role}")
+        report_warnings = payload.get("warnings")
+        if report_warnings is not None and (
+            not isinstance(report_warnings, list)
+            or any(not isinstance(item, str) or not item.strip() for item in report_warnings)
+        ):
+            raise ValueError(f"report_warnings_schema_invalid:{role}")
         if role != "plan" and payload.get("deployment_authorized") is not False:
             raise ValueError(f"deployment_authorization_not_false:{role}")
         for flag, expected in FALSE_FLAGS.items():
@@ -172,6 +183,27 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
         payload = _read_report(path)[0]
         if payload.get("audit_name") != audit_name or payload.get("status") not in allowed_statuses:
             errors.append({"code": "bundle_report_identity_or_status_mismatch", "role": role})
+            continue
+        report_errors = payload.get("errors")
+        if not isinstance(report_errors, list):
+            errors.append({"code": "bundle_report_errors_schema_invalid", "role": role})
+            continue
+        if report_errors:
+            errors.append({"code": "bundle_report_contains_errors", "role": role})
+            continue
+        report_warnings = payload.get("warnings")
+        if report_warnings is not None and (
+            not isinstance(report_warnings, list)
+            or any(not isinstance(item, str) or not item.strip() for item in report_warnings)
+        ):
+            errors.append({"code": "bundle_report_warnings_schema_invalid", "role": role})
+            continue
+        invalid_flag = next((flag for flag, expected in FALSE_FLAGS.items() if payload.get(flag) is not expected), None)
+        if invalid_flag is not None:
+            errors.append({"code": "bundle_report_safety_flag_not_false", "role": role, "flag": invalid_flag})
+            continue
+        if role != "plan" and payload.get("deployment_authorized") is not False:
+            errors.append({"code": "bundle_report_deployment_authorized", "role": role})
             continue
         if _identity(payload) != entry.get("identity"):
             errors.append({"code": "bundle_report_identity_metadata_mismatch", "role": role})
