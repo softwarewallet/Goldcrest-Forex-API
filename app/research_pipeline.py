@@ -24,6 +24,7 @@ from app.research_experiment_fingerprint import build_experiment_fingerprint, ve
 from app.research_reproducibility_auditor import audit_experiment_reproducibility
 from app.research_pipeline_completion_audit import audit_pipeline_completion
 from app.research_data_audit import audit_raw_ohlc_file
+from app.research_label_maturity_audit import audit_label_maturity
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
 from app.research_model_evaluation_gate import audit_model_evaluation_report
@@ -110,6 +111,7 @@ def run_research_pipeline(
         f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json",
         f"{run_id}_feature_source_audit.json",
         f"{run_id}_point_in_time_feature_invariance.json",
+        f"{run_id}_label_maturity_audit.json",
         f"{run_id}_experiment_fingerprint.json",
         f"{run_id}_reproducibility_audit.json",
         f"{run_id}_pipeline_completion_audit.json",
@@ -246,6 +248,30 @@ def run_research_pipeline(
         terms_reference=terms_reference,
         max_label_elapsed_hours=max_label_elapsed_hours,
     )
+    # Independently verify every stored forward label against the raw row-index target
+    # and maturity timestamp before model fitting. This catches stale or altered labels,
+    # incorrect target timestamps, close mismatches, and inconsistent eligibility masks.
+    label_maturity_audit_path = destination / f"{run_id}_label_maturity_audit.json"
+    label_maturity_audit = audit_label_maturity(
+        raw_csv,
+        dataset_csv,
+        symbol=instrument,
+        timeframe=period,
+        horizon_bars=horizon_bars,
+        class_1_means=class_1_means,
+        max_label_elapsed_hours=max_label_elapsed_hours,
+    )
+    label_maturity_audit_path.write_text(
+        json.dumps(label_maturity_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    label_maturity_audit_sha256 = _sha256(label_maturity_audit_path)
+    if label_maturity_audit["status"] != "PASS":
+        raise ValueError(
+            "label maturity audit failed before model training: "
+            + ", ".join(label_maturity_audit["errors"])
+        )
+
     # Bind the exact dataset to the current causal feature source and declared schema
     # before model training. Missing/stale fingerprints fail closed at this boundary.
     feature_source_audit_path = destination / f"{run_id}_feature_source_audit.json"
@@ -289,17 +315,32 @@ def run_research_pipeline(
         "strict_model_evaluation_gate": strict_model_evaluation_gate,
     }
     implementation_root = Path(__file__).resolve().parent
+    # Fingerprint the full offline research decision path, not only feature generation.
+    # Changes to fold construction, label eligibility, evaluation gates, report auditors,
+    # or final completion checks must invalidate the source-identity receipt as well.
     implementation_paths = {
         f"app/{name}": implementation_root / name
         for name in (
             "research_pipeline.py",
             "research_dataset_builder.py",
-            "research_experiment_matrix.py",
             "historical_tabular_research.py",
             "causal_ta_features.py",
+            "evaluation.py",
+            "walk_forward.py",
+            "model_walk_forward.py",
+            "research_experiment_matrix.py",
             "research_feature_source_provenance_audit.py",
             "research_point_in_time_feature_invariance_audit.py",
             "research_experiment_fingerprint.py",
+            "research_model_evaluation_gate.py",
+            "research_provenance_auditor.py",
+            "temporal_calibration_stability.py",
+            "research_validation.py",
+            "research_reproducibility_auditor.py",
+            "research_pipeline_completion_audit.py",
+            "research_data_audit.py",
+            "research_label_maturity_audit.py",
+            "research_strict_json.py",
         )
     }
     experiment_fingerprint = build_experiment_fingerprint(
@@ -385,6 +426,13 @@ def run_research_pipeline(
         "raw_ohlc_audit_sha256": _sha256(raw_audit_path),
         "raw_ohlc_audit_status": raw_audit["status"],
         "raw_ohlc_audit_warnings": raw_audit["warnings"],
+        "label_maturity_audit_path": str(label_maturity_audit_path),
+        "label_maturity_audit_sha256": label_maturity_audit_sha256,
+        "label_maturity_audit_status": label_maturity_audit["status"],
+        "label_maturity_audit_errors": label_maturity_audit["errors"],
+        "label_maturity_audit_checked_rows": label_maturity_audit["checked_label_rows"],
+        "label_maturity_audit_eligible_rows": label_maturity_audit["eligible_label_rows"],
+        "label_maturity_audit_ineligible_rows": label_maturity_audit["ineligible_label_rows"],
         "dataset_path": str(dataset_csv),
         "dataset_sha256": _sha256(dataset_csv),
         "dataset_manifest_path": str(dataset_manifest_path),

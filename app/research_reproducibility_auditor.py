@@ -212,12 +212,58 @@ def audit_experiment_reproducibility(
             ("provenance_audit_path", "provenance_audit_sha256", "provenance_audit_file_hash"),
             ("temporal_calibration_audit_path", "temporal_calibration_audit_sha256", "temporal_calibration_file_hash"),
             ("model_evaluation_gate_path", "model_evaluation_gate_sha256", "model_evaluation_gate_file_hash"),
+            ("label_maturity_audit_path", "label_maturity_audit_sha256", "label_maturity_audit_file_hash"),
         )
         for path_field, hash_field, check_name in artifact_pairs:
             _check_file_hash(
                 manifest, pipe_path, path_field=path_field, hash_field=hash_field,
                 check_name=check_name, checks=checks, errors=errors,
             )
+
+        # A matching file digest is not enough: independently validate the label receipt's
+        # scope, pass status, safety flags, and links to the exact raw/dataset snapshots.
+        label_audit_path = _resolve_artifact(manifest.get("label_maturity_audit_path"), pipe_path)
+        if label_audit_path is None or not label_audit_path.is_file():
+            errors.append("label_maturity_audit_missing")
+            checks["label_maturity_audit_integrity"] = "FAIL"
+        else:
+            try:
+                label_audit = _read_object(label_audit_path)
+                checked_rows = label_audit.get("checked_label_rows")
+                eligible_rows = label_audit.get("eligible_label_rows")
+                ineligible_rows = label_audit.get("ineligible_label_rows")
+                valid_counts = all(
+                    isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                    for value in (checked_rows, eligible_rows, ineligible_rows)
+                )
+                cap = manifest.get("max_label_elapsed_hours")
+                eligibility_counts_valid = (
+                    valid_counts
+                    and (
+                        eligible_rows + ineligible_rows == checked_rows
+                        if cap is not None
+                        else eligible_rows == 0 and ineligible_rows == 0
+                    )
+                )
+                valid = (
+                    label_audit.get("scope") == "GOLDCREST_FORWARD_LABEL_MATURITY_AUDIT"
+                    and label_audit.get("status") == "PASS"
+                    and label_audit.get("errors") == []
+                    and label_audit.get("actionable") is False
+                    and label_audit.get("execution_connected") is False
+                    and label_audit.get("automatic_model_selection") is False
+                    and label_audit.get("raw_ohlc_sha256") == manifest.get("raw_ohlc_sha256")
+                    and label_audit.get("dataset_sha256") == manifest.get("dataset_sha256")
+                    and manifest.get("label_maturity_audit_status") == "PASS"
+                    and manifest.get("label_maturity_audit_errors") == []
+                    and eligibility_counts_valid
+                )
+                checks["label_maturity_audit_integrity"] = "PASS" if valid else "FAIL"
+                if not valid:
+                    errors.append("label_maturity_audit_not_passing_or_linked")
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+                checks["label_maturity_audit_integrity"] = "FAIL"
+                errors.append("label_maturity_audit_unreadable")
 
         configuration = fingerprint.get("configuration")
         if not isinstance(configuration, dict):

@@ -117,6 +117,22 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
     monkeypatch.setattr(
         research_pipeline,
+        "audit_label_maturity",
+        lambda *args, **kwargs: {
+            "schema_version": 1,
+            "scope": "GOLDCREST_FORWARD_LABEL_MATURITY_AUDIT",
+            "status": "PASS", "errors": [], "warnings": [],
+            "raw_ohlc_path": str(args[0]),
+            "raw_ohlc_sha256": research_pipeline._sha256(args[0]),
+            "dataset_path": str(args[1]),
+            "dataset_sha256": research_pipeline._sha256(args[1]),
+            "checked_label_rows": 1, "eligible_label_rows": 0, "ineligible_label_rows": 0,
+            "actionable": False, "execution_connected": False,
+            "automatic_model_selection": False,
+        },
+    )
+    monkeypatch.setattr(
+        research_pipeline,
         "load_historical_dataset",
         lambda path, names: ([], [], "a" * 64),
     )
@@ -174,6 +190,12 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert raw_audit["errors"] == []
     assert "snapshot_manifest_missing_provenance_hash_unverified" in raw_audit["warnings"]
     assert stored["raw_ohlc_audit_sha256"]
+    assert stored["label_maturity_audit_status"] == "PASS"
+    label_audit_path = Path(stored["label_maturity_audit_path"])
+    label_audit = json.loads(label_audit_path.read_text(encoding="utf-8"))
+    assert label_audit["raw_ohlc_sha256"] == stored["raw_ohlc_sha256"]
+    assert label_audit["dataset_sha256"] == stored["dataset_sha256"]
+    assert stored["label_maturity_audit_sha256"] == research_pipeline._sha256(label_audit_path)
     assert stored["dataset_sha256"]
     assert stored["feature_source_audit_status"] == "PASS"
     assert stored["feature_source_audit_errors"] == []
@@ -188,6 +210,19 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     fingerprint_receipt = json.loads(fingerprint_path.read_text(encoding="utf-8"))
     assert verify_experiment_fingerprint(fingerprint_receipt)["status"] == "PASS"
     assert stored["experiment_fingerprint_sha256"] == fingerprint_receipt["experiment_fingerprint_sha256"]
+    fingerprinted_modules = set(fingerprint_receipt["implementation_file_sha256"])
+    assert {
+        "app/walk_forward.py",
+        "app/model_walk_forward.py",
+        "app/research_model_evaluation_gate.py",
+        "app/research_provenance_auditor.py",
+        "app/temporal_calibration_stability.py",
+        "app/research_validation.py",
+        "app/research_reproducibility_auditor.py",
+        "app/research_pipeline_completion_audit.py",
+        "app/research_data_audit.py",
+        "app/research_label_maturity_audit.py",
+    }.issubset(fingerprinted_modules)
     assert stored["experiment_fingerprint_file_sha256"] == research_pipeline._sha256(fingerprint_path)
     assert result["reproducibility_audit_status"] == "PASS"
     reproducibility_path = Path(result["reproducibility_audit_path"])
@@ -413,6 +448,22 @@ def test_pipeline_stops_before_training_when_feature_source_audit_fails(tmp_path
         return {}
 
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
+    monkeypatch.setattr(
+        research_pipeline,
+        "audit_label_maturity",
+        lambda *args, **kwargs: {
+            "schema_version": 1,
+            "scope": "GOLDCREST_FORWARD_LABEL_MATURITY_AUDIT",
+            "status": "PASS", "errors": [], "warnings": [],
+            "raw_ohlc_path": str(args[0]),
+            "raw_ohlc_sha256": research_pipeline._sha256(args[0]),
+            "dataset_path": str(args[1]),
+            "dataset_sha256": research_pipeline._sha256(args[1]),
+            "checked_label_rows": 1, "eligible_label_rows": 0, "ineligible_label_rows": 0,
+            "actionable": False, "execution_connected": False,
+            "automatic_model_selection": False,
+        },
+    )
     monkeypatch.setattr(
         research_pipeline,
         "audit_feature_source_provenance",
