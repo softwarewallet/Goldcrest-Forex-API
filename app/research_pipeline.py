@@ -21,6 +21,7 @@ from app.research_dataset_builder import prepare_research_dataset
 from app.research_feature_source_provenance_audit import audit_feature_source_provenance
 from app.research_experiment_fingerprint import build_experiment_fingerprint, verify_experiment_fingerprint
 from app.research_reproducibility_auditor import audit_experiment_reproducibility
+from app.research_pipeline_completion_audit import audit_pipeline_completion
 from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
@@ -103,6 +104,7 @@ def run_research_pipeline(
         f"{run_id}_feature_source_audit.json",
         f"{run_id}_experiment_fingerprint.json",
         f"{run_id}_reproducibility_audit.json",
+        f"{run_id}_pipeline_completion_audit.json",
         f"{run_id}_experiment_matrix.json",
         f"{run_id}_provenance_audit.json",
         f"{run_id}_temporal_calibration_stability.json",
@@ -455,6 +457,22 @@ def run_research_pipeline(
     result["reproducibility_audit_sha256"] = _sha256(reproducibility_audit_path)
     result["reproducibility_audit_status"] = reproducibility_audit["status"]
     result["reproducibility_audit_errors"] = reproducibility_audit["errors"]
+
+    # Final receipt binds the immutable manifest to its validation and reproducibility
+    # reports. It is intentionally external to the manifest to avoid a hash cycle.
+    completion_audit = audit_pipeline_completion(
+        manifest_path, validation_path, reproducibility_audit_path
+    )
+    completion_audit_path = destination / f"{run_id}_pipeline_completion_audit.json"
+    completion_audit_path.write_text(
+        json.dumps(completion_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    result["pipeline_completion_audit_path"] = str(completion_audit_path)
+    result["pipeline_completion_audit_sha256"] = _sha256(completion_audit_path)
+    result["pipeline_completion_audit_status"] = completion_audit["status"]
+    result["pipeline_completion_audit_errors"] = completion_audit["errors"]
+    result["pipeline_completion_audit_warnings"] = completion_audit["warnings"]
     return result
 
 
@@ -545,6 +563,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if result.get("reproducibility_audit_status") == "FAIL":
         print("research pipeline completed, but cross-artifact reproducibility audit failed; inspect reproducibility_audit_errors", file=sys.stderr)
         return 7
+    if result.get("pipeline_completion_audit_status") == "FAIL":
+        print("research pipeline completed, but final completion integrity audit failed; inspect pipeline_completion_audit_errors", file=sys.stderr)
+        return 8
     return 0
 
 
