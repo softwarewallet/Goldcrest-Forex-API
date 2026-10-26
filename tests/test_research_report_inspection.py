@@ -323,3 +323,10 @@ def test_inspection_recomputes_calibration_sample_adequacy_audit(tmp_path):
     path.write_text(json.dumps(report), encoding="utf-8")
     with pytest.raises(ValueError, match="calibration_sample_adequacy_audit does not match fold metrics"):
         inspect_experiment_report(path)
+
+
+def test_inspection_rejects_duplicate_json_keys(tmp_path):
+    path = tmp_path / "duplicate.json"
+    path.write_text('{"run_id":"first","run_id":"second"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="duplicate_json_key"):
+        inspect_experiment_report(path)
