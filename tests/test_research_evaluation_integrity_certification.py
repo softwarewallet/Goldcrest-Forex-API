@@ -33,6 +33,7 @@ def fixtures():
         "audit_name": "research_experiment_registry",
         "status": "PASS",
         "registry_id": "registry-1",
+        "errors": [],
         **FALSE_FLAGS,
     }
     output = {
