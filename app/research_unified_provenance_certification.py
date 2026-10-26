@@ -417,9 +417,13 @@ def _write_json_outputs(report_path: Path, report: dict[str, Any],
                 os.fsync(handle.fileno())
                 staged.append((Path(handle.name), target))
         for temporary, target in staged:
-            if target.exists():
-                raise ValueError(f"output_already_exists:{target}")
-            os.replace(temporary, target)
+            # Publish without clobbering a target created by another process after
+            # staging. A same-directory hard link is atomic and fails if target exists.
+            try:
+                os.link(temporary, target)
+            except FileExistsError:
+                raise ValueError(f"output_already_exists:{target}") from None
+            temporary.unlink()
             published.append(target)
     except Exception:
         for target in published:
