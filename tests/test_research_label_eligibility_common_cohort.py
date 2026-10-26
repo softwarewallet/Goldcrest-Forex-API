@@ -413,3 +413,24 @@ def test_common_cohort_does_not_flag_different_probabilities_as_identical(tmp_pa
     assert diagnostic["identical_probabilities_all_folds"] is False
     assert diagnostic["folds_with_identical_common_cohort_probabilities"] == 0
     assert result["automatic_model_selection"] is False
+
+def test_common_cohort_rejects_duplicate_json_keys(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    original = a.read_text(encoding="utf-8")
+    assert '"variant_run_id":' in original
+    a.write_text(
+        original.replace(
+            '"variant_run_id": "cap1.0",',
+            '"variant_run_id": "cap1.0",\\n  "variant_run_id": "shadow-run",',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "FAIL"
+    assert any("duplicate_json_key:variant_run_id" in error for error in result["errors"])
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
