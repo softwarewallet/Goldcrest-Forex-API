@@ -498,6 +498,14 @@ def _attach_experiment_fingerprint(manifest_path: Path) -> Path:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     dataset_manifest_path = Path(manifest["dataset_manifest_path"])
     dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest["feature_implementation_sha256"] = "b" * 64
+    dataset_manifest["feature_schema_sha256"] = "a" * 64
+    dataset_manifest.pop("manifest_sha256", None)
+    dataset_manifest["manifest_sha256"] = hashlib.sha256(
+        json.dumps(dataset_manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(dataset_manifest_path, dataset_manifest)
+    manifest["dataset_manifest_sha256"] = _sha(dataset_manifest_path)
     dataset_manifest.pop("manifest_sha256", None)
     manifest_content_hash = hashlib.sha256(
         json.dumps(dataset_manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -528,6 +536,8 @@ def _attach_experiment_fingerprint(manifest_path: Path) -> Path:
         "experiment_fingerprint_path": str(path),
         "experiment_fingerprint_file_sha256": _sha(path),
         "experiment_fingerprint_sha256": receipt["experiment_fingerprint_sha256"],
+        "feature_schema_sha256": "a" * 64,
+        "feature_implementation_sha256": "b" * 64,
     })
     manifest.pop("pipeline_manifest_sha256", None)
     manifest["pipeline_manifest_sha256"] = hashlib.sha256(
