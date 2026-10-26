@@ -142,3 +142,21 @@ def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, 
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+def test_empty_artifact_manifest_fails_closed():
+    with pytest.raises(ValueError, match="manifest_artifacts_must_not_be_empty"):
+        audit(manifest())
+
+
+def test_duplicate_dependency_reference_fails_closed():
+    with pytest.raises(ValueError, match="duplicate_dependency"):
+        audit(manifest(artifact("plan"), artifact("metrics", depends_on=["plan", "plan"])))
+
+
+def test_duplicate_artifact_path_fails_closed():
+    with pytest.raises(ValueError, match="duplicate_artifact_path"):
+        audit(manifest(
+            artifact("report-a", path="same.json"),
+            artifact("report-b", path="same.json"),
+        ))
+
