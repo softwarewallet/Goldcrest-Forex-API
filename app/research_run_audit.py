@@ -410,6 +410,32 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                 errors.append(f"{field}_status_mismatch")
             if evaluation.get("status") != "PASS" or evaluation.get("errors") != []:
                 errors.append(f"{field}_not_pass")
+            for identity_field in ("symbol", "timeframe"):
+                manifest_identity = manifest.get(identity_field)
+                if manifest_identity is not None and evaluation.get(identity_field) != manifest_identity:
+                    errors.append(f"{field}_{identity_field}_mismatch")
+            matrix_report = related.get("experiment_matrix_report", {})
+            matrix_experiments = matrix_report.get("experiments")
+            if isinstance(matrix_experiments, list):
+                if evaluation.get("experiment_count") != len(matrix_experiments):
+                    errors.append(f"{field}_experiment_count_mismatch")
+                expected_folds = 0
+                expected_metric_objects = 0
+                for experiment in matrix_experiments:
+                    if not isinstance(experiment, dict):
+                        continue
+                    fold_results = experiment.get("fold_results")
+                    if not isinstance(fold_results, list):
+                        continue
+                    expected_folds += len(fold_results)
+                    expected_metric_objects += sum(
+                        1 for fold in fold_results
+                        if isinstance(fold, dict) and isinstance(fold.get("test_metrics"), dict)
+                    )
+                if evaluation.get("folds_checked") != expected_folds:
+                    errors.append(f"{field}_fold_count_mismatch")
+                if evaluation.get("fold_metric_objects_checked") != expected_metric_objects:
+                    errors.append(f"{field}_fold_metric_count_mismatch")
             for flag in ("actionable", "automatic_winner_selection", "test_metrics_used_for_selection"):
                 if evaluation.get(flag) is not False:
                     errors.append(f"{field}_{flag}_must_be_false")
