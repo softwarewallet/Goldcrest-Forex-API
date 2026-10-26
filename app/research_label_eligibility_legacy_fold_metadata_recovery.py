@@ -13,6 +13,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 ROOT = Path("data/research/runs")
 DEFAULT_REPORTS = {
     1.0: ROOT / "eurusd-m15-demo-m365-baseline-validation-2026102-seedcap-1h_seed_sweep_report.json",
@@ -23,28 +25,9 @@ DEFAULT_THRESHOLD_REPORT = ROOT / "eurusd-m15-demo-m365-bas-cap-sweep-rerun-2_th
 PASS = {"PASS", "PASS_WITH_WARNINGS"}
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects containing repeated keys."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=_reject_duplicate_json_keys,
-            parse_constant=_reject_nonstandard_json_constant,
-        )
+        value = strict_json_loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"artifact_unreadable:{path}") from exc
     if not isinstance(value, dict):

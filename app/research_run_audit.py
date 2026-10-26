@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from app.research_experiment_fingerprint import canonical_json, verify_experiment_fingerprint
+from app.research_strict_json import strict_json_loads
 
 
 _ARTIFACT_FIELDS = {
@@ -41,28 +42,9 @@ def _resolve_artifact_path(value: object, manifest_path: Path) -> Path | None:
     return candidate
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _read_json(path: Path, *, raw_bytes: bytes | None = None) -> Mapping[str, Any]:
     raw = path.read_bytes() if raw_bytes is None else raw_bytes
-    value = json.loads(
-        raw.decode("utf-8"),
-        object_pairs_hook=_reject_duplicate_json_keys,
-        parse_constant=_reject_nonstandard_json_constant,
-    )
+    value = strict_json_loads(raw.decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value

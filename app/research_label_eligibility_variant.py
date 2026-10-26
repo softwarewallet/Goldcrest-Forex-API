@@ -21,6 +21,7 @@ from typing import Any, Mapping
 from app.research_label_eligibility_comparison import compare_label_eligibility_runs
 from app.research_pipeline import run_research_pipeline
 from app.research_run_audit import audit_research_run_manifest
+from app.research_strict_json import strict_json_loads
 
 
 DEFAULT_RANDOM_SEED = 20261021
@@ -28,28 +29,9 @@ DEFAULT_BOOTSTRAP_RESAMPLES = 500
 _EXPECTED_MODEL_TYPES = ["xgboost", "lightgbm"]
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects containing repeated keys."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(
-            path.read_text(encoding="utf-8"),
-            object_pairs_hook=_reject_duplicate_json_keys,
-            parse_constant=_reject_nonstandard_json_constant,
-        )
+        value = strict_json_loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"json_unreadable:{path}") from exc
     if not isinstance(value, dict):
