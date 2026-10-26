@@ -127,6 +127,7 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
                   f"Expected {expected_fold_count} folds, found {len(folds)}.")
 
         seen_fold_indices: set[int] = set()
+        test_windows_by_index: dict[int, tuple[datetime, datetime]] = {}
         for fold_index, fold in enumerate(folds):
             fold_loc = f"{exp_loc}.fold_results[{fold_index}]"
             checked_folds += 1
@@ -167,6 +168,17 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
                     if parsed_times[start_field] >= parsed_times[end_field]:
                         error("invalid_fold_window", fold_loc,
                               f"{start_field} must precede {end_field}.")
+
+            if (
+                isinstance(index, int)
+                and not isinstance(index, bool)
+                and "test_start_utc" in parsed_times
+                and "test_end_utc" in parsed_times
+            ):
+                test_windows_by_index[index] = (
+                    parsed_times["test_start_utc"],
+                    parsed_times["test_end_utc"],
+                )
 
             # A walk-forward fold must preserve temporal order between data partitions.
             # Merely validating each window independently would allow train/validation/test
@@ -250,6 +262,19 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
                             "Experiments sharing a fold index must use identical train/validation/test "
                             "boundaries and test sample counts.",
                         )
+
+        # Test windows from different folds should not overlap: otherwise the matrix
+        # may repeatedly score some of the same future observations as separate folds.
+        ordered_test_windows = sorted(test_windows_by_index.items())
+        for position in range(1, len(ordered_test_windows)):
+            previous_index, (_, previous_end) = ordered_test_windows[position - 1]
+            current_index, (current_start, _) = ordered_test_windows[position]
+            if previous_end > current_start:
+                error(
+                    "test_windows_overlap_across_folds",
+                    f"{exp_loc}.fold_results",
+                    f"Fold {previous_index} test window ends after fold {current_index} test window starts.",
+                )
 
     result = {
         "schema_version": 1,

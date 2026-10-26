@@ -151,6 +151,47 @@ def test_evaluation_gate_rejects_cross_experiment_fold_window_mismatch(tmp_path:
     }
 
 
+def test_evaluation_gate_rejects_overlapping_test_windows_across_folds(tmp_path: Path) -> None:
+    report = _report()
+    first = report["experiments"][0]["fold_results"][0]
+    second = {
+        **first,
+        "fold_index": 1,
+        "train_start_utc": "2025-12-31T00:00:00Z",
+        "train_end_utc": "2026-01-01T01:00:00Z",
+        "validation_start_utc": "2026-01-01T01:00:00Z",
+        "validation_end_utc": "2026-01-01T01:30:00Z",
+        "test_start_utc": "2026-01-01T01:50:00Z",
+        "test_end_utc": "2026-01-01T02:05:00Z",
+    }
+    report["fold_count"] = 2
+    report["experiments"][0]["fold_results"].append(second)
+    result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
+    assert result["status"] == "FAIL"
+    assert "test_windows_overlap_across_folds" in {
+        item["code"] for item in result["errors"]
+    }
+
+
+def test_evaluation_gate_accepts_nonoverlapping_test_windows_across_folds(tmp_path: Path) -> None:
+    report = _report()
+    first = report["experiments"][0]["fold_results"][0]
+    second = {
+        **first,
+        "fold_index": 1,
+        "train_start_utc": "2025-12-31T00:00:00Z",
+        "train_end_utc": "2026-01-01T01:00:00Z",
+        "validation_start_utc": "2026-01-01T01:00:00Z",
+        "validation_end_utc": "2026-01-01T01:30:00Z",
+        "test_start_utc": "2026-01-01T02:00:00Z",
+        "test_end_utc": "2026-01-01T02:15:00Z",
+    }
+    report["fold_count"] = 2
+    report["experiments"][0]["fold_results"].append(second)
+    result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
+    assert result["status"] == "PASS"
+
+
 def test_evaluation_gate_accepts_identical_common_fold_windows(tmp_path: Path) -> None:
     report = _report()
     report["experiments"].append({
