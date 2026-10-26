@@ -202,3 +202,31 @@ def test_upstream_status_must_match_warning_collection(tmp_path, status, warning
 
     assert report["status"] == "FAIL"
     assert "status_warnings_mismatch" in str(report)
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_malformed_upstream_status_fails_closed_without_raising(tmp_path, status):
+    path, payload, _ = write_report(tmp_path)
+    payload["status"] = status
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = audit_research_artifact_bundle(
+        {"artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}]},
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "status_unknown_or_missing" for item in report["errors"])
+
+
+def test_missing_warnings_collection_fails_closed(tmp_path):
+    path, payload, _ = write_report(tmp_path)
+    payload.pop("warnings")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = audit_research_artifact_bundle(
+        {"artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}]},
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+    codes = {item["code"] for item in report["errors"]}
+    assert report["status"] == "FAIL"
+    assert "upstream_warnings_field_invalid" in codes
