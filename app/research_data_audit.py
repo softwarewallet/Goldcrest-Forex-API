@@ -16,6 +16,32 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 _TIMEFRAME_MINUTES = {"M1": 1, "M5": 5, "M15": 15, "M30": 30, "H1": 60, "H4": 240, "D1": 1440}
 _REQUIRED_COLUMNS = {"symbol", "timeframe", "timestamp", "open", "high", "low", "close"}
 
@@ -450,12 +476,12 @@ def audit_raw_ohlc_file(
             warnings.append("snapshot_manifest_missing_provenance_hash_unverified")
     else:
         try:
-            loaded = json.loads(manifest_file.read_text(encoding="utf-8"))
+            loaded = _load_json_object(manifest_file.read_bytes(), source=str(manifest_file))
             if not isinstance(loaded, dict):
                 errors.append("snapshot_manifest_not_object")
             else:
                 manifest = loaded
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
             errors.append("snapshot_manifest_unreadable")
 
     is_ctrader_manifest = bool(manifest) and manifest.get("scope") == "CTRADER_OPEN_API_HISTORICAL_OHLC_NORMALIZATION"
@@ -685,10 +711,10 @@ def _load_pipeline_manifest(manifest_path: str | Path) -> tuple[dict[str, Any], 
     """Load a verified research-run manifest and resolve its exact raw OHLC input."""
     path = Path(manifest_path)
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        loaded = _load_json_object(path.read_bytes(), source=str(path))
     except FileNotFoundError as exc:
         raise ValueError("pipeline_manifest_not_found") from exc
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError("pipeline_manifest_unreadable") from exc
 
     if not isinstance(loaded, dict):
