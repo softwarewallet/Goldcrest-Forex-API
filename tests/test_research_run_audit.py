@@ -361,7 +361,7 @@ def test_run_audit_verifies_completion_receipt_source_hashes(tmp_path):
     assert valid["status"] == "PASS"
     assert valid["errors"] == []
 
-    validation_path.write_text(validation_path.read_text(encoding="utf-8") + "\\n", encoding="utf-8")
+    validation_path.write_text(validation_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     tampered = audit_research_run_manifest(manifest_path)
     assert tampered["status"] == "FAIL"
     assert "pipeline_completion_audit_validation_report_source_hash_mismatch" in tampered["errors"]
@@ -481,7 +481,7 @@ def test_run_audit_verifies_feature_source_provenance_receipt(tmp_path):
     assert result["errors"] == []
     assert "feature_source_audit_path" in result["checked_artifacts"]
 
-    receipt_path.write_bytes(receipt_path.read_bytes() + b"\\n")
+    receipt_path.write_bytes(receipt_path.read_bytes() + b"\n")
     tampered = audit_research_run_manifest(manifest_path)
     assert tampered["status"] == "FAIL"
     assert "feature_source_audit_path_sha256_mismatch" in tampered["errors"]
@@ -589,7 +589,7 @@ def test_run_audit_verifies_experiment_fingerprint_receipt_and_data_binding(tmp_
     assert valid["errors"] == []
     assert "experiment_fingerprint_path" in valid["checked_artifacts"]
 
-    fingerprint_path.write_bytes(fingerprint_path.read_bytes() + b"\\n")
+    fingerprint_path.write_bytes(fingerprint_path.read_bytes() + b"\n")
     tampered = audit_research_run_manifest(manifest_path)
     assert tampered["status"] == "FAIL"
     assert "experiment_fingerprint_file_sha256_mismatch" in tampered["errors"]
@@ -663,7 +663,7 @@ def test_run_audit_verifies_model_evaluation_gate_source_binding(tmp_path):
     assert valid["errors"] == []
     assert "model_evaluation_gate_path" in valid["checked_artifacts"]
 
-    receipt_path.write_bytes(receipt_path.read_bytes() + b"\\n")
+    receipt_path.write_bytes(receipt_path.read_bytes() + b"\n")
     tampered = audit_research_run_manifest(manifest_path)
     assert tampered["status"] == "FAIL"
     assert "model_evaluation_gate_path_sha256_mismatch" in tampered["errors"]
@@ -842,7 +842,7 @@ def test_audit_detects_artifact_mutation_after_snapshot(tmp_path, monkeypatch):
         if path.resolve() == dataset_path.resolve():
             reads["dataset"] += 1
             if reads["dataset"] == 2:
-                dataset_path.write_text("mutated after snapshot\\n", encoding="utf-8")
+                dataset_path.write_text("mutated after snapshot\n", encoding="utf-8")
         return original_read_bytes(path)
 
     monkeypatch.setattr(Path, "read_bytes", mutate_on_final_dataset_read)
@@ -864,7 +864,7 @@ def test_run_audit_rejects_duplicate_json_keys_in_manifest(tmp_path):
     manifest_path.write_text(
         raw.replace(
             '"run_id": "run-001",',
-            '"run_id": "run-001",\\n  "run_id": "shadow-run",',
+            '"run_id": "run-001",\n  "run_id": "shadow-run",',
             1,
         ),
         encoding="utf-8",
@@ -890,7 +890,7 @@ def test_run_audit_rejects_duplicate_json_keys_in_referenced_artifact(tmp_path):
         + manifest["dataset_sha256"]
         + '"}'
     )
-    dataset_manifest_path.write_text(duplicate + "\\n", encoding="utf-8")
+    dataset_manifest_path.write_text(duplicate + "\n", encoding="utf-8")
     manifest["dataset_manifest_sha256"] = _sha(dataset_manifest_path)
     manifest.pop("pipeline_manifest_sha256", None)
     canonical = json.dumps(
