@@ -146,3 +146,19 @@ def test_inventory_reader_requires_object_root(tmp_path):
     with pytest.raises(ValueError, match="json_root_must_be_object"):
         _read_object(path)
 
+@pytest.mark.parametrize(
+    ("manifest_entries", "spec_entries", "expected_error"),
+    [
+        ([], [{"artifact_id": "metrics", "path": "reports/metrics.json"}], "manifest_artifacts_must_not_be_empty"),
+        ([{"artifact_id": "metrics", "path": "reports/metrics.json"}], [], "inventory_spec_artifacts_must_not_be_empty"),
+    ],
+)
+def test_empty_artifact_inventory_cannot_pass_completeness_gate(
+    manifest_entries, spec_entries, expected_error
+):
+    with pytest.raises(ValueError, match=expected_error):
+        audit_artifact_inventory_completeness(
+            manifest(manifest_entries),
+            spec(spec_entries),
+        )
+
