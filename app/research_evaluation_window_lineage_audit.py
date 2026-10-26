@@ -86,6 +86,17 @@ def audit_evaluation_window_lineage(
         raise ValueError("registry_report_invalid")
     if registry_report.get("status") not in PASS_STATUSES:
         raise ValueError("registry_report_not_passing")
+    registry_errors = registry_report.get("errors")
+    if not isinstance(registry_errors, list):
+        raise ValueError("registry_report_errors_schema_invalid")
+    if registry_errors:
+        raise ValueError("registry_report_contains_errors")
+    registry_warnings = registry_report.get("warnings")
+    if registry_warnings is not None and (
+        not isinstance(registry_warnings, list)
+        or any(not isinstance(item, str) or not item.strip() for item in registry_warnings)
+    ):
+        raise ValueError("registry_report_warnings_schema_invalid")
 
     matrix = plan.get("run_matrix")
     records = registry_report.get("run_results")
