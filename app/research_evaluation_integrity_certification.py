@@ -66,12 +66,12 @@ def certify_evaluation_integrity(
         upstream_errors = payload.get("errors")
         if name != "plan" and not isinstance(upstream_errors, list):
             errors.append({"code": "upstream_errors_schema_invalid", "report": name})
-        elif upstream_errors is not None and not isinstance(upstream_errors, list):
+        elif "errors" in payload and not isinstance(upstream_errors, list):
             errors.append({"code": "upstream_errors_schema_invalid", "report": name})
         elif upstream_errors:
             errors.append({"code": "upstream_report_contains_errors", "report": name})
         upstream_warnings = payload.get("warnings")
-        if upstream_warnings is not None and (
+        if "warnings" in payload and (
             not isinstance(upstream_warnings, list)
             or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
         ):
