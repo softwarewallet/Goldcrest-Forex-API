@@ -4,7 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from app.research_report_audit import audit_research_pipeline
+import pytest
+
+from app.research_report_audit import audit_research_pipeline, _read_json
 
 
 def canonical_hash(payload: dict) -> str:
@@ -114,3 +116,16 @@ def test_audit_detects_inconsistent_matrix_fold_windows(tmp_path):
     report = audit_research_pipeline(manifest)
     assert report["audit_passed"] is False
     assert "common_test_windows" in report["failed_checks"]
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, raw):
+    path = tmp_path / "malformed.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError, match="cannot read JSON artifact"):
+        _read_json(path)
