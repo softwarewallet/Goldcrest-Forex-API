@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from app.research_atomic_output import write_text_no_clobber
+
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 FALSE_FLAGS = {
     "actionable": False,
@@ -83,10 +85,10 @@ def inspect_git_provenance(repo_path: Path) -> dict[str, Any]:
 
 
 def _write_report(path: Path, payload: dict[str, Any]) -> None:
-    if path.exists():
-        raise ValueError(f"output_already_exists:{path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    write_text_no_clobber(
+        path,
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+    )
 
 
 def main() -> int:

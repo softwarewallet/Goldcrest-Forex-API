@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.research_atomic_output import write_text_no_clobber
+
 from app.research_strict_json import strict_json_loads
 
 SAFE_FALSE_FLAGS = (
@@ -211,10 +213,10 @@ def main() -> int:
             base_dir=args.input.resolve().parent,
         )
         output = args.output or args.input.with_name(args.input.stem + "_certification.json")
-        if output.exists():
-            raise ValueError(f"output_already_exists:{output}")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        write_text_no_clobber(
+            output,
+            json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        )
         print(json.dumps({
             "status": report["status"],
             "report_path": str(output.resolve()),
