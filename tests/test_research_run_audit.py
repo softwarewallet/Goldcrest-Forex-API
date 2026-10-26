@@ -492,3 +492,85 @@ def test_run_audit_rejects_feature_source_receipt_that_claims_actionability(tmp_
 
     assert result["status"] == "FAIL"
     assert "feature_source_audit_execution_connected_must_be_false" in result["errors"]
+
+
+def _attach_experiment_fingerprint(manifest_path: Path) -> Path:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest_path = Path(manifest["dataset_manifest_path"])
+    dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest.pop("manifest_sha256", None)
+    manifest_content_hash = hashlib.sha256(
+        json.dumps(dataset_manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    dataset_manifest_file = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    receipt = {
+        "schema_version": 1,
+        "scope": "OFFLINE_RESEARCH_REPRODUCIBILITY",
+        "configuration": {"symbol": "EURUSD", "timeframe": "M15"},
+        "raw_ohlc_sha256": manifest["raw_ohlc_sha256"],
+        "dataset_sha256": manifest["dataset_sha256"],
+        "dataset_manifest_file_sha256": _sha(dataset_manifest_path),
+        "dataset_manifest_content_sha256": manifest_content_hash,
+        "feature_implementation_sha256": "b" * 64,
+        "feature_schema_sha256": "a" * 64,
+        "feature_backend": "test",
+        "implementation_file_sha256": {"app/causal_ta_features.py": "c" * 64},
+        "actionable": False,
+        "execution_connected": False,
+        "automatic_model_selection": False,
+    }
+    receipt["experiment_fingerprint_sha256"] = hashlib.sha256(
+        json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    path = manifest_path.parent / "run_experiment_fingerprint.json"
+    _write_json(path, receipt)
+    manifest.update({
+        "experiment_fingerprint_path": str(path),
+        "experiment_fingerprint_file_sha256": _sha(path),
+        "experiment_fingerprint_sha256": receipt["experiment_fingerprint_sha256"],
+    })
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+    return path
+
+
+def test_run_audit_verifies_experiment_fingerprint_receipt_and_data_binding(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    fingerprint_path = _attach_experiment_fingerprint(manifest_path)
+
+    valid = audit_research_run_manifest(manifest_path)
+    assert valid["status"] == "PASS"
+    assert valid["errors"] == []
+    assert "experiment_fingerprint_path" in valid["checked_artifacts"]
+
+    fingerprint_path.write_bytes(fingerprint_path.read_bytes() + b"\\n")
+    tampered = audit_research_run_manifest(manifest_path)
+    assert tampered["status"] == "FAIL"
+    assert "experiment_fingerprint_file_sha256_mismatch" in tampered["errors"]
+
+
+def test_run_audit_rejects_experiment_fingerprint_for_different_dataset(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    fingerprint_path = _attach_experiment_fingerprint(manifest_path)
+    receipt = json.loads(fingerprint_path.read_text(encoding="utf-8"))
+    receipt["dataset_sha256"] = "f" * 64
+    receipt.pop("experiment_fingerprint_sha256", None)
+    receipt["experiment_fingerprint_sha256"] = hashlib.sha256(
+        json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(fingerprint_path, receipt)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["experiment_fingerprint_file_sha256"] = _sha(fingerprint_path)
+    manifest["experiment_fingerprint_sha256"] = receipt["experiment_fingerprint_sha256"]
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "FAIL"
+    assert "experiment_fingerprint_dataset_hash_mismatch" in result["errors"]
