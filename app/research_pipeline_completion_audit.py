@@ -33,6 +33,11 @@ def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
 def _read_object_with_hash(path: Path) -> tuple[dict[str, Any], str]:
     """Parse and fingerprint one byte snapshot so the digest matches the audited content."""
     raw = path.read_bytes()
@@ -40,6 +45,7 @@ def _read_object_with_hash(path: Path) -> tuple[dict[str, Any], str]:
     payload = json.loads(
         raw.decode("utf-8"),
         object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
     )
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{path.name}")
