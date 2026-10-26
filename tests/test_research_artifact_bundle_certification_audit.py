@@ -180,3 +180,25 @@ def test_explicit_null_warnings_fails_closed(tmp_path):
     assert report["status"] == "FAIL"
     assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
 
+
+
+@pytest.mark.parametrize(
+    ("status", "warnings"),
+    [("PASS", ["warning not reflected in status"]), ("PASS_WITH_WARNINGS", [])],
+)
+def test_upstream_status_must_match_warning_collection(tmp_path, status, warnings):
+    path, payload, _ = write_report(tmp_path, status=status)
+    payload["warnings"] = warnings
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    manifest = {
+        "artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}],
+        "required_audits": ["feature_temporal_integrity"],
+        "expected_dataset_sha256": sha(b"dataset"),
+    }
+
+    report = audit_research_artifact_bundle(
+        manifest, manifest_sha256=sha(b"manifest"), base_dir=tmp_path
+    )
+
+    assert report["status"] == "FAIL"
+    assert "status_warnings_mismatch" in str(report)
