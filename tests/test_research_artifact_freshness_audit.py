@@ -169,7 +169,7 @@ def test_duplicate_artifact_path_fails_closed():
     ("path", "/tmp/outside.json", "artifact_path_must_be_canonical_relative_posix_path"),
     ("path", "reports\\\\metrics.json", "artifact_path_must_be_canonical_relative_posix_path"),
     ("depends_on", [" plan "], "dependencies_must_be_canonical_identifier_list"),
-    ("depends_on", [""], "dependencies_must_be_canonical_string_list"),
+    ("depends_on", [""], "dependencies_must_be_canonical_identifier_list"),
 ])
 def test_rejects_noncanonical_manifest_identity_paths_and_dependencies(field, value, error):
     if field == "artifact_id":
