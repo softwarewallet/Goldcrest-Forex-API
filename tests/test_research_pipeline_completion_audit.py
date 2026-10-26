@@ -67,7 +67,7 @@ def fixture(tmp_path, evaluation_status="PASS"):
 
 
 def test_complete_pipeline_reports_pass_integrity_gate(tmp_path):
-    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    manifest, validation, reproducibility, evaluation, _ = fixture(tmp_path)
     report = audit_pipeline_completion(manifest, validation, reproducibility)
     assert report["status"] == "PASS"
     assert report["readiness"] == "RUN_INTEGRITY_VERIFIED"
@@ -75,6 +75,7 @@ def test_complete_pipeline_reports_pass_integrity_gate(tmp_path):
     assert report["deployment_authorized"] is False
     assert report["validation_report_sha256"] == hashlib.sha256(validation.read_bytes()).hexdigest()
     assert report["reproducibility_audit_sha256"] == hashlib.sha256(reproducibility.read_bytes()).hexdigest()
+    assert report["model_evaluation_gate_sha256"] == hashlib.sha256(evaluation.read_bytes()).hexdigest()
 
 
 def test_reproducibility_failure_blocks_completion(tmp_path):
