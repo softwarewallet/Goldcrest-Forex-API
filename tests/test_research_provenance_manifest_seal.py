@@ -16,7 +16,7 @@ def manifest():
         "audit_name": "research_artifact_provenance_manifest",
         "source_revision": "a" * 40,
         "artifact_count": 1,
-        "artifacts": [{"artifact_id": "metrics", "path": "metrics.csv", "sha256": "b" * 64}],
+        "artifacts": [{"artifact_id": "metrics", "path": "metrics.csv", "sha256": "b" * 64, "source_revision": "a" * 40}],
         "actionable": False,
         "inferential": False,
         "statistical_significance_claimed": False,
@@ -75,7 +75,7 @@ def test_missing_explicit_false_safety_flag_fails():
 def test_invalid_manifest_revision_is_rejected():
     payload = manifest()
     payload["source_revision"] = "short"
-    with pytest.raises(ValueError, match="full_git_sha"):
+    with pytest.raises(ValueError, match="canonical_git_sha"):
         create_manifest_seal(payload)
 
 
@@ -94,6 +94,30 @@ def test_unsafe_or_missing_manifest_safety_flag_cannot_be_sealed(flag):
     payload = manifest()
     payload[flag] = True
     with pytest.raises(ValueError, match="safety_flag_not_explicitly_false"):
+        create_manifest_seal(payload)
+
+
+@pytest.mark.parametrize("revision", ["A" * 40, " " + "a" * 40, "a" * 40 + " "])
+def test_noncanonical_manifest_revision_cannot_be_sealed(revision):
+    payload = manifest()
+    payload["source_revision"] = revision
+    with pytest.raises(ValueError, match="canonical_git_sha"):
+        create_manifest_seal(payload)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("artifact_id", " metrics ", "manifest_artifact_id_noncanonical"),
+        ("path", " metrics.csv ", "manifest_artifact_path_noncanonical"),
+        ("sha256", "B" * 64, "manifest_artifact_sha256_noncanonical"),
+        ("source_revision", "b" * 40, "manifest_artifact_source_revision_mismatch"),
+    ],
+)
+def test_noncanonical_artifact_identity_cannot_be_sealed(field, value, error):
+    payload = manifest()
+    payload["artifacts"][0][field] = value
+    with pytest.raises(ValueError, match=error):
         create_manifest_seal(payload)
 
 

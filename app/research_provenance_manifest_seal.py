@@ -42,20 +42,35 @@ def create_manifest_seal(manifest: dict[str, Any]) -> dict[str, Any]:
             raise ValueError(f"manifest_safety_flag_not_explicitly_false:{flag}")
     raw = canonical_manifest_bytes(manifest)
     revision = manifest.get("source_revision")
-    if not isinstance(revision, str) or len(revision) != 40 or any(c not in "0123456789abcdefABCDEF" for c in revision):
-        raise ValueError("manifest_source_revision_must_be_full_git_sha")
+    if not isinstance(revision, str) or len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision):
+        raise ValueError("manifest_source_revision_must_be_canonical_git_sha")
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
         raise ValueError("manifest_artifacts_must_be_list")
     if manifest.get("artifact_count") != len(artifacts):
         raise ValueError("manifest_artifact_count_mismatch")
+    for index, artifact in enumerate(artifacts):
+        if not isinstance(artifact, dict):
+            raise ValueError(f"manifest_artifact_entry_invalid:{index}")
+        artifact_id = artifact.get("artifact_id")
+        if not isinstance(artifact_id, str) or not artifact_id.strip() or artifact_id != artifact_id.strip():
+            raise ValueError(f"manifest_artifact_id_noncanonical:{index}")
+        path = artifact.get("path")
+        if not isinstance(path, str) or not path.strip() or path != path.strip():
+            raise ValueError(f"manifest_artifact_path_noncanonical:{index}")
+        digest = artifact.get("sha256")
+        if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError(f"manifest_artifact_sha256_noncanonical:{index}")
+        artifact_revision = artifact.get("source_revision")
+        if artifact_revision != revision:
+            raise ValueError(f"manifest_artifact_source_revision_mismatch:{index}")
     return {
         "schema_version": 1,
         "audit_name": "research_provenance_manifest_detached_seal",
         "canonicalization": "json-sort-keys-compact-utf8-trailing-newline-v1",
         "manifest_sha256": hashlib.sha256(raw).hexdigest(),
         "manifest_bytes": len(raw),
-        "source_revision": revision.lower(),
+        "source_revision": revision,
         "artifact_count": len(artifacts),
         "manifest_audit_name": manifest.get("audit_name"),
         **FALSE_FLAGS,
