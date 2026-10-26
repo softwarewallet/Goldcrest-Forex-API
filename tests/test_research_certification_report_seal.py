@@ -128,3 +128,18 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+def test_malformed_report_warnings_cannot_be_sealed():
+    payload = report()
+    payload["warnings"] = {"not": "a-list"}
+    with pytest.raises(ValueError, match="warnings_invalid"):
+        create_report_seal(payload)
+
+
+@pytest.mark.parametrize("warnings", [[""], [None], ["valid", 3]])
+def test_report_warnings_must_be_nonempty_strings(warnings):
+    payload = report()
+    payload["warnings"] = warnings
+    with pytest.raises(ValueError, match="warnings_invalid"):
+        create_report_seal(payload)
+
