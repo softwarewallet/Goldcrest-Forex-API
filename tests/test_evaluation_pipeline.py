@@ -52,7 +52,7 @@ def _prepare(registry, bars, **kwargs):
     return prepare_research_run(
         bars, config=config(), code_commit="test-commit", model_id="candidate",
         model_revision="fixture-1", initial_train_bars=60, validation_bars=20,
-        test_bars=20, step_bars=10, registry=registry, **kwargs,
+        test_bars=20, step_bars=18, registry=registry, **kwargs,
     )
 
 
