@@ -86,8 +86,11 @@ def audit_artifact_freshness(
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
         raise ValueError("manifest_artifacts_must_be_list")
+    if not artifacts:
+        raise ValueError("manifest_artifacts_must_not_be_empty")
 
     by_id: dict[str, dict[str, Any]] = {}
+    path_to_id: dict[str, str] = {}
     for item in artifacts:
         if not isinstance(item, dict):
             raise ValueError("artifact_entry_must_be_object")
@@ -99,6 +102,13 @@ def audit_artifact_freshness(
         dependencies = item.get("depends_on", [])
         if not isinstance(dependencies, list) or any(not isinstance(dep, str) for dep in dependencies):
             raise ValueError(f"dependencies_must_be_string_list:{artifact_id}")
+        if len(dependencies) != len(set(dependencies)):
+            raise ValueError(f"duplicate_dependency:{artifact_id}")
+        artifact_path = item.get("path")
+        if isinstance(artifact_path, str) and artifact_path.strip():
+            if artifact_path in path_to_id:
+                raise ValueError(f"duplicate_artifact_path:{artifact_path}")
+            path_to_id[artifact_path] = artifact_id
         by_id[artifact_id] = item
 
     for artifact_id, item in by_id.items():
