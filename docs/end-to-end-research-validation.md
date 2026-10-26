@@ -248,6 +248,22 @@ Inspect the summary fields in the pipeline's JSON output:
 - `pipeline_completion_audit_warnings`: non-strict validation findings and model-evaluation
   gate failures that require review.
 
+You can independently rerun the completion audit later without retraining models or
+rerunning the pipeline. Use a fresh output path because audit outputs are never overwritten:
+
+```bash
+python -m app.research_pipeline_completion_audit \
+  --manifest data/research/runs/<run-id>_pipeline_manifest.json \
+  --validation-report data/research/runs/<run-id>_validation_report.json \
+  --reproducibility-audit data/research/runs/<run-id>_reproducibility_audit.json \
+  --output data/research/runs/<run-id>_pipeline_completion_audit-rerun.json
+```
+
+The standalone command returns 0 for `PASS` or `PASS_WITH_WARNINGS`, 1 when the audit
+receipt reports a failed integrity check, and 2 for an invalid invocation or unsafe output
+path. It refuses output paths that alias an input, existing destinations, and concurrent
+destination creation.
+
 A failed reproducibility audit or broken report/artifact linkage makes the completion audit
 fail and the CLI returns exit code 8. Validation findings remain warnings in this integrity
 receipt so the existing `--strict-validation` option continues to control whether validation
