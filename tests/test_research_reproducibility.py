@@ -4,6 +4,7 @@ import copy
 
 import pytest
 
+from app.research_reproducibility_auditor import _load_json_object
 from app.research_reproducibility import (
     reproducibility_manifest,
     snapshot_factory_configuration,
@@ -86,3 +87,12 @@ def test_environment_manifest_records_quantitative_stack_versions():
     assert environment["python_version"]
     assert environment["python_implementation"]
     assert set(environment["packages"]) == {"numpy", "scikit-learn", "lightgbm", "xgboost"}
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_reproducibility_reader_rejects_ambiguous_json(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="reproducibility.json")
