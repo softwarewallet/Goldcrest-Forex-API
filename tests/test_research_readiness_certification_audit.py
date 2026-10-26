@@ -24,7 +24,10 @@ def write_report(tmp_path, name, extra=None, status="PASS"):
         "inferential": False,
         "execution_connected": False,
         "model_training_performed": False,
+        "statistical_significance_claimed": False,
         "automatic_model_selection": False,
+        "automatic_repair_performed": False,
+        "deployment_authorized": False,
     }
     payload.update(extra or {})
     path = tmp_path / f"{name}.json"
@@ -93,6 +96,9 @@ def test_complete_consistent_bundle_is_ready(tmp_path):
     assert report["execution_connected"] is False
     assert report["model_training_performed"] is False
     assert report["actionable"] is False
+    assert report["statistical_significance_claimed"] is False
+    assert report["automatic_repair_performed"] is False
+    assert report["deployment_authorized"] is False
 
 
 def test_missing_required_audit_fails_closed(tmp_path):
@@ -373,5 +379,40 @@ def test_noncanonical_manifest_paths_fail_closed(tmp_path, noncanonical_path):
     assert report["status"] == "FAIL"
     assert any(
         error["code"] == "artifact_path_must_be_canonical_relative_posix"
+        for error in report["errors"]
+    )
+
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "actionable",
+        "inferential",
+        "statistical_significance_claimed",
+        "automatic_model_selection",
+        "model_training_performed",
+        "execution_connected",
+        "automatic_repair_performed",
+        "deployment_authorized",
+    ],
+)
+@pytest.mark.parametrize("mode", ["missing", "true"])
+def test_readiness_requires_all_safety_flags_explicitly_false(tmp_path, flag, mode):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_backend_parity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if mode == "missing":
+        payload.pop(flag, None)
+    else:
+        payload[flag] = True
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    report = run_audit(tmp_path, manifest_for(reports))
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == f"required_safety_flag_not_explicitly_false:{flag}"
+        and error["audit_name"] == "feature_backend_parity"
         for error in report["errors"]
     )
