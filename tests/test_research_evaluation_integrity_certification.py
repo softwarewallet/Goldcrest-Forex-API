@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from copy import deepcopy
 
 from app.research_evaluation_integrity_certification import certify_evaluation_integrity
@@ -138,3 +140,15 @@ def test_deployment_authorization_true_fails():
     report = run(values)
     assert report["status"] == "FAIL"
     assert any(e["code"] == "deployment_must_remain_unauthorized" and e["report"] == "registry" for e in report["errors"])
+
+@pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
+def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
+    from app.research_evaluation_integrity_certification import _read_object
+    if "_load_json_object" in "from app.research_evaluation_integrity_certification import _read_object":
+        with pytest.raises(ValueError):
+            _read_object(path)
+    else:
+        path = tmp_path / "invalid.json"
+        path.write_bytes(raw)
+        with pytest.raises(ValueError):
+            _read_object(path)
