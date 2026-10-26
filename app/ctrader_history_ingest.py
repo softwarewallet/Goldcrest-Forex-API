@@ -144,6 +144,16 @@ def _safe_api_error_diagnostic(response: Any) -> str | None:
 _MINUTE_MS = 60_000
 _TREND_BAR_PAGE_SIZE = 1000
 _TREND_BAR_MAX_PAGES = 10_000
+_SEND_MAX_ATTEMPTS = 3
+_SEND_RETRY_BASE_DELAY_SECONDS = 2
+_TRANSIENT_SEND_ERRORS = {
+    "TimeoutError",
+    "TCPTimedOutError",
+    "ConnectionLost",
+    "ConnectionDone",
+    "ConnectError",
+    "ConnectionRefusedError",
+}
 _MAX_WINDOW_DAYS = {
     "M1": 34,
     "M5": 34,
@@ -344,6 +354,36 @@ def download_ctrader_history(
         stop_loop()
         return failure
 
+    def send_with_retry(request: Any, callback: Callable[[Any], Any]) -> None:
+        """Retry transient request timeouts on the same live connection with bounded backoff."""
+        state = {"attempts": 0}
+
+        def on_send_failure(failure: Any) -> Any:
+            value = getattr(failure, "value", failure)
+            error_type = type(value).__name__
+            if (
+                error_type in _TRANSIENT_SEND_ERRORS
+                and state["attempts"] < _SEND_MAX_ATTEMPTS
+                and not failure_state
+            ):
+                delay = _SEND_RETRY_BASE_DELAY_SECONDS * state["attempts"]
+                loop.callLater(delay, attempt)
+                return None
+            return fail(failure)
+
+        def attempt() -> None:
+            if failure_state:
+                return
+            state["attempts"] += 1
+            try:
+                deferred = client.send(request)
+            except Exception as exc:
+                on_send_failure(exc)
+                return
+            deferred.addCallbacks(callback, on_send_failure)
+
+        attempt()
+
     pagination: dict[str, Any] = {
         "windows": [],
         "window_index": 0,
@@ -428,8 +468,7 @@ def download_ctrader_history(
         request.toTimestamp = int(cursor_to)
         request.count = _TREND_BAR_PAGE_SIZE
         pagination["pages_requested"] += 1
-        deferred = client.send(request)
-        deferred.addCallbacks(on_bars, fail)
+        send_with_retry(request, on_bars)
 
     def advance_window() -> None:
         if failure_state:
@@ -529,7 +568,7 @@ def download_ctrader_history(
         request = sdk["ProtoOASymbolsListReq"]()
         request.ctidTraderAccountId = selected_config.account_id
         request.includeArchivedSymbols = False
-        client.send(request).addCallbacks(on_symbols, fail)
+        send_with_retry(request, on_symbols)
         return message
 
     def on_application_auth(message: Any) -> Any:
@@ -541,14 +580,14 @@ def download_ctrader_history(
         request = sdk["ProtoOAAccountAuthReq"]()
         request.ctidTraderAccountId = selected_config.account_id
         request.accessToken = selected_config.access_token
-        client.send(request).addCallbacks(on_account_auth, fail)
+        send_with_retry(request, on_account_auth)
         return message
 
     def connected(connected_client: Any) -> None:
         request = sdk["ProtoOAApplicationAuthReq"]()
         request.clientId = selected_config.client_id
         request.clientSecret = selected_config.client_secret
-        connected_client.send(request).addCallbacks(on_application_auth, fail)
+        send_with_retry(request, on_application_auth)
 
     def disconnected(_client: Any, reason: Any) -> None:
         if not result and not failure_state:
