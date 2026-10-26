@@ -72,7 +72,7 @@ def audit_evaluation_output_integrity(
     if registry_errors:
         raise ValueError("registry_report_contains_errors")
     registry_warnings = registry_report.get("warnings")
-    if registry_warnings is not None and (
+    if "warnings" in registry_report and (
         not isinstance(registry_warnings, list)
         or any(not isinstance(item, str) or not item.strip() for item in registry_warnings)
     ):
