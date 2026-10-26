@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
+from app.research_atomic_output import write_text_no_clobber
 
 FALSE_FLAGS = {
     "actionable": False,
@@ -130,10 +131,10 @@ def main() -> int:
             if args.output is None:
                 raise ValueError("output_required_for_create_mode")
             seal = create_manifest_seal(manifest)
-            if args.output.exists():
-                raise ValueError(f"output_already_exists:{args.output}")
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+            write_text_no_clobber(
+                args.output,
+                json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n",
+            )
             print(json.dumps({"status": "PASS", "manifest_sha256": seal["manifest_sha256"],
                               "seal_path": str(args.output.resolve()), "deployment_authorized": False}, indent=2))
             return 0

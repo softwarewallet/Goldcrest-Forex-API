@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
+from app.research_atomic_output import write_text_no_clobber
 
 REPORT_SPECS = {
     "plan": ("research_experiment_plan", {"PASS"}),
@@ -293,10 +294,10 @@ def main() -> int:
             report = build_evidence_bundle(paths)
         else:
             report = verify_evidence_bundle(_read_object(args.bundle), evidence_root=args.evidence_root)
-        if args.output.exists():
-            raise ValueError(f"output_already_exists:{args.output}")
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        write_text_no_clobber(
+            args.output,
+            json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        )
         print(json.dumps({"status": report["status"], "readiness": report.get("readiness", "BUNDLE_BUILT"), "bundle_sha256": report.get("bundle_sha256"), "reports_verified": report.get("reports_verified"), "error_count": len(report.get("errors", [])), "report_path": str(args.output.resolve()), "deployment_authorized": False}, indent=2))
         return 0 if report["status"] in {"PASS", "PASS_WITH_WARNINGS"} else 1
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
