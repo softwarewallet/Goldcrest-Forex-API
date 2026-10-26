@@ -91,8 +91,21 @@ def run_research_pipeline(
         raise ValueError("provide exactly one of ohlc_csv or fetch_ctrader=True")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", run_id) or ".." in run_id:
         raise ValueError("run_id must be a safe filename token of 1-128 letters, digits, dots, underscores, or hyphens")
-    if not terms_reference.strip():
-        raise ValueError("terms_reference must be the actual applicable provider terms")
+    normalized_terms_reference = terms_reference.strip()
+    placeholder_terms_reference = (
+        not normalized_terms_reference
+        or re.search(r"<[^>]+>", normalized_terms_reference) is not None
+        or re.search(
+            r"\b(?:TODO|TBD|PLACEHOLDER|REPLACE THIS|EXACT PROVIDER TERMS REFERENCE)\b",
+            normalized_terms_reference,
+            flags=re.IGNORECASE,
+        ) is not None
+    )
+    if placeholder_terms_reference:
+        raise ValueError(
+            "terms_reference must identify the actual applicable provider terms; "
+            "blank or placeholder values are not accepted"
+        )
     instrument = symbol.strip().upper()
     if not re.fullmatch(r"[A-Z0-9._/-]{3,32}", instrument):
         raise ValueError("symbol must contain 3-32 uppercase letters, digits, dots, underscores, slashes, or hyphens")
