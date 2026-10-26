@@ -190,3 +190,84 @@ def test_audit_detects_tampered_raw_ohlc_audit_receipt(tmp_path):
 
     assert result["status"] == "FAIL"
     assert "raw_ohlc_audit_path_sha256_mismatch" in result["errors"]
+
+
+def _write_completion_receipt(manifest_path: Path, *, status="PASS", manifest_hash=None):
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    receipt = {
+        "schema_version": 1,
+        "audit_name": "research_pipeline_completion_audit",
+        "status": status,
+        "run_id": manifest["run_id"],
+        "pipeline_manifest_sha256": manifest_hash or manifest["pipeline_manifest_sha256"],
+        "errors": [],
+        "warnings": ["model_evaluation_gate_did_not_pass"] if status == "PASS_WITH_WARNINGS" else [],
+        "checks": {
+            "pipeline_manifest_self_hash": "PASS",
+            "reproducibility_audit_status": "PASS",
+            "model_evaluation_gate_file_hash": "PASS",
+            "validation_report_status": "PASS",
+        },
+        "actionable": False,
+        "execution_connected": False,
+        "model_qualified": False,
+        "deployment_authorized": False,
+    }
+    path = manifest_path.parent / f"{manifest['run_id']}_pipeline_completion_audit.json"
+    _write_json(path, receipt)
+    return path
+
+
+def test_run_audit_verifies_pipeline_completion_receipt(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _write_completion_receipt(manifest_path)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "PASS"
+    assert result["checked_artifact_count"] == 7
+    assert "pipeline_completion_audit_path" in result["checked_artifacts"]
+    assert result["errors"] == []
+
+
+def test_run_audit_rejects_failed_pipeline_completion_receipt(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    _write_completion_receipt(manifest_path, status="FAIL")
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "pipeline_completion_audit_not_passing" in result["errors"]
+
+
+def test_run_audit_rejects_completion_receipt_bound_to_another_manifest(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    _write_completion_receipt(manifest_path, manifest_hash="f" * 64)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "pipeline_completion_audit_manifest_hash_mismatch" in result["errors"]
+
+
+def test_run_audit_rejects_completion_receipt_that_claims_model_qualification(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _write_completion_receipt(manifest_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["model_qualified"] = True
+    _write_json(receipt_path, receipt)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "pipeline_completion_audit_model_qualified_must_be_false" in result["errors"]
+
+
+def test_run_audit_preserves_completion_warning_status(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    _write_completion_receipt(manifest_path, status="PASS_WITH_WARNINGS")
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "PASS_WITH_WARNINGS"
+    assert "pipeline_completion_audit_passed_with_warnings" in result["warnings"]
