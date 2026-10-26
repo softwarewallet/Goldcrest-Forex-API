@@ -245,3 +245,26 @@ def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, 
     path.write_bytes(raw)
     with pytest.raises(ValueError, match="json_unreadable"):
         _read_json(path)
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_threshold_audit_rejects_malformed_source_status(tmp_path, status):
+    path = _threshold_fixture(tmp_path, [(1.5, 800, 200, 80), (8.0, 800, 200, 80)])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["status"] = status
+    _write_json(path, payload)
+    result = audit_threshold_report(path)
+    assert result["status"] == "FAIL"
+    assert "source_threshold_sweep_status_not_pass" in result["errors"]
+
+
+def test_threshold_audit_rejects_malformed_seed_sweep_status(tmp_path):
+    path = _threshold_fixture(tmp_path, [(1.5, 800, 200, 80), (8.0, 800, 200, 80)])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    seed_sweep_path = payload["cap_results"][0]["seed_sweep_report_path"]
+    seed_sweep = json.loads(open(seed_sweep_path, encoding="utf-8").read())
+    seed_sweep["status"] = []
+    _write_json(__import__("pathlib").Path(seed_sweep_path), seed_sweep)
+    result = audit_threshold_report(path)
+    assert result["status"] == "FAIL"
+    assert any("seed_sweep_status_not_pass" in error for error in result["errors"])
