@@ -43,6 +43,8 @@ def write_pack(tmp_path, payloads, **extra):
 def registry_report():
     return {
         "status": "PASS",
+        "errors": [],
+        "warnings": [],
         "runs_supplied": 2,
         "runs_validated": 2,
         "run_results": [
@@ -56,6 +58,8 @@ def registry_report():
 def workflow_report(dataset_digest=None):
     return {
         "status": "PASS",
+        "errors": [],
+        "warnings": [],
         "artifacts_checked": 7,
         "missing_required_audits": [],
         "dataset_fingerprints": {dataset_digest or sha(b"dataset"): ["backtest_result_integrity"]},
@@ -266,3 +270,39 @@ def test_evidence_pack_cli_does_not_clobber_concurrent_output(tmp_path, monkeypa
 def test_strict_json_loader_rejects_ambiguous_inputs(raw):
     with pytest.raises(ValueError):
         _load_json_object(raw, source="evidence-pack.json")
+
+def test_missing_upstream_errors_array_fails_closed(tmp_path):
+    registry = registry_report()
+    registry.pop("errors")
+    manifest = write_pack(
+        tmp_path,
+        [("experiment_registry", registry), ("validation_workflow", workflow_report())],
+    )
+    report = audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_errors_field_missing_or_invalid" for item in report["errors"])
+
+
+def test_nonempty_upstream_errors_array_fails_closed(tmp_path):
+    registry = registry_report()
+    registry["errors"] = [{"code": "tampered"}]
+    manifest = write_pack(
+        tmp_path,
+        [("experiment_registry", registry), ("validation_workflow", workflow_report())],
+    )
+    report = audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_report_contains_errors" for item in report["errors"])
+
+
+def test_malformed_upstream_warnings_array_fails_closed(tmp_path):
+    workflow = workflow_report()
+    workflow["warnings"] = {"not": "a-list"}
+    manifest = write_pack(
+        tmp_path,
+        [("experiment_registry", registry_report()), ("validation_workflow", workflow)],
+    )
+    report = audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
+
