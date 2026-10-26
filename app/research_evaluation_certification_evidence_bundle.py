@@ -99,6 +99,11 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
             or any(not isinstance(item, str) or not item.strip() for item in report_warnings)
         ):
             raise ValueError(f"report_warnings_schema_invalid:{role}")
+        if (
+            (payload.get("status") == "PASS" and report_warnings)
+            or (payload.get("status") == "PASS_WITH_WARNINGS" and not report_warnings)
+        ):
+            raise ValueError(f"report_status_warning_mismatch:{role}")
         if role != "plan" and payload.get("deployment_authorized") is not False:
             raise ValueError(f"deployment_authorization_not_false:{role}")
         for flag, expected in FALSE_FLAGS.items():
@@ -225,6 +230,12 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
             or any(not isinstance(item, str) or not item.strip() for item in report_warnings)
         ):
             errors.append({"code": "bundle_report_warnings_schema_invalid", "role": role})
+            continue
+        if (
+            (payload.get("status") == "PASS" and report_warnings)
+            or (payload.get("status") == "PASS_WITH_WARNINGS" and not report_warnings)
+        ):
+            errors.append({"code": "bundle_report_status_warning_mismatch", "role": role})
             continue
         invalid_flag = next((flag for flag, expected in FALSE_FLAGS.items() if payload.get(flag) is not expected), None)
         if invalid_flag is not None:

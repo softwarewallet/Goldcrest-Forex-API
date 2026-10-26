@@ -107,6 +107,7 @@ def test_warning_status_is_supported(tmp_path):
     paths = fixture(tmp_path)
     payload = json.loads(paths["registry"].read_text())
     payload["status"] = "PASS_WITH_WARNINGS"
+    payload["warnings"] = ["fixture warning"]
     paths["registry"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
     bundle = build_evidence_bundle(paths)
     assert bundle["status"] == "PASS"
@@ -288,3 +289,46 @@ def test_verifier_rejects_whitespace_padded_top_level_identities(tmp_path, field
 
     assert report["status"] == "FAIL"
     assert any(error["code"] == error_code for error in report["errors"])
+
+
+
+def test_builder_rejects_status_warning_mismatch(tmp_path):
+    paths = fixture(tmp_path)
+    payload = json.loads(paths["registry"].read_text())
+    payload["status"] = "PASS_WITH_WARNINGS"
+    payload.pop("warnings", None)
+    paths["registry"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="report_status_warning_mismatch:registry"):
+        build_evidence_bundle(paths)
+
+
+def test_verifier_rejects_status_warning_mismatch_after_bundle_reseal(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    payload = json.loads(paths["registry"].read_text())
+    payload["status"] = "PASS_WITH_WARNINGS"
+    payload.pop("warnings", None)
+    paths["registry"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    from app.research_evaluation_certification_evidence_bundle import _sha, _canonical
+    entry = bundle["reports"]["registry"]
+    raw = paths["registry"].read_bytes()
+    entry["sha256"] = _sha(raw)
+    entry["size_bytes"] = len(raw)
+    entry["identity"] = {
+        "audit_name": payload["audit_name"], "status": payload["status"],
+        "plan_id": payload["plan_id"], "plan_sha256": payload["plan_sha256"],
+        "registry_id": payload["registry_id"], "deployment_authorized": payload.get("deployment_authorized"),
+    }
+    body = dict(bundle)
+    body.pop("bundle_sha256", None)
+    bundle["bundle_sha256"] = _sha(_canonical(body))
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+    assert report["status"] == "FAIL"
+    assert any(
+        item["code"] == "bundle_report_status_warning_mismatch"
+        and item["role"] == "registry"
+        for item in report["errors"]
+    )
