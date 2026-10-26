@@ -181,3 +181,17 @@ def test_padded_inventory_identities_are_rejected(manifest_entries, spec_entries
             manifest(manifest_entries),
             spec(spec_entries),
         )
+
+
+
+def test_boolean_manifest_artifact_count_is_not_accepted_as_integer():
+    payload = manifest([{"artifact_id": "metrics", "path": "reports/metrics.json"}])
+    payload["artifact_count"] = True
+
+    report = audit_artifact_inventory_completeness(
+        payload,
+        spec([{"artifact_id": "metrics", "path": "reports/metrics.json"}]),
+    )
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "MANIFEST_ARTIFACT_COUNT_MISMATCH" for item in report["errors"])
