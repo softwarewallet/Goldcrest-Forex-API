@@ -43,7 +43,7 @@ def test_walk_forward_rejects_mixed_instruments_and_bad_data():
     with pytest.raises(ValueError, match="one symbol/timeframe"):
         generate_walk_forward_folds(
             bars, initial_train_bars=40, validation_bars=20,
-            test_bars=15, step_bars=10, horizon_bars=2,
+            test_bars=15, step_bars=13, horizon_bars=2,
         )
 
 
@@ -61,7 +61,7 @@ def test_walk_forward_rejects_unsorted_and_duplicate_timestamps():
     with pytest.raises(ValueError, match="data-quality|chronological"):
         generate_walk_forward_folds(
             bars, initial_train_bars=40, validation_bars=20,
-            test_bars=15, step_bars=10, horizon_bars=2,
+            test_bars=15, step_bars=13, horizon_bars=2,
         )
 
 
@@ -75,3 +75,21 @@ def test_walk_forward_requires_positive_partition_sizes(name, value):
     kwargs[name] = value
     with pytest.raises(ValueError, match="integer >= 1"):
         generate_walk_forward_folds(make_bars(100), **kwargs)
+
+
+def test_walk_forward_rejects_overlapping_test_windows_before_model_evaluation():
+    with pytest.raises(ValueError, match="overlapping test windows"):
+        generate_walk_forward_folds(
+            make_bars(), initial_train_bars=50, validation_bars=20,
+            test_bars=15, step_bars=11, horizon_bars=3,
+        )
+
+
+def test_walk_forward_accepts_adjacent_nonoverlapping_test_windows():
+    plan = generate_walk_forward_folds(
+        make_bars(), initial_train_bars=50, validation_bars=20,
+        test_bars=15, step_bars=12, horizon_bars=3,
+    )
+    assert len(plan.folds) >= 2
+    for previous, current in zip(plan.folds, plan.folds[1:]):
+        assert previous.test[-1].timestamp < current.test[0].timestamp
