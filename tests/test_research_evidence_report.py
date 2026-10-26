@@ -1219,3 +1219,33 @@ def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
     path.write_text(payload, encoding="utf-8")
     with pytest.raises(ValueError):
         evidence._read_json(path)
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_artifact_record_rejects_malformed_status_without_type_error(tmp_path, status):
+    artifact = tmp_path / "receipt.json"
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}", encoding="utf-8")
+    _write_json(artifact, {
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "run_id": "run-1",
+        "status": status,
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+    })
+
+    record, report, errors, warnings = evidence._artifact_record(
+        section_name="model_evaluation_gate",
+        path=artifact,
+        expected_scope="GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        expected_run_id="run-1",
+        expected_symbol=None,
+        expected_timeframe=None,
+        expected_manifest=manifest,
+        expected_matrix_sha256=None,
+    )
+
+    assert report is not None
+    assert record["status"] == "FAIL"
+    assert "model_evaluation_gate_status_invalid" in errors
