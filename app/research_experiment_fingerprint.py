@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.research_strict_json import strict_json_loads
+
 
 _SCOPE = "OFFLINE_RESEARCH_REPRODUCIBILITY"
 
@@ -63,8 +65,8 @@ def build_experiment_fingerprint(
     manifest_path = Path(dataset_manifest_path)
     manifest_bytes = manifest_path.read_bytes()
     try:
-        loaded_manifest = json.loads(manifest_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        loaded_manifest = strict_json_loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
         raise ValueError("dataset_manifest_file_unreadable") from exc
     if not isinstance(loaded_manifest, dict) or loaded_manifest != dataset_manifest:
         raise ValueError("dataset_manifest_file_content_mismatch")
