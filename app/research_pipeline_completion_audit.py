@@ -129,13 +129,24 @@ def audit_pipeline_completion(
             errors.append({"code": "validation_report_run_id_mismatch", "report": "validation_report"})
         if validation.get("manifest_path") and Path(str(validation["manifest_path"])).expanduser().resolve() != manifest_file:
             errors.append({"code": "validation_report_manifest_path_mismatch", "report": "validation_report"})
-        if validation.get("status") not in _PASS or validation.get("errors"):
+        validation_errors = validation.get("errors")
+        if not isinstance(validation_errors, list):
+            errors.append({"code": "validation_report_errors_schema_invalid", "report": "validation_report"})
+        elif validation.get("status") not in _PASS or validation_errors:
             warnings.append("validation_report_contains_quality_or_integrity_findings")
+        validation_warnings = validation.get("warnings")
+        if validation_warnings is not None and (
+            not isinstance(validation_warnings, list)
+            or any(not isinstance(item, str) or not item.strip() for item in validation_warnings)
+        ):
+            errors.append({"code": "validation_report_warnings_schema_invalid", "report": "validation_report"})
         if validation.get("actionable") is not False or validation.get("execution_connected") is not False:
             errors.append({"code": "validation_report_safety_flags_invalid", "report": "validation_report"})
-        if validation.get("status") == "PASS_WITH_WARNINGS" or validation.get("warnings"):
+        if validation.get("status") == "PASS_WITH_WARNINGS" or validation_warnings:
             warnings.append("validation_report_has_warnings")
-        checks["validation_report_status"] = "PASS" if validation.get("status") in _PASS and not validation.get("errors") else "WARN"
+        checks["validation_report_status"] = (
+            "PASS" if validation.get("status") in _PASS and validation_errors == [] else "WARN"
+        )
     else:
         checks["validation_report_status"] = "FAIL"
 
@@ -171,10 +182,20 @@ def audit_pipeline_completion(
         if evaluation_source_hash != expected_evaluation_hash:
             raise ValueError("model_evaluation_gate_sha256_mismatch")
         checks["model_evaluation_gate_file_hash"] = "PASS"
-        if evaluation.get("status") not in _PASS:
-            warnings.append("model_evaluation_gate_did_not_pass")
-        if evaluation.get("errors"):
-            warnings.append("model_evaluation_gate_reports_errors")
+        evaluation_errors = evaluation.get("errors")
+        if not isinstance(evaluation_errors, list):
+            errors.append({"code": "model_evaluation_gate_errors_schema_invalid", "report": "model_evaluation_gate"})
+        else:
+            if evaluation.get("status") not in _PASS:
+                warnings.append("model_evaluation_gate_did_not_pass")
+            if evaluation_errors:
+                warnings.append("model_evaluation_gate_reports_errors")
+        evaluation_warnings = evaluation.get("warnings")
+        if evaluation_warnings is not None and (
+            not isinstance(evaluation_warnings, list)
+            or any(not isinstance(item, str) or not item.strip() for item in evaluation_warnings)
+        ):
+            errors.append({"code": "model_evaluation_gate_warnings_schema_invalid", "report": "model_evaluation_gate"})
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         checks["model_evaluation_gate_file_hash"] = "FAIL"
         errors.append({"code": "model_evaluation_gate_missing_unreadable_or_tampered", "report": "model_evaluation_gate"})

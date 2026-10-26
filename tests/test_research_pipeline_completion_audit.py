@@ -291,3 +291,73 @@ def test_completion_reader_rejects_nonstandard_json_constants(tmp_path):
         assert "nonstandard_json_constant:NaN" in str(exc)
     else:
         raise AssertionError("non-standard JSON constant must be rejected")
+
+def test_missing_validation_errors_array_is_integrity_failure(tmp_path):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    payload = json.loads(validation.read_text(encoding="utf-8"))
+    payload.pop("errors")
+    _write(validation, payload)
+
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "validation_report_errors_schema_invalid" for item in report["errors"])
+
+
+def test_malformed_validation_warnings_array_is_integrity_failure(tmp_path):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    payload = json.loads(validation.read_text(encoding="utf-8"))
+    payload["warnings"] = "not-a-list"
+    _write(validation, payload)
+
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "validation_report_warnings_schema_invalid" for item in report["errors"])
+
+
+def test_missing_evaluation_errors_array_is_integrity_failure(tmp_path):
+    manifest, validation, reproducibility, evaluation, _ = fixture(tmp_path)
+    payload = json.loads(evaluation.read_text(encoding="utf-8"))
+    payload.pop("errors")
+    _write(evaluation, payload)
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["model_evaluation_gate_sha256"] = hashlib.sha256(evaluation.read_bytes()).hexdigest()
+    _write(manifest, manifest_payload)
+    # Recompute the self-hash after updating the expected evaluation digest.
+    manifest_payload.pop("pipeline_manifest_sha256", None)
+    manifest_payload["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
+    _write(manifest, manifest_payload)
+    validation_payload = json.loads(validation.read_text(encoding="utf-8"))
+    validation_payload["manifest_path"] = str(manifest.resolve())
+    _write(validation, validation_payload)
+
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "model_evaluation_gate_errors_schema_invalid" for item in report["errors"])
+
+
+def test_malformed_evaluation_warnings_array_is_integrity_failure(tmp_path):
+    manifest, validation, reproducibility, evaluation, _ = fixture(tmp_path)
+    payload = json.loads(evaluation.read_text(encoding="utf-8"))
+    payload["warnings"] = {"not": "a-list"}
+    _write(evaluation, payload)
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["model_evaluation_gate_sha256"] = hashlib.sha256(evaluation.read_bytes()).hexdigest()
+    manifest_payload.pop("pipeline_manifest_sha256", None)
+    manifest_payload["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
+    _write(manifest, manifest_payload)
+    validation_payload = json.loads(validation.read_text(encoding="utf-8"))
+    validation_payload["manifest_path"] = str(manifest.resolve())
+    _write(validation, validation_payload)
+
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "model_evaluation_gate_warnings_schema_invalid" for item in report["errors"])
+
