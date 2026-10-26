@@ -130,11 +130,17 @@ def audit_research_artifact_bundle(
                 entry_errors.append("status_unknown_or_missing")
             if status == "FAIL":
                 entry_errors.append("upstream_audit_failed")
-            upstream_errors = payload.get("errors", [])
-            if isinstance(upstream_errors, list) and upstream_errors:
+            upstream_errors = payload.get("errors")
+            if not isinstance(upstream_errors, list):
+                entry_errors.append("upstream_errors_field_missing_or_invalid")
+            elif upstream_errors:
                 entry_errors.append("upstream_report_contains_errors")
-            elif not isinstance(upstream_errors, list):
-                entry_errors.append("upstream_errors_field_invalid")
+            upstream_warnings = payload.get("warnings")
+            if upstream_warnings is not None and (
+                not isinstance(upstream_warnings, list)
+                or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
+            ):
+                entry_errors.append("upstream_warnings_field_invalid")
             for flag in SAFE_FALSE_FLAGS:
                 if flag in payload and payload[flag] is not False:
                     entry_errors.append(f"safety_flag_not_false:{flag}")

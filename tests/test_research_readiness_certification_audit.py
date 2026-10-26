@@ -200,3 +200,37 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     from app.research_readiness_certification_audit import _load_json_object
     with pytest.raises(ValueError):
         _load_json_object(raw, source="fixture.json")
+
+def test_missing_errors_array_fails_closed(tmp_path):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_temporal_integrity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.pop("errors")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = run_audit(tmp_path, manifest_for(reports))
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "upstream_errors_field_missing_or_invalid"
+        and error["audit_name"] == "feature_temporal_integrity"
+        for error in report["errors"]
+    )
+
+
+def test_malformed_warnings_array_fails_closed(tmp_path):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_backend_parity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["warnings"] = {"not": "a-list"}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = run_audit(tmp_path, manifest_for(reports))
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "upstream_warnings_field_invalid"
+        and error["audit_name"] == "feature_backend_parity"
+        for error in report["errors"]
+    )
+
