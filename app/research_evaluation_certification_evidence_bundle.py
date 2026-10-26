@@ -67,19 +67,23 @@ def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def _parse_report_bytes(raw: bytes, *, source: Path) -> dict[str, Any]:
+    try:
+        payload = strict_json_loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"report_json_invalid:{source}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"report_root_must_be_object:{source}")
+    return payload
+
+
 def _read_report(path: Path) -> tuple[dict[str, Any], bytes]:
     if path.is_symlink():
         raise ValueError(f"report_symlink_not_allowed:{path}")
     if not path.is_file():
         raise ValueError(f"report_must_be_regular_file:{path}")
     raw = path.read_bytes()
-    try:
-        payload = strict_json_loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise ValueError(f"report_json_invalid:{path}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError(f"report_root_must_be_object:{path}")
-    return payload, raw
+    return _parse_report_bytes(raw, source=path), raw
 
 
 def _identity(payload: dict[str, Any]) -> dict[str, Any]:
@@ -246,7 +250,12 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
         if len(raw) != entry.get("size_bytes"):
             errors.append({"code": "bundle_report_size_mismatch", "role": role})
             continue
-        payload = _read_report(path)[0]
+        try:
+            # Parse the exact byte buffer already hashed above; do not re-open the path.
+            payload = _parse_report_bytes(raw, source=path)
+        except ValueError:
+            errors.append({"code": "bundle_report_json_invalid", "role": role})
+            continue
         report_status = payload.get("status")
         if payload.get("audit_name") != audit_name or not isinstance(report_status, str) or report_status not in allowed_statuses:
             errors.append({"code": "bundle_report_identity_or_status_mismatch", "role": role})
