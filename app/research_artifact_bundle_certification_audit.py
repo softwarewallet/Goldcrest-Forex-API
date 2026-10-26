@@ -26,6 +26,20 @@ SAFE_FALSE_FLAGS = (
 KNOWN_STATUSES = {"PASS", "PASS_WITH_WARNINGS", "NOT_COMPARABLE", "FAIL"}
 
 
+def _is_canonical_relative_posix_path(value: str) -> bool:
+    """Accept one unambiguous, confined POSIX spelling for manifest artifact paths."""
+    candidate = Path(value)
+    return (
+        bool(value)
+        and value == value.strip()
+        and chr(92) not in value
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and "." not in candidate.parts
+        and candidate.as_posix() == value
+    )
+
+
 def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     payload = strict_json_loads(raw.decode("utf-8"))
     if not isinstance(payload, dict):
@@ -89,6 +103,8 @@ def audit_research_artifact_bundle(
             candidate = Path(relative_path)
             if candidate.is_absolute() or ".." in candidate.parts:
                 entry_errors.append("artifact_path_must_be_relative_and_confined")
+            elif not _is_canonical_relative_posix_path(relative_path):
+                entry_errors.append("artifact_path_must_be_canonical_relative_posix")
             resolved = (base_dir / candidate).resolve()
             try:
                 resolved.relative_to(base_dir.resolve())
@@ -109,6 +125,7 @@ def audit_research_artifact_bundle(
         if not any(code in entry_errors for code in (
             "artifact_path_invalid",
             "artifact_path_must_be_relative_and_confined",
+            "artifact_path_must_be_canonical_relative_posix",
             "artifact_path_escapes_manifest_directory",
         )):
             try:
