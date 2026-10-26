@@ -172,7 +172,11 @@ def test_duplicate_artifact_path_fails_closed():
     ("depends_on", [""], "dependencies_must_be_canonical_string_list"),
 ])
 def test_rejects_noncanonical_manifest_identity_paths_and_dependencies(field, value, error):
-    item = artifact("metrics", **{field: value})
+    if field == "artifact_id":
+        item = artifact("metrics")
+        item["artifact_id"] = value
+    else:
+        item = artifact("metrics", **{field: value})
     with pytest.raises(ValueError, match=error):
         audit(manifest(item))
 
