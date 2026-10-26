@@ -235,7 +235,7 @@ def test_completion_audit_cli_does_not_clobber_concurrent_output(tmp_path, monke
 
 def test_report_hash_is_for_the_exact_bytes_parsed(tmp_path):
     path = tmp_path / "report.json"
-    raw = b'{"status":"PASS","run_id":"snapshot-test"}\\n'
+    raw = b'{"status":"PASS","run_id":"snapshot-test"}\n'
     path.write_bytes(raw)
 
     payload, digest = _read_object_with_hash(path)
