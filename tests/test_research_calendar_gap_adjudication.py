@@ -61,7 +61,9 @@ def test_gap_adjudicated_only_when_hash_verified_interval_covers_missing_bars(tm
 
 
 def test_partial_calendar_overlap_does_not_adjudicate_gap(tmp_path):
-    csv_path, manifest, calendar, source, start, end = fixture(
+    start = datetime(2026, 1, 5, 0, 0, tzinfo=timezone.utc)
+    end = start + timedelta(hours=9)
+    csv_path, manifest, calendar, source, _, _ = fixture(
         tmp_path,
         intervals=[{
             "start_utc": (start + timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
