@@ -151,3 +151,50 @@ def test_verifier_fails_closed_on_report_errors_even_if_bundle_was_built(tmp_pat
     report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
     assert report["status"] == "FAIL"
     assert any(e["code"] == "bundle_report_contains_errors" and e["role"] == "metric_semantics" for e in report["errors"])
+
+@pytest.mark.parametrize(
+    ("role", "field", "error_code"),
+    [
+        ("registry", "warnings", "report_warnings_schema_invalid:registry"),
+        ("plan", "errors", "report_errors_schema_invalid:plan"),
+    ],
+)
+def test_builder_rejects_explicit_null_optional_diagnostics(tmp_path, role, field, error_code):
+    paths = fixture(tmp_path)
+    payload = json.loads(paths[role].read_text())
+    payload[field] = None
+    paths[role].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=error_code):
+        build_evidence_bundle(paths)
+
+
+def test_verifier_rejects_explicit_null_warnings_in_upstream_report(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    payload = json.loads(paths["registry"].read_text())
+    payload["warnings"] = None
+    paths["registry"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    from app.research_evaluation_certification_evidence_bundle import _sha, _canonical
+    entry = bundle["reports"]["registry"]
+    raw = paths["registry"].read_bytes()
+    entry["sha256"] = _sha(raw)
+    entry["size_bytes"] = len(raw)
+    entry["identity"] = {
+        "audit_name": payload["audit_name"], "status": payload["status"],
+        "plan_id": payload["plan_id"], "plan_sha256": payload["plan_sha256"],
+        "registry_id": payload["registry_id"], "deployment_authorized": payload.get("deployment_authorized"),
+    }
+    body = dict(bundle)
+    body.pop("bundle_sha256", None)
+    bundle["bundle_sha256"] = _sha(_canonical(body))
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "bundle_report_warnings_schema_invalid" and error["role"] == "registry"
+        for error in report["errors"]
+    )
+\n
