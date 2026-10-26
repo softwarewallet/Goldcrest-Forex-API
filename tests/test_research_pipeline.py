@@ -80,6 +80,7 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
             "source_version": kwargs["source_version"],
             "retrieved_at_utc": kwargs["retrieved_at_utc"],
             "terms_reference": kwargs["terms_reference"],
+            "terms_reference_sha256": hashlib.sha256(kwargs["terms_reference"].strip().encode("utf-8")).hexdigest(),
             "input_snapshot_sha256": research_pipeline._sha256(input_csv),
             "output_dataset_sha256": research_pipeline._sha256(output_csv),
             "output_rows": 1,
@@ -218,6 +219,9 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert label_audit["dataset_sha256"] == stored["dataset_sha256"]
     assert stored["label_maturity_audit_sha256"] == research_pipeline._sha256(label_audit_path)
     assert stored["dataset_sha256"]
+    assert stored["terms_reference"] == "actual provider terms"
+    assert stored["terms_reference_sha256"] == hashlib.sha256(b"actual provider terms").hexdigest()
+    assert json.loads(Path(stored["dataset_manifest_path"]).read_text(encoding="utf-8"))["terms_reference_sha256"] == stored["terms_reference_sha256"]
     assert stored["feature_source_audit_status"] == "PASS"
     assert stored["feature_source_audit_errors"] == []
     feature_source_audit_path = Path(stored["feature_source_audit_path"])
