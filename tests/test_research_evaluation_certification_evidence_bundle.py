@@ -37,6 +37,7 @@ def fixture(tmp_path):
         }
         if role == "plan":
             payload.pop("deployment_authorized")
+            payload.pop("errors")  # deterministic plan reports do not declare an errors array
             payload["expected_runs"] = 2
         path = tmp_path / f"{role}.json"
         path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
