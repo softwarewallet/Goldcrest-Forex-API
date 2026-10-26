@@ -4,7 +4,8 @@ import json
 
 import pytest
 
-from app import research_label_eligibility_seed_sweep as seed_sweep\nfrom app.research_label_eligibility_seed_sweep import (
+from app import research_label_eligibility_seed_sweep as seed_sweep
+from app.research_label_eligibility_seed_sweep import (
     _read_json,
     _fold_eligibility_counts,
     _fold_signature,
