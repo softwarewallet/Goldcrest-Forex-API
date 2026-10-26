@@ -46,7 +46,7 @@ def _timestamp(value: Any) -> datetime | None:
 
 
 def _valid_digest(value: Any) -> bool:
-    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdefABCDEF" for c in value)
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
 
 def _unique_nonempty(values: Any, label: str) -> list[Any]:
@@ -56,7 +56,10 @@ def _unique_nonempty(values: Any, label: str) -> list[Any]:
     for item in values:
         if not isinstance(item, (str, int)) or isinstance(item, bool) or not str(item).strip():
             raise ValueError(f"{label}_item_invalid")
-        normalized.append(str(item))
+        item_text = str(item)
+        if item_text != item_text.strip():
+            raise ValueError(f"{label}_item_not_canonical")
+        normalized.append(item_text)
     if len(set(normalized)) != len(normalized):
         raise ValueError(f"{label}_must_be_unique")
     return values
@@ -76,13 +79,17 @@ def build_experiment_plan(plan: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(context, dict):
         raise ValueError("context_must_be_object")
     for field in ("symbol", "timeframe"):
-        if not isinstance(context.get(field), str) or not context[field].strip():
+        if (
+            not isinstance(context.get(field), str)
+            or not context[field].strip()
+            or context[field] != context[field].strip()
+        ):
             raise ValueError(f"context_{field}_invalid")
     for field in ("config_sha256", "dataset_sha256"):
         if not _valid_digest(plan.get(field)):
             raise ValueError(f"{field}_invalid")
     commit = plan.get("code_commit_sha")
-    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", commit):
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("code_commit_sha_invalid")
 
     seeds = plan.get("seeds")
@@ -101,7 +108,12 @@ def build_experiment_plan(plan: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(window, dict):
             raise ValueError(f"evaluation_window_invalid:{index}")
         window_id = window.get("window_id")
-        if not isinstance(window_id, (str, int)) or isinstance(window_id, bool) or not str(window_id).strip():
+        if (
+            not isinstance(window_id, (str, int))
+            or isinstance(window_id, bool)
+            or not str(window_id).strip()
+            or str(window_id) != str(window_id).strip()
+        ):
             raise ValueError(f"evaluation_window_id_invalid:{index}")
         window_id = str(window_id)
         if window_id in window_ids:

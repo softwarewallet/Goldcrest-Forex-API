@@ -131,3 +131,25 @@ def test_plan_cli_requires_json_object_root(tmp_path, capsys):
     assert result == 2
     assert not output.exists()
 
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        (lambda p: p.update({"folds": [" fold-1 "]}), "folds_item_not_canonical"),
+        (
+            lambda p: p.update({"evaluation_windows": [
+                {"window_id": " jan ", "start": "2026-01-01T00:00:00Z", "end": "2026-02-01T00:00:00Z"}
+            ]}),
+            "evaluation_window_id_invalid:0",
+        ),
+        (lambda p: p["context"].update({"symbol": " EURUSD "}), "context_symbol_invalid"),
+        (lambda p: p.update({"config_sha256": "A" * 64}), "config_sha256_invalid"),
+        (lambda p: p.update({"code_commit_sha": "A" * 40}), "code_commit_sha_invalid"),
+    ],
+)
+def test_plan_rejects_noncanonical_identity_inputs(mutation, error):
+    plan = sample_plan()
+    mutation(plan)
+    with pytest.raises(ValueError, match=error.replace(":", r"\:")):
+        build_experiment_plan(plan)
