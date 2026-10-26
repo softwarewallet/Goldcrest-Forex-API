@@ -7,6 +7,7 @@ import pytest
 from app.research_artifact_freshness_audit import (
     audit_artifact_freshness,
     fingerprint_path,
+    _read_object,
 )
 
 REV = "a" * 40
@@ -128,3 +129,16 @@ def test_file_fingerprint_matches_sha256(tmp_path):
 def test_fingerprint_rejects_missing_target(tmp_path):
     with pytest.raises(FileNotFoundError):
         fingerprint_path(tmp_path / "missing")
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, raw):
+    path = tmp_path / "malformed.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _read_object(path)

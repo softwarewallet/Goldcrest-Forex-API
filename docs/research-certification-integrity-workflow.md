@@ -92,3 +92,8 @@ The completion, run-integrity, and final-certification-chain readers reject dupl
 ## Strict JSON parsing across certification readers
 
 The evidence-bundle, evaluation-integrity, readiness, artifact-bundle, unified-provenance, final-certification, report-seal, and provenance-manifest readers reject duplicate object keys and non-standard numeric constants (`NaN`, `Infinity`, `-Infinity`). This prevents Python's permissive JSON decoder from silently normalizing ambiguous or non-RFC-8259 inputs before audit checks. Malformed input must fail closed; digest checks continue to bind the exact source bytes where defined. These offline integrity checks do not establish model validity or authorize deployment or trading.
+
+
+## Strict JSON parsing for provenance and evaluation readers
+
+The artifact freshness audit, artifact-inventory specification seal, backtest-result integrity audit, evaluation-output integrity audit, and evaluation-window lineage audit reject duplicate object keys and non-standard JSON numeric constants (`NaN`, `Infinity`, and `-Infinity`) when reading manifests and report artifacts. These inputs are treated as invalid rather than allowing parser-specific ambiguity to influence provenance, integrity, or readiness conclusions. Regression tests cover malformed top-level and nested manifest values. This hardening is limited to offline research validation; it does not change model selection, model training, or trading/execution behavior.

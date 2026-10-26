@@ -8,6 +8,7 @@ from app.research_artifact_inventory_spec_seal import (
     canonical_inventory_spec_bytes,
     create_inventory_spec_seal,
     verify_inventory_spec_seal,
+    _read_object,
 )
 
 
@@ -71,3 +72,16 @@ def test_invalid_inventory_spec_is_rejected():
     payload["schema_version"] = 2
     with pytest.raises(ValueError, match="schema_version_unsupported"):
         create_inventory_spec_seal(payload)
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, raw):
+    path = tmp_path / "malformed.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _read_object(path)
