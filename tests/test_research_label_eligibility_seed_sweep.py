@@ -5,6 +5,7 @@ import json
 import pytest
 
 from app.research_label_eligibility_seed_sweep import (
+    _read_json,
     _fold_eligibility_counts,
     _fold_signature,
     aggregate_seed_results,
@@ -222,3 +223,19 @@ def test_fold_eligibility_counts_reject_disagreement_between_experiments():
 
     with pytest.raises(ValueError, match="differ_between_experiments"):
         _fold_eligibility_counts(comparison)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)

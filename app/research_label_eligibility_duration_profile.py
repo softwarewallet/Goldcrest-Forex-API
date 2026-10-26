@@ -22,11 +22,30 @@ _PROFILE_SCOPE = "GOLDCREST_LABEL_ELAPSED_DURATION_CAP_BOUNDARY_PROFILE"
 _PASS = {"PASS", "PASS_WITH_WARNINGS"}
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects containing repeated keys."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
 def _read_json(path: str | Path) -> dict[str, Any]:
     resolved = Path(path).expanduser().resolve()
     try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload = json.loads(
+            resolved.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_nonstandard_json_constant,
+        )
+    except (OSError, ValueError) as exc:
         raise ValueError(f"json_unreadable:{resolved}") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"json_not_object:{resolved}")

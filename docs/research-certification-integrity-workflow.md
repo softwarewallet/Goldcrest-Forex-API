@@ -117,3 +117,8 @@ The reproducibility auditor, pipeline leakage-boundary audit, feature temporal-i
 ## Strict JSON in backend-parity, label-eligibility, and robustness audits
 
 The feature-backend parity audit and walk-forward robustness audit now reject duplicate JSON keys and non-standard numeric constants. The label-eligibility cross-report integrity snapshot reader retains its existing duplicate-key protection and additionally rejects `NaN`, `Infinity`, and `-Infinity`; the threshold-report reader now applies strict parsing to its input artifacts. Tests cover these malformed JSON cases. This remains descriptive, offline research auditing and does not automate backend or model selection.
+
+
+### Phase 84 — Strict JSON for label research readers
+
+The offline research-validation reader and label-eligibility recovery, seed-sweep, variant, and duration-profile readers reject duplicate object keys and non-standard JSON numeric constants (`NaN`, `Infinity`, and `-Infinity`). Malformed artifacts fail closed rather than allowing parser-dependent interpretations. Regression tests exercise each reader with these malformed inputs. This hardening is validation-only: it does not select models, change training, enable execution, or connect to brokers.

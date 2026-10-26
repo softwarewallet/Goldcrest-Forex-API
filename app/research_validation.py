@@ -55,8 +55,27 @@ def _resolve_artifact(value: object, manifest_path: Path) -> Path | None:
     return candidate
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects containing repeated keys."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
 def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value

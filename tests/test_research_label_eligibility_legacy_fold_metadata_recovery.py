@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from app.research_label_eligibility_legacy_fold_metadata_recovery import (
+    _read_json,
     recover_seed_report,
     recover_threshold_report,
 )
@@ -207,3 +208,19 @@ def test_threshold_recovery_rejects_hash_mismatch(tmp_path):
 
     with pytest.raises(ValueError, match="raw_hash_mismatch"):
         recover_threshold_report(source, tmp_path / "out.json", recovered_reports)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)
