@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 REPORT_SPECS = {
     "plan": ("research_experiment_plan", {"PASS"}),
     "registry": ("research_experiment_registry", {"PASS", "PASS_WITH_WARNINGS"}),
@@ -41,11 +43,7 @@ def _canonical(value: Any) -> bytes:
 def _read_report(path: Path) -> tuple[dict[str, Any], bytes]:
     raw = path.read_bytes()
     try:
-        payload = json.loads(
-            raw.decode("utf-8"),
-            object_pairs_hook=_reject_duplicate_json_keys,
-            parse_constant=_reject_nonstandard_json_constant,
-        )
+        payload = strict_json_loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"report_json_invalid:{path}") from exc
     if not isinstance(payload, dict):
@@ -211,27 +209,8 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
     }
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _read_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_reject_duplicate_json_keys,
-        parse_constant=_reject_nonstandard_json_constant,
-    )
+    payload = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{path}")
     return payload
