@@ -44,7 +44,7 @@ def _normalize_component_report(name: str, report: Any) -> dict[str, Any]:
         reasons.append("status_must_be_supported_string")
     if not isinstance(errors, list) or any(not isinstance(item, dict) for item in errors):
         reasons.append("errors_must_be_list_of_objects")
-    elif status in {"PASS", "PASS_WITH_WARNINGS"} and errors:
+    elif isinstance(status, str) and status in {"PASS", "PASS_WITH_WARNINGS"} and errors:
         reasons.append("passing_status_must_not_contain_errors")
     if not isinstance(warnings, list) or any(not isinstance(item, str) or not item.strip() for item in warnings):
         reasons.append("warnings_must_be_list_of_nonempty_strings")
