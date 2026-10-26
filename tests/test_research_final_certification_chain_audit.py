@@ -167,6 +167,34 @@ def test_diagnostic_fields_must_be_lists():
     assert any(error["code"] == "input_warnings_schema_invalid" for error in report["errors"])
 
 
+@pytest.mark.parametrize(
+    ("field", "padded"),
+    [
+        ("plan_id", " plan-123"),
+        ("plan_id", "plan-123 "),
+        ("registry_id", " registry-456"),
+        ("registry_id", "registry-456 "),
+    ],
+)
+def test_final_chain_rejects_noncanonical_padded_identity_fields(field, padded):
+    readiness, bundle, verification = fixtures()
+    readiness[field] = padded
+    bundle[field] = padded
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    expected_code = "plan_id_invalid" if field == "plan_id" else "registry_id_invalid"
+    assert any(
+        error["code"] == expected_code and error["report"] == "readiness"
+        for error in report["errors"]
+    )
+    assert any(
+        error["code"] == expected_code and error["report"] == "bundle"
+        for error in report["errors"]
+    )
+
+
 def test_missing_plan_and_registry_identity_cannot_pass_by_matching_nulls():
     readiness, bundle, verification = fixtures()
     readiness.pop("plan_id")
