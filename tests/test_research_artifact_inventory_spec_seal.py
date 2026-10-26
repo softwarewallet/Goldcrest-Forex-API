@@ -100,3 +100,30 @@ def test_inventory_spec_seal_rejects_noncanonical_artifact_identity(field, value
     payload["required_artifacts"][0][field] = value
     with pytest.raises(ValueError, match=error):
         create_inventory_spec_seal(payload)
+
+
+@pytest.mark.parametrize(
+    ("entries", "error"),
+    [
+        (
+            [
+                {"artifact_id": "metrics", "path": "reports/metrics.json"},
+                {"artifact_id": "metrics", "path": "reports/other.json"},
+            ],
+            "duplicate_artifact_id",
+        ),
+        (
+            [
+                {"artifact_id": "metrics", "path": "reports/metrics.json"},
+                {"artifact_id": "other", "path": "reports/metrics.json"},
+            ],
+            "duplicate_artifact_path",
+        ),
+        ([], "artifacts_must_not_be_empty"),
+    ],
+)
+def test_inventory_spec_seal_rejects_duplicate_or_empty_contract(entries, error):
+    payload = spec()
+    payload["required_artifacts"] = entries
+    with pytest.raises(ValueError, match=error):
+        create_inventory_spec_seal(payload)
