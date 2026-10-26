@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 from app.research_pipeline_completion_audit import audit_pipeline_completion, main
 
