@@ -349,7 +349,8 @@ def test_pipeline_reuses_ctrader_manifest_provenance_for_local_snapshot(tmp_path
     raw = tmp_path / "EURUSD_M365_demo.csv"
     raw.write_text(
         "symbol,timeframe,timestamp,open,high,low,close\n"
-        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n"
+        "EURUSD,M15,2026-01-01T00:15:00Z,1.05,1.15,0.95,1.1\n",
         encoding="utf-8",
     )
     retrieved_at = "2026-10-23T11:00:00Z"
@@ -360,9 +361,9 @@ def test_pipeline_reuses_ctrader_manifest_provenance_for_local_snapshot(tmp_path
         "actionable": False,
         "symbol": "EURUSD",
         "timeframe": "M15",
-        "rows": 1,
+        "rows": 2,
         "first_timestamp_utc": "2026-01-01T00:00:00Z",
-        "last_timestamp_utc": "2026-01-01T00:00:00Z",
+        "last_timestamp_utc": "2026-01-01T00:15:00Z",
         "snapshot_sha256": research_pipeline._sha256(raw),
         "retrieved_at_utc": retrieved_at,
         "pagination": {"complete": True, "window_count": 1, "pages_requested": 1},
@@ -397,7 +398,8 @@ def test_pipeline_stops_before_training_when_feature_source_audit_fails(tmp_path
     raw = tmp_path / "ohlc.csv"
     raw.write_text(
         "symbol,timeframe,timestamp,open,high,low,close\n"
-        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n"
+        "EURUSD,M15,2026-01-01T00:15:00Z,1.05,1.15,0.95,1.1\n",
         encoding="utf-8",
     )
 
