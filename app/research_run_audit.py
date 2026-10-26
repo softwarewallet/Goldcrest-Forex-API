@@ -266,6 +266,64 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
     if dataset_hash and dataset_manifest.get("output_dataset_sha256") != dataset_hash:
         errors.append("dataset_manifest_output_hash_mismatch")
 
+    # Newer pipeline runs include a feature-source provenance receipt. Verify its
+    # exact file hash, dataset binding, dataset-manifest fingerprints, and safety flags.
+    # Legacy manifests without this receipt remain readable.
+    if manifest.get("feature_source_audit_path") or manifest.get("feature_source_audit_sha256"):
+        field = "feature_source_audit"
+        resolved = _resolve_artifact_path(manifest.get(f"{field}_path"), manifest_path)
+        expected_hash = manifest.get(f"{field}_sha256")
+        if resolved is None:
+            errors.append(f"{field}_path_missing")
+        elif not resolved.is_file():
+            errors.append(f"{field}_path_not_found")
+        else:
+            actual_hash = _sha256(resolved)
+            checked_artifacts[f"{field}_path"] = {
+                "path": str(resolved),
+                "sha256": actual_hash,
+            }
+            if not isinstance(expected_hash, str) or actual_hash != expected_hash:
+                errors.append(f"{field}_path_sha256_mismatch")
+            try:
+                related[f"{field}_path"] = _read_json(resolved)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
+
+        feature_audit = related.get(f"{field}_path", {})
+        if feature_audit:
+            if feature_audit.get("audit_name") != "research_feature_source_provenance_audit":
+                errors.append(f"{field}_audit_name_mismatch")
+            if feature_audit.get("status") != manifest.get(f"{field}_status"):
+                errors.append(f"{field}_status_mismatch")
+            if feature_audit.get("dataset_sha256") != dataset_hash:
+                errors.append(f"{field}_dataset_sha256_mismatch")
+            if feature_audit.get("errors") != []:
+                errors.append(f"{field}_contains_errors")
+            if feature_audit.get("status") != "PASS":
+                errors.append(f"{field}_not_pass")
+            if feature_audit.get("actionable") is not False:
+                errors.append(f"{field}_actionable_must_be_false")
+            for flag in ("execution_connected", "model_training_performed", "automatic_model_selection"):
+                if feature_audit.get(flag) is not False:
+                    errors.append(f"{field}_{flag}_must_be_false")
+
+            declared_manifest_hash = dataset_manifest.get("manifest_sha256")
+            if declared_manifest_hash is not None and feature_audit.get("manifest_sha256_declared") != declared_manifest_hash:
+                errors.append(f"{field}_dataset_manifest_hash_mismatch")
+            declared_schema_hash = manifest.get("feature_schema_sha256")
+            if declared_schema_hash is not None and feature_audit.get("feature_schema_sha256_declared") != declared_schema_hash:
+                errors.append(f"{field}_feature_schema_hash_mismatch")
+            declared_implementation_hash = manifest.get("feature_implementation_sha256")
+            if declared_implementation_hash is not None and feature_audit.get("feature_implementation_sha256_declared") != declared_implementation_hash:
+                errors.append(f"{field}_feature_implementation_hash_mismatch")
+            declared_feature_count = manifest.get("feature_count")
+            if declared_feature_count is not None and feature_audit.get("feature_count") != declared_feature_count:
+                errors.append(f"{field}_feature_count_mismatch")
+            declared_rows = dataset_manifest.get("output_rows")
+            if declared_rows is not None and feature_audit.get("dataset_rows") != declared_rows:
+                errors.append(f"{field}_dataset_row_count_mismatch")
+
     label_cap = manifest.get("max_label_elapsed_hours")
     eligibility_mode = manifest.get("label_eligibility_mode", "all_labels_included")
     dataset_eligibility = dataset_manifest.get("label_eligibility")

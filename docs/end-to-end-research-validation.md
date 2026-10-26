@@ -605,3 +605,19 @@ python -m app.research_label_eligibility_common_cohort \
 
 Use a new output filename; audit reports refuse to overwrite an existing file or any input.
 
+
+
+## Run-level feature-source receipt integrity
+
+The cross-artifact run auditor now verifies the feature-source provenance receipt when a
+pipeline manifest includes it. The check binds the receipt to the exact prepared-dataset
+SHA-256, checks the receipt file hash and declared status, confirms feature-schema and
+implementation fingerprints against the pipeline manifest when present, and checks row
+and feature counts where the dataset manifest provides them. A receipt that reports errors,
+fails, or claims actionability, model training, model selection, or execution connectivity
+is rejected. Older manifests without the receipt remain readable; newly generated pipeline
+runs include the receipt and are checked automatically.
+
+This is a provenance/integrity gate, not proof that the feature implementation is causally
+valid or that a model has predictive value. The point-in-time invariance and model-evaluation
+gates remain separate requirements.
