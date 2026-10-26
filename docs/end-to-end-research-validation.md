@@ -231,6 +231,31 @@ File names based on an instrument are sanitized separately from the symbol value
 `run-id` is restricted to a safe filename token. Pipeline artifact paths are stored as
 absolute paths to make validation robust when invoked from another working directory.
 
+
+## Final pipeline completion integrity receipt
+
+After writing the pipeline manifest, consolidated validation report, and cross-artifact
+reproducibility audit, the pipeline writes a separate
+`<run-id>_pipeline_completion_audit.json`. This receipt verifies the manifest's canonical
+self-hash, the validation report's run/manifest linkage, the reproducibility receipt's
+status and fingerprint linkage, and the model-evaluation-gate file hash. It is written
+outside the immutable manifest to avoid a circular hash dependency.
+
+Inspect the summary fields in the pipeline's JSON output:
+
+- `pipeline_completion_audit_status`: `PASS`, `PASS_WITH_WARNINGS`, or `FAIL`.
+- `pipeline_completion_audit_errors`: hard integrity or linkage failures.
+- `pipeline_completion_audit_warnings`: non-strict validation findings and model-evaluation
+  gate failures that require review.
+
+A failed reproducibility audit or broken report/artifact linkage makes the completion audit
+fail and the CLI returns exit code 8. Validation findings remain warnings in this integrity
+receipt so the existing `--strict-validation` option continues to control whether validation
+failure changes the CLI exit code. Likewise, a failed model-evaluation gate is explicitly
+reported but does not imply that the run-integrity audit itself failed. The completion receipt
+always sets `model_qualified: false` and `deployment_authorized: false`; model quality and
+profitability must be assessed separately.
+
 ## 3. Revalidate an existing completed run
 
 ```bash
