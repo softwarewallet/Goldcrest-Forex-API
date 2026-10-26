@@ -154,7 +154,7 @@ def audit_research_readiness(
             if payload.get("audit_name") != audit_name:
                 entry_errors.append("audit_name_mismatch")
             status = payload.get("status")
-            if status not in KNOWN_STATUSES:
+            if not isinstance(status, str) or status not in KNOWN_STATUSES:
                 entry_errors.append("status_unknown_or_missing")
             elif status == "FAIL":
                 entry_errors.append("upstream_audit_failed")
@@ -169,7 +169,7 @@ def audit_research_readiness(
             elif upstream_errors:
                 entry_errors.append("upstream_report_contains_errors")
             upstream_warnings = payload.get("warnings")
-            if "warnings" in payload and (
+            if (
                 not isinstance(upstream_warnings, list)
                 or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
             ):
@@ -197,13 +197,17 @@ def audit_research_readiness(
                 dataset_hashes.setdefault(dataset_hash.lower(), []).append(audit_name)
 
             if audit_name == "feature_temporal_integrity":
-                if payload.get("prefix_invariance", {}).get("all_passed") is not True:
+                prefix_evidence = payload.get("prefix_invariance")
+                if not isinstance(prefix_evidence, dict) or prefix_evidence.get("all_passed") is not True:
                     entry_errors.append("prefix_invariance_not_confirmed")
-                if payload.get("future_perturbation_invariance", {}).get("all_passed") is not True:
+                future_evidence = payload.get("future_perturbation_invariance")
+                if not isinstance(future_evidence, dict) or future_evidence.get("all_passed") is not True:
                     entry_errors.append("future_perturbation_invariance_not_confirmed")
-                if payload.get("chronological_partition_isolation", {}).get(
-                    "purge_gaps_sufficient_for_horizon"
-                ) is not True:
+                partition_evidence = payload.get("chronological_partition_isolation")
+                if (
+                    not isinstance(partition_evidence, dict)
+                    or partition_evidence.get("purge_gaps_sufficient_for_horizon") is not True
+                ):
                     entry_errors.append("temporal_split_purge_not_confirmed")
             elif audit_name == "feature_backend_parity":
                 if payload.get("comparison_performed") is not True:
