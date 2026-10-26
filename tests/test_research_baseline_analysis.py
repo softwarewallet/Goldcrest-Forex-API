@@ -137,3 +137,22 @@ def test_analyzer_marks_overlapping_zero_improvement_interval_as_inconclusive():
     assert constant["interval_evidence"] == "interval_includes_zero"
     assert constant["folds_with_positive_mean_improvement"] == 0
     assert constant["folds_with_zero_mean_improvement"] == 2
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"run_id":"first","run_id":"shadowed"}',
+        b'{"metric":NaN}',
+        b'{"metric":Infinity}',
+        b'{"metric":-Infinity}',
+    ],
+)
+def test_baseline_manifest_reader_rejects_ambiguous_json(tmp_path, raw):
+    from app.research_baseline_analysis import _read_json
+
+    path = tmp_path / "manifest.json"
+    path.write_bytes(raw)
+
+    with pytest.raises(ValueError):
+        _read_json(path)
+
