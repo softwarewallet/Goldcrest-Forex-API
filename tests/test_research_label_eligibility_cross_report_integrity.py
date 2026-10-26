@@ -197,7 +197,7 @@ def test_cross_report_integrity_rejects_duplicate_json_keys(tmp_path):
     first.write_text(
         original.replace(
             '"variant_run_id": "cap-1.0",',
-            '"variant_run_id": "cap-1.0",\\n        "variant_run_id": "shadow-run",',
+            '"variant_run_id": "cap-1.0",\n        "variant_run_id": "shadow-run",',
             1,
         ),
         encoding="utf-8",
