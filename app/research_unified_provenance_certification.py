@@ -495,7 +495,7 @@ def _write_json_outputs(report_path: Path, report: dict[str, Any],
     if seal_path is not None and seal is not None:
         payloads.append((seal_path, json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n"))
     staged: list[tuple[Path, Path]] = []
-    published: list[Path] = []
+    published: list[tuple[Path, tuple[int, int]]] = []
     try:
         for target, payload in payloads:
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -515,12 +515,17 @@ def _write_json_outputs(report_path: Path, report: dict[str, Any],
                 os.link(temporary, target)
             except FileExistsError:
                 raise ValueError(f"output_already_exists:{target}") from None
+            # Record the published inode so rollback never removes a different
+            # file if another process replaces this path before cleanup.
+            stat = target.stat()
+            published.append((target, (stat.st_dev, stat.st_ino)))
             temporary.unlink()
-            published.append(target)
     except Exception:
-        for target in published:
+        for target, published_identity in published:
             try:
-                target.unlink(missing_ok=True)
+                current = target.stat()
+                if (current.st_dev, current.st_ino) == published_identity:
+                    target.unlink()
             except OSError:
                 pass
         raise

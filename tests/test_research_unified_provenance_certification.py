@@ -564,3 +564,39 @@ def test_component_report_contract_rejects_malformed_or_inconsistent_reports(pay
     assert normalized["status"] == "FAIL"
     assert normalized["component_report_rejected"] is True
     assert normalized["errors"][0]["code"] == "COMPONENT_REPORT_CONTRACT_INVALID"
+
+
+
+def test_output_rollback_preserves_concurrent_replacement_of_published_target(monkeypatch, tmp_path):
+    import app.research_unified_provenance_certification as module
+    import pytest
+
+    report_path = tmp_path / "report.json"
+    seal_path = tmp_path / "report.seal.json"
+    competitor_payload = '{"owner":"concurrent-replacement"}\\n'
+    original_link = module.os.link
+    calls = 0
+
+    def competing_link(source, target):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return original_link(source, target)
+        from pathlib import Path
+        replacement = tmp_path / "replacement.json"
+        replacement.write_text(competitor_payload, encoding="utf-8")
+        replacement.replace(report_path)
+        Path(target).write_text('{"owner":"second-writer"}\\n', encoding="utf-8")
+        raise FileExistsError(target)
+
+    monkeypatch.setattr(module.os, "link", competing_link)
+    with pytest.raises(ValueError, match="output_already_exists"):
+        module._write_json_outputs(
+            report_path,
+            {"status": "PASS"},
+            seal_path,
+            {"seal": "fixture"},
+        )
+
+    assert report_path.read_text(encoding="utf-8") == competitor_payload
+    assert seal_path.read_text(encoding="utf-8") == '{"owner":"second-writer"}\\n'
