@@ -95,10 +95,46 @@ def certify_evaluation_integrity(
         if payload.get("registry_id") != registry_id:
             errors.append({"code": "registry_id_mismatch", "report": name})
 
+    run_matrix = plan.get("run_matrix")
+    matrix_run_ids: list[str] = []
+    matrix_valid = isinstance(run_matrix, list) and bool(run_matrix)
+    if not matrix_valid:
+        errors.append({"code": "planned_run_matrix_invalid"})
+    else:
+        seen_run_ids: set[str] = set()
+        for index, entry in enumerate(run_matrix):
+            run_id = entry.get("run_id") if isinstance(entry, dict) else None
+            if not isinstance(run_id, str) or not run_id.strip():
+                errors.append({"code": "planned_run_matrix_entry_invalid", "index": index})
+                matrix_valid = False
+                continue
+            if run_id in seen_run_ids:
+                errors.append({"code": "planned_run_matrix_duplicate_run_id", "run_id": run_id})
+                matrix_valid = False
+            seen_run_ids.add(run_id)
+            matrix_run_ids.append(run_id)
+
+    expected_run_ids = plan.get("expected_run_ids")
+    expected_ids_valid = (
+        isinstance(expected_run_ids, list)
+        and all(isinstance(run_id, str) and bool(run_id.strip()) for run_id in expected_run_ids)
+        and len(expected_run_ids) == len(set(expected_run_ids))
+    )
+    if not expected_ids_valid:
+        errors.append({"code": "expected_run_ids_invalid"})
+    elif matrix_valid and expected_run_ids != matrix_run_ids:
+        errors.append({"code": "expected_run_ids_matrix_mismatch"})
+
     planned = plan.get("expected_runs")
     if not isinstance(planned, int) or isinstance(planned, bool) or planned < 1:
-        planned = len(plan.get("run_matrix", [])) if isinstance(plan.get("run_matrix"), list) else None
+        planned = len(run_matrix) if isinstance(run_matrix, list) else None
         errors.append({"code": "planned_run_count_invalid"})
+    elif isinstance(run_matrix, list) and planned != len(run_matrix):
+        errors.append({
+            "code": "planned_run_count_matrix_mismatch",
+            "expected": planned,
+            "actual": len(run_matrix),
+        })
     if isinstance(planned, int):
         for name, payload, field in (
             ("output_integrity", output_integrity, "planned_runs_checked"),
