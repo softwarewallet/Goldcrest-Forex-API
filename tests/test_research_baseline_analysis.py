@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.research_baseline_analysis import _block_bootstrap, analyze_prediction_matrix
 
 
