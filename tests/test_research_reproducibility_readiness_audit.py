@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 
-from app.research_reproducibility_readiness_audit import audit_reproducibility_readiness
+import pytest
+
+from app.research_reproducibility_readiness_audit import audit_reproducibility_readiness, _read_object
 
 
 FALSE_FLAGS = {
@@ -122,3 +124,16 @@ def test_unsafe_upstream_flag_fails_closed():
         and item["flag"] == "execution_connected"
         for item in report["errors"]
     )
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, raw):
+    path = tmp_path / "malformed.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _read_object(path)
