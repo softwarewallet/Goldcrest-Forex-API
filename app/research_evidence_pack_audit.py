@@ -203,7 +203,7 @@ def audit_research_evidence_pack(
                 compared = payload.get("runs_compared")
                 if not isinstance(compared, int) or isinstance(compared, bool) or compared < 2:
                     item_errors.append("comparison_run_coverage_insufficient")
-            elif role == "release_readiness":
+            elif role == "release_readiness" or role.startswith("release_readiness_"):
                 release_status = payload.get("status")
                 if release_status != "PASS":
                     item_errors.append("release_readiness_not_clean_pass")
@@ -232,7 +232,7 @@ def audit_research_evidence_pack(
 
     for role in sorted(set(required_roles) - seen_roles):
         errors.append({"code": "required_report_role_missing", "role": role})
-    if "release_readiness" in seen_roles:
+    if any(role == "release_readiness" or role.startswith("release_readiness_") for role in seen_roles):
         for release_run_id in sorted(release_run_ids - seen_run_ids):
             errors.append({
                 "code": "release_readiness_run_not_in_experiment_registry",
