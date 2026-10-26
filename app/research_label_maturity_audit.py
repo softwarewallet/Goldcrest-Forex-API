@@ -125,6 +125,7 @@ def audit_label_maturity(
             has_eligibility = {"label_elapsed_hours", "label_eligible"}.issubset(fields)
             if max_label_elapsed_hours is not None and not has_eligibility:
                 raise ValueError("dataset_eligibility_columns_missing_for_configured_cap")
+            previous_dataset_timestamp: datetime | None = None
             for line, row in enumerate(reader, start=2):
                 if row.get("symbol") and row["symbol"].strip().upper() != instrument:
                     errors.append(f"dataset_symbol_mismatch_line_{line}")
@@ -134,6 +135,9 @@ def audit_label_maturity(
                 target = _utc(row.get("label_available_at"), field="label_available_at", line=line)
                 if start in seen:
                     errors.append(f"dataset_duplicate_timestamp_line_{line}")
+                if previous_dataset_timestamp is not None and start <= previous_dataset_timestamp:
+                    errors.append(f"dataset_timestamps_not_strictly_chronological_line_{line}")
+                previous_dataset_timestamp = start
                 seen.add(start)
                 if start not in raw_index:
                     errors.append(f"dataset_start_not_in_raw_timeline_line_{line}")
