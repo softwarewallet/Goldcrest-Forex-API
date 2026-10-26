@@ -78,7 +78,7 @@ def _confined(root: Path, value: Any) -> tuple[Path | None, str | None]:
 
 def _read_json(raw: bytes) -> dict[str, Any] | None:
     try:
-        value = _load_json_object(raw, source=str(path))
+        value = _load_json_object(raw, source="evaluation-manifest")
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return None
     return value if isinstance(value, dict) else None
