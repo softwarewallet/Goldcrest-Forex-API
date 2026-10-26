@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 MAX_PLANNED_RUNS = 5000
 FALSE_FLAGS = {
     "actionable": False,
@@ -189,13 +191,13 @@ def build_experiment_plan(plan: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path, help="JSON declarative experiment plan")
     parser.add_argument("--output", type=Path, help="New plan output path; existing files are never overwritten")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
-        plan = json.loads(args.input.read_text(encoding="utf-8"))
+        plan = strict_json_loads(args.input.read_text(encoding="utf-8"))
         report = build_experiment_plan(plan)
         output = args.output or args.input.with_name(args.input.stem + "_plan.json")
         if output.exists():

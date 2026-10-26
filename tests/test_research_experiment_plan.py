@@ -95,3 +95,39 @@ def test_run_limit_is_enforced():
     ]
     with pytest.raises(ValueError, match="planned_run_limit_exceeded"):
         build_experiment_plan(plan)
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"plan_id":"first","plan_id":"shadowed"}',
+        b'{"metric":NaN}',
+        b'{"metric":Infinity}',
+        b'{"metric":-Infinity}',
+    ],
+)
+def test_plan_cli_rejects_ambiguous_or_nonstandard_json(tmp_path, capsys, raw):
+    from app.research_experiment_plan import main
+
+    source = tmp_path / "input.json"
+    source.write_bytes(raw)
+    output = tmp_path / "plan.json"
+
+    result = main(["--input", str(source), "--output", str(output)])
+
+    assert result == 2
+    assert not output.exists()
+    assert '"status": "FAIL"' in capsys.readouterr().out
+
+
+def test_plan_cli_requires_json_object_root(tmp_path, capsys):
+    from app.research_experiment_plan import main
+
+    source = tmp_path / "input.json"
+    source.write_text("[1, 2, 3]", encoding="utf-8")
+    output = tmp_path / "plan.json"
+
+    result = main(["--input", str(source), "--output", str(output)])
+
+    assert result == 2
+    assert not output.exists()
+
