@@ -128,7 +128,7 @@ def audit_research_artifact_bundle(
             if payload.get("audit_name") != audit_type:
                 entry_errors.append("audit_name_mismatch")
             status = payload.get("status")
-            if status not in KNOWN_STATUSES:
+            if not isinstance(status, str) or status not in KNOWN_STATUSES:
                 entry_errors.append("status_unknown_or_missing")
             if status == "FAIL":
                 entry_errors.append("upstream_audit_failed")
@@ -138,7 +138,7 @@ def audit_research_artifact_bundle(
             elif upstream_errors:
                 entry_errors.append("upstream_report_contains_errors")
             upstream_warnings = payload.get("warnings")
-            if "warnings" in payload and (
+            if (
                 not isinstance(upstream_warnings, list)
                 or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
             ):
