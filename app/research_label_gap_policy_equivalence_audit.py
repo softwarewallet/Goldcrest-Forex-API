@@ -24,7 +24,7 @@ _EPS = 1e-9
 
 def _check_status(payload: Mapping[str, Any], label: str) -> None:
     status = payload.get("status")
-    if status not in _PASS:
+    if not isinstance(status, str) or status not in _PASS:
         raise ValueError(f"{label}_status_not_pass")
     for field in ("errors", "warnings"):
         if field not in payload:
