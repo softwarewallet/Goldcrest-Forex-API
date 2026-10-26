@@ -61,8 +61,17 @@ def gate_freshness_certification(
         for flag in FALSE_FLAGS:
             if payload.get(flag) is not False:
                 errors.append({"code": "safety_flag_not_explicitly_false", "report": label, "flag": flag})
-        if payload.get("errors"):
+        input_errors = payload.get("errors")
+        if not isinstance(input_errors, list):
+            errors.append({"code": "input_errors_schema_invalid", "report": label})
+        elif input_errors:
             errors.append({"code": "input_report_contains_errors", "report": label})
+        input_warnings = payload.get("warnings")
+        if input_warnings is not None and (
+            not isinstance(input_warnings, list)
+            or any(not isinstance(item, str) or not item.strip() for item in input_warnings)
+        ):
+            errors.append({"code": "input_warnings_schema_invalid", "report": label})
         if payload.get("status") == "PASS_WITH_WARNINGS":
             warnings.append(f"{label}_passed_with_warnings")
 
