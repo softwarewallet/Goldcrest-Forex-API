@@ -142,3 +142,29 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     from app.research_artifact_bundle_certification_audit import _load_json_object
     with pytest.raises(ValueError):
         _load_json_object(raw, source="fixture.json")
+
+def test_missing_errors_array_fails_closed(tmp_path):
+    path, payload, _ = write_report(tmp_path)
+    payload.pop("errors")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = audit_research_artifact_bundle(
+        {"artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}]},
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_errors_field_missing_or_invalid" for item in report["errors"])
+
+
+def test_malformed_warnings_array_fails_closed(tmp_path):
+    path, payload, _ = write_report(tmp_path)
+    payload["warnings"] = "not-a-list"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = audit_research_artifact_bundle(
+        {"artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}]},
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
+
