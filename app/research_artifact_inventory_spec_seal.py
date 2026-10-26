@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -15,6 +16,9 @@ def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{source}")
     return payload
+
+
+ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 FALSE_FLAGS = {
@@ -48,10 +52,12 @@ def canonical_inventory_spec_bytes(spec: dict[str, Any]) -> bytes:
         if not isinstance(entry, dict):
             raise ValueError(f"inventory_spec_artifact_entry_must_be_object:{index}")
         artifact_id = entry.get("artifact_id")
-        if not isinstance(artifact_id, str) or not artifact_id.strip():
-            raise ValueError(f"inventory_spec_artifact_id_required:{index}")
-        if artifact_id != artifact_id.strip():
-            raise ValueError(f"inventory_spec_artifact_id_must_be_canonical_unpadded:{index}")
+        if (
+            not isinstance(artifact_id, str)
+            or artifact_id != artifact_id.strip()
+            or ARTIFACT_ID_RE.fullmatch(artifact_id) is None
+        ):
+            raise ValueError(f"inventory_spec_artifact_id_must_match_canonical_identifier_pattern:{index}")
         if artifact_id in seen_ids:
             raise ValueError(f"inventory_spec_duplicate_artifact_id:{index}")
         seen_ids.add(artifact_id)
