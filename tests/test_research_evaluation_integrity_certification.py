@@ -148,3 +148,30 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+
+def test_missing_required_errors_array_fails_closed():
+    values = fixtures()
+    values[1].pop("errors", None)
+    report = run(values)
+    assert report["status"] == "FAIL"
+    assert any(e["code"] == "upstream_errors_schema_invalid" and e["report"] == "registry" for e in report["errors"])
+
+
+def test_non_list_warnings_fails_closed():
+    values = fixtures()
+    values[4]["warnings"] = "not-a-list"
+    report = run(values)
+    assert report["status"] == "FAIL"
+    assert any(e["code"] == "upstream_warnings_schema_invalid" and e["report"] == "metric_semantics" for e in report["errors"])
+
+
+def test_plan_may_omit_errors_array_but_cannot_supply_malformed_one():
+    values = fixtures()
+    report = run(values)
+    assert report["status"] == "PASS"
+    values = fixtures()
+    values[0]["errors"] = "not-a-list"
+    report = run(values)
+    assert report["status"] == "FAIL"
+    assert any(e["code"] == "upstream_errors_schema_invalid" and e["report"] == "plan" for e in report["errors"])
