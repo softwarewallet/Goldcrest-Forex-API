@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
+from app.research_atomic_output import write_text_no_clobber
 
 def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     payload = strict_json_loads(raw.decode("utf-8"))
@@ -293,7 +294,7 @@ def main() -> int:
         report = compare_experiment_manifests([_read_json(path) for path in args.reports])
     output = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
     if getattr(args, "output", None):
-        args.output.write_text(output, encoding="utf-8")
+        write_text_no_clobber(args.output, output)
     else:
         print(output, end="")
     return 0 if report["status"] == "PASS" else 1
