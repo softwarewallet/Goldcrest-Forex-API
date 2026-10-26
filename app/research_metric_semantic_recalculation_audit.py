@@ -115,7 +115,7 @@ def audit_metric_semantics(
         raise ValueError("plan_or_registry_rows_invalid")
     planned: dict[str, dict[str, Any]] = {}
     for item in matrix:
-        if not isinstance(item, dict) or not isinstance(item.get("run_id"), str) or not item["run_id"] or item["run_id"] in planned:
+        if not isinstance(item, dict) or not isinstance(item.get("run_id"), str) or not item["run_id"].strip() or item["run_id"] != item["run_id"].strip() or item["run_id"] in planned:
             raise ValueError("plan_run_identity_invalid_or_duplicate")
         planned[item["run_id"]] = item
 
@@ -127,7 +127,7 @@ def audit_metric_semantics(
     seen: set[str] = set()
     runs_checked = metrics_checked = 0
     for index, record in enumerate(records):
-        if not isinstance(record, dict) or not isinstance(record.get("run_id"), str) or not record["run_id"]:
+        if not isinstance(record, dict) or not isinstance(record.get("run_id"), str) or not record["run_id"].strip() or record["run_id"] != record["run_id"].strip():
             errors.append({"code": "registry_record_identity_invalid", "index": index})
             continue
         run_id = record["run_id"]

@@ -85,7 +85,7 @@ def audit_evaluation_output_integrity(
         raise ValueError("plan_run_matrix_invalid")
     planned: dict[str, dict[str, Any]] = {}
     for item in matrix:
-        if not isinstance(item, dict) or not isinstance(item.get("run_id"), str) or not item["run_id"]:
+        if not isinstance(item, dict) or not isinstance(item.get("run_id"), str) or not item["run_id"].strip() or item["run_id"] != item["run_id"].strip():
             raise ValueError("plan_run_identity_invalid")
         if item["run_id"] in planned:
             raise ValueError("plan_run_id_duplicate")
@@ -106,7 +106,7 @@ def audit_evaluation_output_integrity(
             errors.append({"code": "registry_run_record_invalid", "index": index})
             continue
         run_id = record.get("run_id")
-        if not isinstance(run_id, str) or not run_id:
+        if not isinstance(run_id, str) or not run_id.strip() or run_id != run_id.strip():
             errors.append({"code": "registry_run_id_invalid", "index": index})
             continue
         if run_id in seen:

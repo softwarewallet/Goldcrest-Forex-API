@@ -200,3 +200,19 @@ def test_registry_warnings_are_propagated(tmp_path):
     assert report["status"] == "PASS_WITH_WARNINGS"
     assert "registry_report_has_warnings" in report["warnings"]
 
+
+
+@pytest.mark.parametrize("run_id", [" r1", "r1 ", "   "])
+def test_noncanonical_planned_run_id_is_rejected(tmp_path, run_id):
+    plan, registry = fixture(tmp_path)
+    plan["run_matrix"][0]["run_id"] = run_id
+    with pytest.raises(ValueError, match="plan_run_identity_invalid"):
+        audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+
+
+def test_noncanonical_registry_run_id_fails_closed(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry["run_results"][0]["run_id"] = " " + registry["run_results"][0]["run_id"]
+    report = audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "registry_run_id_invalid" for error in report["errors"])
