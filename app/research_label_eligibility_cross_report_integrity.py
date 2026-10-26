@@ -99,7 +99,7 @@ def _write_report_no_clobber(output_path: str | Path, payload: dict, input_paths
     if output.exists():
         raise ValueError(f"output_already_exists:{output}")
 
-    serialized = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\\n"
+    serialized = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
     temporary: Path | None = None
     published_identity: tuple[int, int] | None = None
     try:
