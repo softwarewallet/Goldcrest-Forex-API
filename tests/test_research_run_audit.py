@@ -678,3 +678,53 @@ def test_run_audit_rejects_model_evaluation_gate_bound_to_other_matrix(tmp_path)
     result = audit_research_run_manifest(manifest_path)
     assert result["status"] == "FAIL"
     assert "model_evaluation_gate_source_matrix_hash_mismatch" in result["errors"]
+
+
+def _attach_reproducibility_receipt(manifest_path: Path) -> Path:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    receipt_path = manifest_path.parent / "run_reproducibility_audit.json"
+    receipt = {
+        "schema_version": 1,
+        "audit_name": "research_experiment_reproducibility_audit",
+        "status": "PASS",
+        "errors": [],
+        "checks": {},
+        "pipeline_manifest_path": str(manifest_path.resolve()),
+        "fingerprint_path": None,
+        "fingerprint_file_sha256": None,
+        "actionable": False,
+        "execution_connected": False,
+        "automatic_model_selection": False,
+    }
+    _write_json(receipt_path, receipt)
+    manifest["reproducibility_audit_path"] = str(receipt_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+    return receipt_path
+
+
+def test_run_audit_verifies_reproducibility_receipt_without_completion_receipt(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_reproducibility_receipt(manifest_path)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "PASS"
+    assert result["errors"] == []
+    assert "reproducibility_audit_path" in result["checked_artifacts"]
+
+
+def test_run_audit_rejects_reproducibility_receipt_bound_to_another_manifest(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_reproducibility_receipt(manifest_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["pipeline_manifest_path"] = str(tmp_path / "different_manifest.json")
+    _write_json(receipt_path, receipt)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "reproducibility_audit_pipeline_manifest_path_mismatch" in result["errors"]
