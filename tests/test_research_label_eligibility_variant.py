@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from app.research_label_eligibility_variant import (
+    _read_json,
     _choose_variant_run_id,
     _comparison_summary_lines,
     _infer_fold_geometry,
@@ -261,3 +262,19 @@ def test_comparison_summary_lines_handles_missing_optional_sections(tmp_path):
 
     assert lines[0] == "Paired comparison status: FAIL"
     assert any("Descriptive only" in line for line in lines)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)
