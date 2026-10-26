@@ -156,7 +156,7 @@ def build_experiment_registry(manifest_paths: list[str | Path]) -> dict[str, Any
 
         for field in _PROTOCOL_FIELDS:
             value = manifest.get(field)
-            if value is None:
+            if field not in manifest:
                 run_errors.append(f"protocol_field_missing:{field}")
             else:
                 protocol_values[field].add(json.dumps(value, sort_keys=True, allow_nan=False))
