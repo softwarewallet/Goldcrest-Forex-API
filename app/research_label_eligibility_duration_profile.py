@@ -12,7 +12,7 @@ import hashlib
 import json
 import math
 import sys
-from datetime datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
