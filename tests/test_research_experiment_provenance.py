@@ -129,3 +129,33 @@ def test_invalid_window_fails_closed(tmp_path):
 def test_strict_json_loader_rejects_ambiguous_inputs(raw):
     with pytest.raises(ValueError):
         _load_json_object(raw, source="experiment-manifest.json")
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_code"),
+    [
+        (lambda p: p.update({"run_id": " run-1 "}), "run_id_invalid"),
+        (lambda p: p["context"].update({"symbol": " EURUSD "}), "context_symbol_invalid"),
+        (lambda p: p.update({"config_sha256": "A" * 64}), "config_sha256_invalid"),
+        (lambda p: p.update({"code_commit_sha": "A" * 40}), "code_commit_sha_invalid"),
+        (lambda p: p.update({"fold_id": " fold-1 "}), "fold_id_invalid"),
+    ],
+)
+def test_manifest_rejects_noncanonical_identity_values(tmp_path, mutation, error_code):
+    payload = manifest()
+    mutation(payload)
+
+    report = validate_experiment_manifest(payload, base_dir=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == error_code for error in report["errors"])
+
+
+def test_comparison_rejects_whitespace_padded_run_id_in_pass_report():
+    report = compare_experiment_manifests([
+        {"status": "PASS", "run_id": " run-a ", "context": {}, "config_sha256": "a", "dataset_sha256": "b", "metrics": {"x": 1}},
+        {"status": "PASS", "run_id": "run-b", "context": {}, "config_sha256": "a", "dataset_sha256": "b", "metrics": {"x": 2}},
+    ])
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "run_id_invalid" for error in report["errors"])

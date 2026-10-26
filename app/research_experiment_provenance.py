@@ -42,7 +42,7 @@ def sha256_bytes(data: bytes) -> str:
 
 def valid_sha256(value: Any) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(
-        char in "0123456789abcdefABCDEF" for char in value
+        char in "0123456789abcdef" for char in value
     )
 
 
@@ -76,7 +76,7 @@ def validate_experiment_manifest(
     if manifest.get("schema_version") != 1:
         errors.append({"code": "schema_version_unsupported"})
     run_id = manifest.get("run_id")
-    if not isinstance(run_id, str) or not run_id.strip():
+    if not isinstance(run_id, str) or not run_id.strip() or run_id != run_id.strip():
         errors.append({"code": "run_id_invalid"})
     created_at = _timestamp(manifest.get("created_at_utc"))
     if created_at is None or created_at.utcoffset() is None:
@@ -89,20 +89,20 @@ def validate_experiment_manifest(
         errors.append({"code": "context_must_be_object"})
         context = {}
     for field in REQUIRED_CONTEXT:
-        if not isinstance(context.get(field), str) or not context[field].strip():
+        if not isinstance(context.get(field), str) or not context[field].strip() or context[field] != context[field].strip():
             errors.append({"code": f"context_{field}_invalid"})
 
     for field in ("config_sha256", "dataset_sha256"):
         if not valid_sha256(manifest.get(field)):
             errors.append({"code": f"{field}_invalid"})
     commit = manifest.get("code_commit_sha")
-    if not isinstance(commit, str) or not (len(commit) == 40 and all(c in "0123456789abcdefABCDEF" for c in commit)):
+    if not isinstance(commit, str) or not (len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)):
         errors.append({"code": "code_commit_sha_invalid"})
     seed = manifest.get("seed")
     if not isinstance(seed, int) or isinstance(seed, bool):
         errors.append({"code": "seed_invalid"})
     fold = manifest.get("fold_id")
-    if not isinstance(fold, (str, int)) or isinstance(fold, bool) or str(fold).strip() == "":
+    if not isinstance(fold, (str, int)) or isinstance(fold, bool) or str(fold).strip() == "" or (isinstance(fold, str) and fold != fold.strip()):
         errors.append({"code": "fold_id_invalid"})
 
     window = manifest.get("evaluation_window")
@@ -216,7 +216,7 @@ def compare_experiment_manifests(reports: list[dict[str, Any]]) -> dict[str, Any
             errors.append({"code": "input_report_not_validated", "index": index})
             continue
         run_id = report.get("run_id")
-        if not isinstance(run_id, str) or not run_id:
+        if not isinstance(run_id, str) or not run_id or run_id != run_id.strip():
             errors.append({"code": "run_id_invalid", "index": index})
         elif run_id in seen_ids:
             errors.append({"code": "duplicate_run_id", "run_id": run_id})
