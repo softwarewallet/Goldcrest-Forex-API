@@ -264,7 +264,7 @@ def test_duplicate_json_key_in_required_report_fails_closed(tmp_path):
     assert '"run_id":' in original
     manifest.write_text(
         original.replace(
-            '"run_id": "run-001",',
+            '"run_id": "eurusd-m15-test",',
             '"run_id": "run-001",\\n  "run_id": "shadow-run",',
             1,
         ),
