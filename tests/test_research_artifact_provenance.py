@@ -211,3 +211,16 @@ def test_capture_rejects_unsafe_or_noncanonical_artifact_paths(tmp_path, path):
     root, config, dataset, _ = setup_tree(tmp_path)
     with pytest.raises(ValueError, match="artifact_path_must_be_safe_canonical_relative_path"):
         capture(root, config, dataset, {"artifacts": [{"artifact_id": "unsafe", "path": path}]})
+
+
+
+def test_verifier_rejects_boolean_artifact_count_for_single_entry_manifest(tmp_path):
+    root, config, dataset, spec = setup_tree(tmp_path)
+    manifest = capture(root, config, dataset, spec)
+    manifest["artifacts"] = manifest["artifacts"][:1]
+    manifest["artifact_count"] = True
+
+    report = verify(manifest, root, config, dataset)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "ARTIFACT_INVENTORY_INVALID" for item in report["errors"])

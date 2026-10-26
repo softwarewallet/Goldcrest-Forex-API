@@ -79,9 +79,14 @@ def audit_artifact_inventory_completeness(
     manifest_index, manifest_normalized, manifest_errors = _index(manifest_entries, "manifest")
     spec_index, spec_normalized, spec_errors = _index(spec_entries, "inventory_spec")
     errors = [*manifest_errors, *spec_errors]
-    if manifest.get("artifact_count") != len(manifest_normalized):
+    declared_artifact_count = manifest.get("artifact_count")
+    if (
+        not isinstance(declared_artifact_count, int)
+        or isinstance(declared_artifact_count, bool)
+        or declared_artifact_count != len(manifest_normalized)
+    ):
         errors.append({"code": "MANIFEST_ARTIFACT_COUNT_MISMATCH",
-                       "declared": manifest.get("artifact_count"), "actual": len(manifest_normalized)})
+                       "declared": declared_artifact_count, "actual": len(manifest_normalized)})
     missing = [
         {"artifact_id": artifact_id, "path": path}
         for artifact_id, path in sorted(spec_index.items())
