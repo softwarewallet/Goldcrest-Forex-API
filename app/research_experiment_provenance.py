@@ -18,6 +18,7 @@ from typing import Any
 from app.research_atomic_output import write_text_no_clobber
 
 from app.research_strict_json import strict_json_loads
+from app.research_atomic_output import write_text_no_clobber
 
 def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     payload = strict_json_loads(raw.decode("utf-8"))

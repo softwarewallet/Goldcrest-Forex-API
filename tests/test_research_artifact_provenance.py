@@ -171,3 +171,27 @@ def test_manifest_can_be_serialized_as_stable_json(tmp_path):
 def test_strict_json_loader_rejects_ambiguous_inputs(raw):
     with pytest.raises(ValueError):
         _load_json_object(raw, source="artifact-manifest.json")
+
+
+
+def test_cli_output_does_not_overwrite_existing_target(monkeypatch, tmp_path):
+    import sys
+    import app.research_artifact_provenance as module
+
+    root, config, dataset, spec = setup_tree(tmp_path)
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    output = tmp_path / "manifest.json"
+    original = '{"owner":"existing"}\n'
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "research_artifact_provenance", "capture",
+        "--specification", str(spec_path),
+        "--source-revision", REV,
+        "--config-path", str(config),
+        "--dataset-path", str(dataset),
+        "--root", str(root),
+        "--output", str(output),
+    ])
+    assert module.main() == 2
+    assert output.read_text(encoding="utf-8") == original
