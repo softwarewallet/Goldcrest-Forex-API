@@ -161,7 +161,7 @@ def audit_research_readiness(
                     payload = decoded
             except OSError:
                 entry_errors.append("artifact_unreadable")
-            except (UnicodeDecodeError, json.JSONDecodeError):
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
                 entry_errors.append("artifact_json_invalid")
 
         status = None
