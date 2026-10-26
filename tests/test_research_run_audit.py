@@ -352,3 +352,45 @@ def test_run_audit_detects_tampering_of_each_completion_source_report(tmp_path):
 
         assert result["status"] == "FAIL"
         assert f"pipeline_completion_audit_{label}_source_hash_mismatch" in result["errors"]
+
+
+
+def test_run_audit_verifies_point_in_time_invariance_receipt_and_source_binding(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    receipt_path = tmp_path / "run-001_point_in_time_feature_invariance.json"
+    receipt = {
+        "schema_version": 1,
+        "audit_name": "research_point_in_time_feature_invariance_audit",
+        "scope": "OFFLINE_OHLC_PREFIX_INVARIANCE",
+        "status": "PASS",
+        "source_sha256": manifest["raw_ohlc_sha256"],
+        "rows": 48,
+        "feature_count": 15,
+        "cutoff_count": 4,
+        "feature_values_compared": 500,
+        "errors": [],
+        "actionable": False,
+        "execution_connected": False,
+        "model_training_performed": False,
+        "automatic_model_selection": False,
+    }
+    _write_json(receipt_path, receipt)
+    manifest.update({
+        "point_in_time_feature_invariance_audit_path": str(receipt_path),
+        "point_in_time_feature_invariance_audit_sha256": _sha(receipt_path),
+        "point_in_time_feature_invariance_audit_status": "PASS",
+    })
+    manifest.pop("pipeline_manifest_sha256", None)
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    valid = audit_research_run_manifest(manifest_path)
+    assert valid["status"] == "PASS"
+    assert "point_in_time_feature_invariance_audit_path" in valid["checked_artifacts"]
+
+    receipt_path.write_text(receipt_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    tampered = audit_research_run_manifest(manifest_path)
+    assert tampered["status"] == "FAIL"
+    assert "point_in_time_feature_invariance_audit_path_sha256_mismatch" in tampered["errors"]
