@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 PASS_STATUSES = {"PASS", "PASS_WITH_WARNINGS"}
 FALSE_FLAGS = {
     "actionable": False,
@@ -166,7 +168,7 @@ def reconcile_planned_observed_runs(
 
 
 def _read_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{path}")
     return payload
