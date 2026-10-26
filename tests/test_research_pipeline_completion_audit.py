@@ -76,6 +76,8 @@ def test_complete_pipeline_reports_pass_integrity_gate(tmp_path):
     assert report["validation_report_sha256"] == hashlib.sha256(validation.read_bytes()).hexdigest()
     assert report["reproducibility_audit_sha256"] == hashlib.sha256(reproducibility.read_bytes()).hexdigest()
     assert report["model_evaluation_gate_sha256"] == hashlib.sha256(evaluation.read_bytes()).hexdigest()
+    assert report["checks"]["validation_report_file_hash"] == "PASS"
+    assert report["checks"]["reproducibility_audit_file_hash"] == "PASS"
 
 
 def test_reproducibility_failure_blocks_completion(tmp_path):
@@ -242,3 +244,16 @@ def test_report_hash_is_for_the_exact_bytes_parsed(tmp_path):
 
     assert payload == {"status": "PASS", "run_id": "snapshot-test"}
     assert digest == hashlib.sha256(raw).hexdigest()
+
+
+
+def test_unparseable_required_report_does_not_claim_hash_check_pass(tmp_path):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    validation.write_text("{malformed json", encoding="utf-8")
+
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+
+    assert report["status"] == "FAIL"
+    assert report["checks"]["validation_report_readable"] == "FAIL"
+    assert report["checks"]["validation_report_file_hash"] == "FAIL"
+    assert any(item["code"] == "required_report_hash_unavailable" for item in report["errors"])
