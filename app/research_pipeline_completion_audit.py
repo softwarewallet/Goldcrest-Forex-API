@@ -5,8 +5,12 @@ select a winner, connect to a broker, or authorize deployment.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import os
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -208,3 +212,84 @@ def _report(manifest, errors, warnings, checks, validation, reproducibility, eva
             "The receipt is written after the pipeline manifest to avoid a circular hash dependency and is not itself included in that manifest.",
         ],
     }
+
+
+
+def _write_report_no_clobber(output_path: Path, report: dict[str, Any]) -> None:
+    """Publish one JSON receipt atomically without replacing an existing file."""
+    destination = output_path.expanduser().resolve()
+    if destination.exists():
+        raise ValueError(f"output_already_exists:{destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            json.dump(report, stream, indent=2, sort_keys=True, allow_nan=False)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        # A hard link fails if another process created the destination after preflight.
+        os.link(temporary, destination)
+        temporary.unlink()
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Re-audit completion integrity for an existing offline research run."
+    )
+    parser.add_argument("--manifest", required=True, type=Path)
+    parser.add_argument("--validation-report", required=True, type=Path)
+    parser.add_argument("--reproducibility-audit", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args(argv)
+
+    output = args.output.expanduser().resolve()
+    inputs = {
+        args.manifest.expanduser().resolve(),
+        args.validation_report.expanduser().resolve(),
+        args.reproducibility_audit.expanduser().resolve(),
+    }
+    try:
+        if output in inputs:
+            raise ValueError("output_must_not_alias_input")
+        if output.exists():
+            raise ValueError(f"output_already_exists:{output}")
+        report = audit_pipeline_completion(
+            args.manifest, args.validation_report, args.reproducibility_audit
+        )
+        _write_report_no_clobber(output, report)
+        print(json.dumps({
+            "status": report["status"],
+            "readiness": report["readiness"],
+            "run_id": report["run_id"],
+            "error_count": len(report["errors"]),
+            "warning_count": len(report["warnings"]),
+            "report_path": str(output),
+            "model_qualified": False,
+            "deployment_authorized": False,
+        }, indent=2))
+        return 1 if report["status"] == "FAIL" else 0
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        print(json.dumps({
+            "status": "FAIL",
+            "error": f"{type(exc).__name__}:{exc}",
+            "model_qualified": False,
+            "deployment_authorized": False,
+        }, indent=2), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
