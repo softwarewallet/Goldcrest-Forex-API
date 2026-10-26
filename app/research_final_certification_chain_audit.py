@@ -36,7 +36,9 @@ def _is_sha256_hex(value: object) -> bool:
 
 
 def _valid_nonempty_string(value: object) -> bool:
-    return isinstance(value, str) and bool(value.strip())
+    # Identity fields are canonical only when non-empty and free of outer whitespace.
+    # Silently accepting padded IDs can make visibly different artifacts appear linked.
+    return isinstance(value, str) and bool(value.strip()) and value == value.strip()
 
 
 def audit_final_certification_chain(
