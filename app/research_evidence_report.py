@@ -411,7 +411,8 @@ def _artifact_record(
         if flag in report and report.get(flag) is not False:
             errors.append(f"{section_name}_{flag}_must_be_false")
     status = report.get("status")
-    if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
+    status_valid = isinstance(status, str) and status in _ALLOWED_STATUSES
+    if not status_valid:
         errors.append(f"{section_name}_status_invalid")
     elif status == "FAIL":
         errors.append(f"{section_name}_reported_fail")
@@ -490,11 +491,11 @@ def _artifact_record(
             }
 
     record = {
-        "status": status if status in _ALLOWED_STATUSES else "FAIL",
+        "status": status if status_valid else "FAIL",
         "path": str(path.resolve()),
         "sha256": digest,
         "scope": report.get("scope"),
-        "reported_status": status if status in _ALLOWED_STATUSES else None,
+        "reported_status": status if status_valid else None,
         "identity_metadata": {
             "status": "COMPLETE" if not identity_fields_missing else "PARTIAL",
             "fields_present": identity_fields_present,
