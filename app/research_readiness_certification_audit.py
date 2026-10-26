@@ -86,7 +86,7 @@ def audit_research_readiness(
         raise ValueError("artifacts_must_be_nonempty_list")
     required = manifest.get("required_audits", list(REQUIRED_AUDITS))
     if not isinstance(required, list) or not required or any(
-        not isinstance(name, str) or not name for name in required
+        not isinstance(name, str) or not name.strip() or name != name.strip() for name in required
     ):
         raise ValueError("required_audits_invalid")
     if len(set(required)) != len(required):
@@ -108,7 +108,7 @@ def audit_research_readiness(
         audit_name = entry.get("audit_name")
         relative_path = entry.get("path")
         entry_errors: list[str] = []
-        if not isinstance(audit_name, str) or not audit_name:
+        if not isinstance(audit_name, str) or not audit_name.strip() or audit_name != audit_name.strip():
             audit_name = f"unknown_{index}"
             entry_errors.append("audit_name_invalid")
         if not isinstance(relative_path, str) or not relative_path:

@@ -276,3 +276,61 @@ def test_noncanonical_manifest_paths_fail_closed(tmp_path, noncanonical_path):
         item["code"] == "artifact_path_must_be_canonical_relative_posix"
         for item in report["errors"]
     )
+
+
+@pytest.mark.parametrize(
+    "required_audits",
+    [
+        [" feature_temporal_integrity"],
+        ["feature_temporal_integrity "],
+        ["   "],
+    ],
+)
+def test_bundle_rejects_noncanonical_required_audit_names(tmp_path, required_audits):
+    path, _, _ = write_report(tmp_path)
+    manifest = {
+        "artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}],
+        "required_audits": required_audits,
+    }
+
+    with pytest.raises(ValueError, match="required_audits_invalid"):
+        audit_research_artifact_bundle(
+            manifest,
+            manifest_sha256=sha(b"manifest"),
+            base_dir=tmp_path,
+        )
+
+
+def test_bundle_rejects_duplicate_required_audit_names(tmp_path):
+    path, _, _ = write_report(tmp_path)
+    manifest = {
+        "artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}],
+        "required_audits": ["feature_temporal_integrity", "feature_temporal_integrity"],
+    }
+
+    with pytest.raises(ValueError, match="required_audits_must_be_unique"):
+        audit_research_artifact_bundle(
+            manifest,
+            manifest_sha256=sha(b"manifest"),
+            base_dir=tmp_path,
+        )
+
+
+def test_bundle_rejects_noncanonical_artifact_audit_name(tmp_path):
+    path, _, _ = write_report(tmp_path)
+    manifest = {
+        "artifacts": [{"audit_name": " feature_temporal_integrity", "path": path.name}],
+        "required_audits": ["feature_temporal_integrity"],
+    }
+
+    report = audit_research_artifact_bundle(
+        manifest,
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "audit_name_invalid"
+        for error in report["errors"]
+    )

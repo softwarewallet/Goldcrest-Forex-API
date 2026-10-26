@@ -375,3 +375,31 @@ def test_noncanonical_manifest_paths_fail_closed(tmp_path, noncanonical_path):
         error["code"] == "artifact_path_must_be_canonical_relative_posix"
         for error in report["errors"]
     )
+
+
+@pytest.mark.parametrize(
+    "required_audits",
+    [
+        [" feature_temporal_integrity"],
+        ["feature_temporal_integrity "],
+        ["   "],
+    ],
+)
+def test_readiness_rejects_noncanonical_required_audit_names(tmp_path, required_audits):
+    reports = standard_reports(tmp_path)
+    manifest = manifest_for(reports)
+    manifest["required_audits"] = required_audits
+
+    with pytest.raises(ValueError, match="required_audits_invalid"):
+        run_audit(tmp_path, manifest)
+
+
+def test_readiness_rejects_noncanonical_artifact_audit_name(tmp_path):
+    reports = standard_reports(tmp_path)
+    manifest = manifest_for(reports)
+    manifest["artifacts"][0]["audit_name"] = " " + manifest["artifacts"][0]["audit_name"]
+
+    report = run_audit(tmp_path, manifest)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "audit_name_invalid" for error in report["errors"])
