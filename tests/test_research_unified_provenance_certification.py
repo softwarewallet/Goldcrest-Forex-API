@@ -45,7 +45,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False, gate_error=False):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False, gate_error=False, gate_contract_error=False):
     import app.research_unified_provenance_certification as module
 
     if repo_path is None:
@@ -99,6 +99,12 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
         ))
     if gate_error:
         monkeypatch.setattr(module, "gate_freshness_certification", lambda *a, **k: (_ for _ in ()).throw(ValueError("injected_component_failure")))
+    elif gate_contract_error:
+        monkeypatch.setattr(module, "gate_freshness_certification", lambda fresh, cert: {
+            "status": "PASS",
+            "errors": [{"code": "contradictory_failure"}],
+            "warnings": [],
+        })
     else:
         monkeypatch.setattr(module, "gate_freshness_certification", lambda fresh, cert: {
             "status": gate_status,
@@ -526,3 +532,35 @@ def test_output_publication_does_not_clobber_target_created_after_staging(monkey
 
     assert report_path.read_text(encoding="utf-8") == competitor_payload
     assert not list(tmp_path.glob("*.tmp"))
+
+
+
+def test_component_report_claiming_pass_with_errors_blocks_certification(monkeypatch, tmp_path):
+    report = call(monkeypatch, tmp_path, gate_contract_error=True)
+    assert report["status"] == "FAIL"
+    assert report["freshness_certification_gate"]["status"] == "FAIL"
+    assert any(
+        item["code"] == "CERTIFICATION_COMPONENT_REPORT_INVALID"
+        and item["component"] == "freshness_certification_gate"
+        for item in report["errors"]
+    )
+    assert report["deployment_authorized"] is False
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        {"status": "PASS", "errors": "not-a-list"},
+        {"status": "PASS", "errors": [{"code": "failure"}]},
+        {"status": "PASS", "errors": [], "warnings": ["warning without warning status"]},
+    ],
+)
+def test_component_report_contract_rejects_malformed_or_inconsistent_reports(payload):
+    from app.research_unified_provenance_certification import _normalize_component_report
+
+    normalized = _normalize_component_report("test_component", payload)
+    assert normalized["status"] == "FAIL"
+    assert normalized["component_report_rejected"] is True
+    assert normalized["errors"][0]["code"] == "COMPONENT_REPORT_CONTRACT_INVALID"
