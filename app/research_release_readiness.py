@@ -62,6 +62,7 @@ def _valid_utc_timestamp(value: Any) -> bool:
 def audit_research_release_readiness(
     manifest_path: str | Path,
     provider_terms_evidence_path: str | Path,
+    calendar_gap_audit_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Audit a research run and determine whether its evidence is release-ready.
 
@@ -87,11 +88,46 @@ def audit_research_release_readiness(
 
     manifest_hash = _sha256(manifest_bytes)
     run_audit = audit_research_run_manifest(manifest_file)
+    calendar_audit: dict[str, Any] = {}
+    calendar_clean = False
+    if calendar_gap_audit_path is not None:
+        calendar_file = Path(calendar_gap_audit_path).expanduser().resolve()
+        try:
+            calendar_audit, calendar_bytes = _read_object(calendar_file)
+            checks["market_calendar_gap_adjudication"] = "PASS"
+            if calendar_audit.get("audit_name") != "authoritative_market_calendar_gap_adjudication":
+                errors.append("calendar_gap_audit_type_invalid")
+            if calendar_audit.get("status") != "PASS" or calendar_audit.get("adjudication_complete") is not True:
+                errors.append("calendar_gap_audit_not_complete_clean_pass")
+            if calendar_audit.get("errors") != [] or calendar_audit.get("unresolved_gap_count") != 0:
+                errors.append("calendar_gap_audit_contains_unresolved_findings")
+            calendar_metadata = calendar_audit.get("metadata") if isinstance(calendar_audit.get("metadata"), dict) else {}
+            raw_receipt_path = _resolve_path(manifest.get("raw_ohlc_audit_path"), manifest_file.parent)
+            raw_receipt = {}
+            if raw_receipt_path is not None and raw_receipt_path.is_file():
+                raw_receipt, _ = _read_object(raw_receipt_path)
+            expected_raw_hash = raw_receipt.get("raw_snapshot_sha256", raw_receipt.get("snapshot_sha256"))
+            if not isinstance(expected_raw_hash, str) or calendar_metadata.get("raw_snapshot_sha256") != expected_raw_hash:
+                errors.append("calendar_gap_audit_raw_snapshot_hash_mismatch")
+            if calendar_metadata.get("symbol") != manifest.get("symbol") or calendar_metadata.get("timeframe") != manifest.get("timeframe"):
+                errors.append("calendar_gap_audit_instrument_scope_mismatch")
+            calendar_clean = not any(item.startswith("calendar_gap_audit_") for item in errors)
+            if not calendar_clean:
+                checks["market_calendar_gap_adjudication"] = "FAIL"
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            checks["market_calendar_gap_adjudication"] = "FAIL"
+            errors.append(f"calendar_gap_audit_unreadable:{type(exc).__name__}")
+    else:
+        checks["market_calendar_gap_adjudication"] = "NOT_SUPPLIED"
+
     checks["cross_artifact_integrity"] = run_audit.get("status", "FAIL")
     if run_audit.get("status") == "FAIL":
         errors.append("cross_artifact_integrity_failed")
     elif run_audit.get("status") == "PASS_WITH_WARNINGS":
-        warnings.extend(f"integrity:{item}" for item in run_audit.get("warnings", []))
+        run_warnings = list(run_audit.get("warnings", []))
+        if calendar_clean:
+            run_warnings = [item for item in run_warnings if "raw_ohlc_audit_passed_with_warnings" not in str(item)]
+        warnings.extend(f"integrity:{item}" for item in run_warnings)
 
     manifest_required_false_flags = (
         "actionable",
@@ -183,7 +219,10 @@ def audit_research_release_readiness(
 
     # Release qualification is stricter than run integrity: warnings, including unresolved
     # raw-data coverage gaps, keep the run out of a release-ready state.
-    if run_audit.get("status") == "PASS_WITH_WARNINGS":
+    remaining_run_warnings = list(run_audit.get("warnings", []))
+    if calendar_clean:
+        remaining_run_warnings = [item for item in remaining_run_warnings if "raw_ohlc_audit_passed_with_warnings" not in str(item)]
+    if run_audit.get("status") == "PASS_WITH_WARNINGS" and remaining_run_warnings:
         errors.append("release_blocked_by_cross_artifact_warnings")
 
     required_receipts = (
@@ -196,7 +235,8 @@ def audit_research_release_readiness(
         ("model_evaluation_gate_path", "model_evaluation_gate_status"),
     )
     for path_field, status_field in required_receipts:
-        if manifest.get(status_field) != "PASS":
+        raw_gap_warning_allowed = path_field == "raw_ohlc_audit_path" and calendar_clean
+        if manifest.get(status_field) != "PASS" and not (raw_gap_warning_allowed and manifest.get(status_field) == "PASS_WITH_WARNINGS"):
             errors.append(f"required_{status_field}_not_clean_pass")
         receipt_path = _resolve_path(manifest.get(path_field), manifest_file.parent)
         if receipt_path is None or not receipt_path.is_file():
@@ -206,7 +246,10 @@ def audit_research_release_readiness(
         try:
             receipt, receipt_bytes = _read_object(receipt_path)
             checks[path_field] = "PASS"
-            if receipt.get("status") != "PASS":
+            allowed_raw_gap_warnings = (path_field == "raw_ohlc_audit_path" and calendar_clean and
+                receipt.get("status") == "PASS_WITH_WARNINGS" and
+                set(receipt.get("warnings", [])) <= {"non_weekend_long_gaps_detected_review_data_coverage"})
+            if receipt.get("status") != "PASS" and not allowed_raw_gap_warnings:
                 errors.append(f"required_receipt_status_not_clean_pass:{path_field}")
             if receipt.get("errors") != []:
                 errors.append(f"required_receipt_contains_errors:{path_field}")
@@ -358,18 +401,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--provider-terms-evidence", required=True, type=Path)
+    parser.add_argument("--calendar-gap-audit", type=Path, help="Optional evidence-bound calendar adjudication receipt; can clear only the raw audit's specific long-gap warning")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--json", action="store_true", help="Print the report to stdout as JSON.")
     args = parser.parse_args(argv)
     output = args.output.expanduser().resolve()
     inputs = {args.manifest.expanduser().resolve(), args.provider_terms_evidence.expanduser().resolve()}
+    if args.calendar_gap_audit is not None:
+        inputs.add(args.calendar_gap_audit.expanduser().resolve())
     if output in inputs:
         print("output_must_not_alias_input", file=sys.stderr)
         return 3
     if output.exists():
         print(f"output_already_exists:{output}", file=sys.stderr)
         return 3
-    report = audit_research_release_readiness(args.manifest, args.provider_terms_evidence)
+    report = audit_research_release_readiness(args.manifest, args.provider_terms_evidence, args.calendar_gap_audit)
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
         # Exclusive create avoids overwriting prior qualification evidence.
