@@ -132,7 +132,7 @@ def audit_research_validation_workflow(
             if payload.get("audit_name") != name:
                 item_errors.append("audit_name_mismatch")
             upstream_status = payload.get("status")
-            if upstream_status not in KNOWN_STATUSES:
+            if not isinstance(upstream_status, str) or upstream_status not in KNOWN_STATUSES:
                 item_errors.append("status_unknown_or_missing")
             elif upstream_status in {"FAIL", "NOT_COMPARABLE"}:
                 item_errors.append("upstream_audit_failed" if upstream_status == "FAIL"
@@ -145,10 +145,15 @@ def audit_research_validation_workflow(
             elif upstream_errors:
                 item_errors.append("upstream_report_contains_errors")
             upstream_warnings = payload.get("warnings")
-            if not isinstance(upstream_warnings, list):
+            if (
+                not isinstance(upstream_warnings, list)
+                or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
+            ):
                 item_errors.append("upstream_warnings_field_missing_or_invalid")
-            elif upstream_warnings and upstream_status == "PASS":
-                warnings.append(f"upstream_warnings_present:{name}")
+            elif upstream_status == "PASS" and upstream_warnings:
+                item_errors.append("status_warnings_mismatch")
+            elif upstream_status == "PASS_WITH_WARNINGS" and not upstream_warnings:
+                item_errors.append("status_warnings_mismatch")
             for flag in FALSE_FLAGS:
                 if payload.get(flag) is not False:
                     item_errors.append(f"safety_flag_not_explicitly_false:{flag}")
