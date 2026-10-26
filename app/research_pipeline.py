@@ -19,6 +19,7 @@ from app.ctrader_history_ingest import download_ctrader_history
 from app.historical_tabular_research import load_historical_dataset
 from app.research_dataset_builder import prepare_research_dataset
 from app.research_feature_source_provenance_audit import audit_feature_source_provenance
+from app.research_point_in_time_feature_invariance_audit import audit_point_in_time_invariance
 from app.research_experiment_fingerprint import build_experiment_fingerprint, verify_experiment_fingerprint
 from app.research_reproducibility_auditor import audit_experiment_reproducibility
 from app.research_pipeline_completion_audit import audit_pipeline_completion
@@ -102,6 +103,7 @@ def run_research_pipeline(
         f"{run_id}_{file_instrument}_{period}_research_dataset.csv",
         f"{run_id}_{file_instrument}_{period}_research_dataset.manifest.json",
         f"{run_id}_feature_source_audit.json",
+        f"{run_id}_point_in_time_feature_invariance.json",
         f"{run_id}_experiment_fingerprint.json",
         f"{run_id}_reproducibility_audit.json",
         f"{run_id}_pipeline_completion_audit.json",
@@ -202,6 +204,24 @@ def run_research_pipeline(
             + ", ".join(raw_audit["errors"])
         )
 
+    # Verify point-in-time feature invariance on the immutable raw history before
+    # dataset preparation or model training. Later OHLC bars must not alter features
+    # already computed at earlier timestamps.
+    point_in_time_audit_path = destination / f"{run_id}_point_in_time_feature_invariance.json"
+    point_in_time_audit = audit_point_in_time_invariance(
+        raw_csv, symbol=instrument, timeframe=period
+    )
+    point_in_time_audit_path.write_text(
+        json.dumps(point_in_time_audit, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+        encoding="utf-8",
+    )
+    point_in_time_audit_sha256 = _sha256(point_in_time_audit_path)
+    if point_in_time_audit["status"] != "PASS":
+        raise ValueError(
+            "point-in-time feature invariance audit failed before feature preparation: "
+            + ", ".join(item.get("code", "unknown") for item in point_in_time_audit["errors"])
+        )
+
     # Dataset artifacts are run-scoped: generating a new comparison run must never
     # overwrite the dataset referenced by an older manifest.
     dataset_csv = destination / f"{run_id}_{file_instrument}_{period}_research_dataset.csv"
@@ -272,6 +292,7 @@ def run_research_pipeline(
             "historical_tabular_research.py",
             "causal_ta_features.py",
             "research_feature_source_provenance_audit.py",
+            "research_point_in_time_feature_invariance_audit.py",
             "research_experiment_fingerprint.py",
         )
     }
@@ -366,6 +387,12 @@ def run_research_pipeline(
         "feature_source_audit_sha256": feature_source_audit_sha256,
         "feature_source_audit_status": feature_source_audit["status"],
         "feature_source_audit_errors": feature_source_audit["errors"],
+        "point_in_time_feature_invariance_audit_path": str(point_in_time_audit_path),
+        "point_in_time_feature_invariance_audit_sha256": point_in_time_audit_sha256,
+        "point_in_time_feature_invariance_audit_status": point_in_time_audit["status"],
+        "point_in_time_feature_invariance_audit_errors": point_in_time_audit["errors"],
+        "point_in_time_feature_invariance_cutoff_count": point_in_time_audit["cutoff_count"],
+        "point_in_time_feature_invariance_values_compared": point_in_time_audit["feature_values_compared"],
         "feature_schema_sha256": dataset_manifest.get("feature_schema_sha256"),
         "feature_implementation_sha256": dataset_manifest.get("feature_implementation_sha256"),
         "experiment_fingerprint_path": str(experiment_fingerprint_path),
