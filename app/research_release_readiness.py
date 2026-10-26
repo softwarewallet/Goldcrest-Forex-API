@@ -93,8 +93,17 @@ def audit_research_release_readiness(
     elif run_audit.get("status") == "PASS_WITH_WARNINGS":
         warnings.extend(f"integrity:{item}" for item in run_audit.get("warnings", []))
 
-    for flag in _FALSE_FLAGS:
+    manifest_required_false_flags = (
+        "actionable",
+        "execution_connected",
+        "automatic_winner_selection",
+        "test_metrics_used_for_selection",
+    )
+    for flag in manifest_required_false_flags:
         if manifest.get(flag) is not False:
+            errors.append(f"pipeline_{flag}_must_be_false")
+    for flag in ("automatic_model_selection", "deployment_authorized"):
+        if flag in manifest and manifest.get(flag) is not False:
             errors.append(f"pipeline_{flag}_must_be_false")
 
     run_id = manifest.get("run_id")
