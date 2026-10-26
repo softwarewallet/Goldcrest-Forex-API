@@ -137,3 +137,24 @@ def test_experiment_fingerprint_rejects_manifest_file_object_mismatch(tmp_path):
             dataset_manifest=manifest,
             implementation_paths=implementation_paths,
         )
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"actionable":false,"actionable":false}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_experiment_fingerprint_rejects_non_strict_manifest_json(tmp_path, raw):
+    dataset_hash, manifest_path, manifest, implementation_paths = _manifest_and_paths(tmp_path)
+    manifest_path.write_bytes(raw)
+
+    with pytest.raises(ValueError, match="dataset_manifest_file_unreadable"):
+        build_experiment_fingerprint(
+            configuration={"seed": 1},
+            raw_ohlc_sha256="a" * 64,
+            dataset_sha256=dataset_hash,
+            dataset_manifest_path=manifest_path,
+            dataset_manifest=manifest,
+            implementation_paths=implementation_paths,
+        )
