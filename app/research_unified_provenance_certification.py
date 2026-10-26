@@ -374,7 +374,12 @@ def run_unified_certification(
             "gate_status": gate_report["status"],
             "error_count": len(gate_report["errors"]),
         })
-    warnings = list(gate_report.get("warnings", []))
+    # Preserve warnings from every accepted upstream certification gate. In
+    # particular, a PASS_WITH_WARNINGS final chain must not be flattened into
+    # a top-level PASS merely because the freshness gate has no warnings.
+    warnings = list(certification_report.get("warnings", []))
+    warnings.extend(gate_report.get("warnings", []))
+    warnings = sorted(set(warnings))
     status = "FAIL" if errors else ("PASS_WITH_WARNINGS" if warnings else "PASS")
     return {
         "schema_version": 1,
