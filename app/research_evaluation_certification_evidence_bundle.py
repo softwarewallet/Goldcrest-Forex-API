@@ -37,7 +37,7 @@ def _sha(raw: bytes) -> str:
 
 
 def _valid_identity_string(value: object) -> bool:
-    return isinstance(value, str) and bool(value.strip())
+    return isinstance(value, str) and bool(value.strip()) and value == value.strip()
 
 
 def _valid_sha256(value: object) -> bool:
