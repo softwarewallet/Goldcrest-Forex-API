@@ -13,6 +13,32 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 PASS_STATUSES = {"PASS", "PASS_WITH_WARNINGS"}
 REQUIRED_ROLES = {"experiment_registry", "validation_workflow"}
 FALSE_FLAGS = (
@@ -113,14 +139,14 @@ def audit_research_evidence_pack(
                             item_errors.append("expected_sha256_invalid")
                         elif actual_hash != expected.lower():
                             item_errors.append("report_sha256_mismatch")
-                        decoded = json.loads(raw.decode("utf-8"))
+                        decoded = _load_json_object(raw, source=str(resolved))
                         if not isinstance(decoded, dict):
                             item_errors.append("report_root_must_be_object")
                         else:
                             payload = decoded
                     except OSError:
                         item_errors.append("report_unreadable")
-                    except (UnicodeDecodeError, json.JSONDecodeError):
+                    except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
                         item_errors.append("report_json_invalid")
 
         if payload is not None:
@@ -270,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         input_path = args.input.expanduser().resolve()
         raw = input_path.read_bytes()
-        manifest = json.loads(raw.decode("utf-8"))
+        manifest = _load_json_object(raw, source=str(args.input))
         report = audit_research_evidence_pack(
             manifest, manifest_sha256=_sha256(raw), base_dir=input_path.parent
         )
