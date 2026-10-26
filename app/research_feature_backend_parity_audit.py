@@ -18,6 +18,27 @@ from app.causal_ta_features import build_causal_ohlc_features
 from app.evaluation import ForexBar
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _loads_strict_json(raw: bytes) -> Any:
+    return json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -155,8 +176,8 @@ def _read_bars(path: Path, default_symbol: str, default_timeframe: str) -> tuple
             raise ValueError("input_csv_invalid") from exc
     else:
         try:
-            payload = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            payload = _loads_strict_json(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("input_json_invalid") from exc
         records = payload.get("bars") if isinstance(payload, dict) else payload
     if not isinstance(records, list) or not records:

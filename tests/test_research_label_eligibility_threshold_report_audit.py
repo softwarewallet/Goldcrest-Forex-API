@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from app.research_label_eligibility_threshold_report_audit import audit_threshold_report
+import pytest
+
+from app.research_label_eligibility_threshold_report_audit import audit_threshold_report, _read_json
 
 
 def _write_json(path, value):
@@ -232,3 +234,14 @@ def test_audit_uses_separate_fold_eligibility_counts_with_window_only_signature(
     assert result["cap_profiles"][0]["eligible_test_rows_across_fold_windows"] == 80
     assert result["cap_profiles"][1]["eligible_test_rows_across_fold_windows"] == 80
     assert result["adjacent_cap_comparisons"][0]["same_fold_eligible_test_counts"] is True
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, raw):
+    path = tmp_path / "malformed.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError, match="json_unreadable"):
+        _read_json(path)

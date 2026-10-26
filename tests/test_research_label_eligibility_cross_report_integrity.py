@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+
+import pytest
 from pathlib import Path
 
 from app.research_label_eligibility_cross_report_integrity import (
     audit_cross_report_integrity,
     main,
     _write_report_no_clobber,
+    _snapshot,
 )
 
 
@@ -209,3 +212,14 @@ def test_cross_report_integrity_rejects_duplicate_json_keys(tmp_path):
     assert any("duplicate_json_key:variant_run_id" in error for error in result["errors"])
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_snapshot_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, raw):
+    path = tmp_path / "malformed.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _snapshot(str(path))

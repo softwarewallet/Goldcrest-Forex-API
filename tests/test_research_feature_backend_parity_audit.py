@@ -81,3 +81,12 @@ def test_backend_parity_audit_rejects_empty_dataset():
             [],
             source_data_sha256=hashlib.sha256(b"fixture").hexdigest(),
         )
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"bars":[],"bars":[{}]}', b'{"bars":[{"close":NaN}]}',
+    b'{"bars":[{"close":Infinity}]}', b'{"bars":[{"close":-Infinity}]}',
+])
+def test_strict_json_parser_rejects_ambiguous_values(raw):
+    with pytest.raises(ValueError):
+        audit._loads_strict_json(raw)

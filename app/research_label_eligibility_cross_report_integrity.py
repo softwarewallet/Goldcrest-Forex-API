@@ -20,11 +20,16 @@ from app.research_label_eligibility_common_cohort import (
 )
 
 
+def _reject_nonstandard_json_constant(value: str) -> None:
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
 def _snapshot(path: str) -> dict:
     raw = Path(path).read_bytes()
     value = json.loads(
         raw.decode("utf-8"),
         object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
     )
     if not isinstance(value, dict):
         raise ValueError(f"{path}: report must be a JSON object")
