@@ -183,6 +183,15 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
     reports = bundle.get("reports")
     if not isinstance(reports, dict) or set(reports) != set(REPORT_SPECS):
         raise ValueError("bundle_report_inventory_invalid")
+    declared_report_count = bundle.get("report_count")
+    if not isinstance(declared_report_count, int) or isinstance(declared_report_count, bool) or declared_report_count < 1:
+        errors.append({"code": "bundle_report_count_invalid", "declared": declared_report_count})
+    elif declared_report_count != len(reports):
+        errors.append({
+            "code": "bundle_report_count_mismatch",
+            "declared": declared_report_count,
+            "actual": len(reports),
+        })
     root = evidence_root.resolve()
     verified = 0
     for role, (audit_name, allowed_statuses) in REPORT_SPECS.items():
