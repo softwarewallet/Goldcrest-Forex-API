@@ -12,6 +12,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 from app.research_validation import summarize_experiment_matrix
 
 _CONSTANT_HALF_BRIER = 0.25
@@ -27,7 +29,7 @@ _METRICS = (
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value
