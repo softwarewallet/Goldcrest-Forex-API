@@ -81,7 +81,7 @@ def test_missing_artifact_is_detected(tmp_path):
 
 def test_capture_rejects_path_escape_and_symlink(tmp_path):
     root, config, dataset, spec = setup_tree(tmp_path)
-    with pytest.raises(ValueError, match="artifact_path_outside_root"):
+    with pytest.raises(ValueError, match="artifact_path_must_be_safe_canonical_relative_path"):
         capture(root, config, dataset, {"artifacts": [{"artifact_id": "escape", "path": "../config.json"}]})
     outside = tmp_path / "outside.txt"
     outside.write_text("secret", encoding="utf-8")
