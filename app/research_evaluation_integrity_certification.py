@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,12 @@ def certify_evaluation_integrity(
     plan_id = plan.get("plan_id")
     plan_sha = plan.get("plan_sha256")
     registry_id = registry.get("registry_id")
+    if not isinstance(plan_id, str) or not plan_id.strip() or plan_id != plan_id.strip():
+        errors.append({"code": "plan_id_invalid"})
+    if not isinstance(plan_sha, str) or re.fullmatch(r"[0-9a-f]{64}", plan_sha) is None:
+        errors.append({"code": "plan_sha256_invalid"})
+    if not isinstance(registry_id, str) or not registry_id.strip() or registry_id != registry_id.strip():
+        errors.append({"code": "registry_id_invalid"})
     for name, payload in (
         ("output_integrity", output_integrity),
         ("row_window_lineage", row_window_lineage),
@@ -104,7 +111,7 @@ def certify_evaluation_integrity(
         seen_run_ids: set[str] = set()
         for index, entry in enumerate(run_matrix):
             run_id = entry.get("run_id") if isinstance(entry, dict) else None
-            if not isinstance(run_id, str) or not run_id.strip():
+            if not isinstance(run_id, str) or not run_id.strip() or run_id != run_id.strip():
                 errors.append({"code": "planned_run_matrix_entry_invalid", "index": index})
                 matrix_valid = False
                 continue
@@ -117,7 +124,7 @@ def certify_evaluation_integrity(
     expected_run_ids = plan.get("expected_run_ids")
     expected_ids_valid = (
         isinstance(expected_run_ids, list)
-        and all(isinstance(run_id, str) and bool(run_id.strip()) for run_id in expected_run_ids)
+        and all(isinstance(run_id, str) and bool(run_id.strip()) and run_id == run_id.strip() for run_id in expected_run_ids)
         and len(expected_run_ids) == len(set(expected_run_ids))
     )
     if not expected_ids_valid:

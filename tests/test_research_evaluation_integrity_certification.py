@@ -231,3 +231,42 @@ def test_plan_duplicate_run_ids_fail_even_when_reported_counts_match():
     assert report["status"] == "FAIL"
     assert any(error["code"] == "planned_run_matrix_duplicate_run_id" for error in report["errors"])
     assert any(error["code"] == "expected_run_ids_invalid" for error in report["errors"])
+
+
+@pytest.mark.parametrize(
+    ("report_index", "field", "value", "expected_code"),
+    [
+        (0, "plan_id", "", "plan_id_invalid"),
+        (0, "plan_id", " plan-1 ", "plan_id_invalid"),
+        (0, "plan_sha256", "A" * 64, "plan_sha256_invalid"),
+        (0, "plan_sha256", "not-a-digest", "plan_sha256_invalid"),
+        (1, "registry_id", "   ", "registry_id_invalid"),
+        (1, "registry_id", " registry-1 ", "registry_id_invalid"),
+    ],
+)
+def test_noncanonical_certification_identity_fails_closed(report_index, field, value, expected_code):
+    values = fixtures()
+    values[report_index][field] = value
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == expected_code for error in report["errors"])
+
+
+@pytest.mark.parametrize(
+    ("matrix", "expected_ids", "expected_code"),
+    [
+        ([{"run_id": " r1 "}, {"run_id": "r2"}], [" r1 ", "r2"], "planned_run_matrix_entry_invalid"),
+        ([{"run_id": "r1"}, {"run_id": "r2"}], ["r1", " r2 "], "expected_run_ids_invalid"),
+    ],
+)
+def test_whitespace_padded_run_ids_fail_closed(matrix, expected_ids, expected_code):
+    values = fixtures()
+    values[0]["run_matrix"] = matrix
+    values[0]["expected_run_ids"] = expected_ids
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == expected_code for error in report["errors"])
