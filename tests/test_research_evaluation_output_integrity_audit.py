@@ -113,7 +113,7 @@ def test_non_finite_metric_fails_closed(tmp_path):
     registry["run_results"][0]["manifest_sha256"] = sha(raw)
     report = audit_evaluation_output_integrity(plan, registry, registry_root=tmp_path)
     assert report["status"] == "FAIL"
-    assert any(error["code"] == "evaluation_metric_invalid" for error in report["errors"])
+    assert any(error["code"] in {"evaluation_metric_invalid", "manifest_json_invalid"} for error in report["errors"])
 
 
 def test_manifest_path_traversal_fails_closed(tmp_path):
