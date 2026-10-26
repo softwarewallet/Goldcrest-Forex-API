@@ -49,7 +49,7 @@ class ConstantCandidate:
 def plan_for(bars):
     return generate_walk_forward_folds(
         bars, initial_train_bars=80, validation_bars=25,
-        test_bars=25, step_bars=15, horizon_bars=2,
+        test_bars=25, step_bars=23, horizon_bars=2,
     )
 
 
