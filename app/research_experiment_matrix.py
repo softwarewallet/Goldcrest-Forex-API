@@ -171,7 +171,10 @@ def run_experiment_matrix(
                 "feature_count": len(selected_features),
                 "feature_schema_sha256": result.feature_schema_sha256,
                 "fold_count": result.fold_count,
-                "fold_results": [asdict(fold) for fold in result.folds],
+                "fold_results": [
+                    {**asdict(fold), "test_metrics_used_for_tuning": False}
+                    for fold in result.folds
+                ],
                 "test_metrics_used_for_tuning": False,
                 "used_common_fold_plan": True,
                 "actionable": False,
