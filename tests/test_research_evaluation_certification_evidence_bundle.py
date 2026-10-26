@@ -118,3 +118,35 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+
+def test_builder_refuses_upstream_report_with_errors(tmp_path):
+    paths = fixture(tmp_path)
+    payload = json.loads(paths["metric_semantics"].read_text())
+    payload["errors"] = [{"code": "metric_mismatch"}]
+    paths["metric_semantics"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    with pytest.raises(ValueError, match="report_contains_errors:metric_semantics"):
+        build_evidence_bundle(paths)
+
+
+def test_verifier_fails_closed_on_report_errors_even_if_bundle_was_built(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    payload = json.loads(paths["metric_semantics"].read_text())
+    payload["errors"] = [{"code": "metric_mismatch"}]
+    paths["metric_semantics"].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    from app.research_evaluation_certification_evidence_bundle import _sha, _canonical
+    entry = bundle["reports"]["metric_semantics"]
+    raw = paths["metric_semantics"].read_bytes()
+    entry["sha256"] = _sha(raw)
+    entry["size_bytes"] = len(raw)
+    entry["identity"] = {
+        "audit_name": payload["audit_name"], "status": payload["status"],
+        "plan_id": payload["plan_id"], "plan_sha256": payload["plan_sha256"],
+        "registry_id": payload["registry_id"], "deployment_authorized": payload.get("deployment_authorized"),
+    }
+    body = dict(bundle); body.pop("bundle_sha256", None)
+    bundle["bundle_sha256"] = _sha(_canonical(body))
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+    assert report["status"] == "FAIL"
+    assert any(e["code"] == "bundle_report_contains_errors" and e["role"] == "metric_semantics" for e in report["errors"])
