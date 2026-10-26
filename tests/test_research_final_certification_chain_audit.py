@@ -293,3 +293,15 @@ def test_bundle_artifact_may_omit_errors_field():
     report = audit_final_certification_chain(readiness, bundle, verification)
     assert report["status"] == "PASS"
 
+def test_bundle_explicit_null_errors_field_is_rejected():
+    readiness, bundle, verification = fixtures()
+    bundle["errors"] = None
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_errors_schema_invalid" and error["report"] == "bundle"
+        for error in report["errors"]
+    )
+

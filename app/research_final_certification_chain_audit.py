@@ -90,7 +90,9 @@ def audit_final_certification_chain(
         # current schema intentionally has no errors field.
         if name != "bundle" and not isinstance(input_errors, list):
             errors.append({"code": "input_errors_schema_invalid", "report": name})
-        elif input_errors is not None and not isinstance(input_errors, list):
+        elif name == "bundle" and "errors" in payload and not isinstance(input_errors, list):
+            # The content-addressed bundle schema may omit diagnostics entirely, but a
+            # present malformed field (including explicit null) must not be treated as absent.
             errors.append({"code": "input_errors_schema_invalid", "report": name})
         elif input_errors:
             errors.append({"code": "input_report_contains_errors", "report": name})
