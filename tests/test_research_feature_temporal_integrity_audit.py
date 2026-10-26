@@ -136,3 +136,12 @@ def test_input_reader_accepts_csv_with_default_instrument_metadata(tmp_path):
     assert bars[0].symbol == "EUR/USD"
     assert bars[0].timeframe == "M15"
     assert digest == hashlib.sha256(raw).hexdigest()
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"bars":[],"bars":[{}]}', b'{"bars":[{"close":NaN}]}',
+    b'{"bars":[{"close":Infinity}]}', b'{"bars":[{"close":-Infinity}]}',
+])
+def test_strict_json_parser_rejects_ambiguous_values(raw):
+    with pytest.raises(ValueError):
+        audit._loads_strict_json(raw)
