@@ -160,3 +160,41 @@ def test_duplicate_artifact_path_fails_closed():
             artifact("report-b", path="same.json"),
         ))
 
+
+
+@pytest.mark.parametrize("field,value,error", [
+    ("artifact_id", " padded ", "artifact_id_must_be_nonempty_and_canonical"),
+    ("path", " reports/metrics.json ", "artifact_path_must_be_canonical_relative_posix_path"),
+    ("path", "../outside.json", "artifact_path_must_be_canonical_relative_posix_path"),
+    ("path", "/tmp/outside.json", "artifact_path_must_be_canonical_relative_posix_path"),
+    ("path", "reports\\\\metrics.json", "artifact_path_must_be_canonical_relative_posix_path"),
+    ("depends_on", [" plan "], "dependencies_must_be_canonical_string_list"),
+    ("depends_on", [""], "dependencies_must_be_canonical_string_list"),
+])
+def test_rejects_noncanonical_manifest_identity_paths_and_dependencies(field, value, error):
+    if field == "artifact_id":
+        item = artifact("metrics")
+        item["artifact_id"] = value
+    else:
+        item = artifact("metrics", **{field: value})
+    with pytest.raises(ValueError, match=error):
+        audit(manifest(item))
+
+
+def test_fingerprint_rejects_symlinked_file_root(tmp_path):
+    target = tmp_path / "real.json"
+    target.write_text("{}", encoding="utf-8")
+    link = tmp_path / "linked.json"
+    link.symlink_to(target)
+    with pytest.raises(ValueError, match="symlink_not_allowed_in_fingerprint"):
+        fingerprint_path(link)
+
+
+def test_fingerprint_rejects_symlinked_directory_root(tmp_path):
+    target = tmp_path / "real-directory"
+    target.mkdir()
+    (target / "data.csv").write_text("x", encoding="utf-8")
+    link = tmp_path / "linked-directory"
+    link.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlink_not_allowed_in_fingerprint"):
+        fingerprint_path(link)
