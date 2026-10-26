@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 MAX_PLANNED_RUNS = 5000
 FALSE_FLAGS = {
     "actionable": False,
@@ -195,7 +197,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, help="New plan output path; existing files are never overwritten")
     args = parser.parse_args()
     try:
-        plan = json.loads(args.input.read_text(encoding="utf-8"))
+        plan = strict_json_loads(args.input.read_text(encoding="utf-8"))
         report = build_experiment_plan(plan)
         output = args.output or args.input.with_name(args.input.stem + "_plan.json")
         if output.exists():
