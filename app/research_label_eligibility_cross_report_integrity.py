@@ -20,6 +20,10 @@ from app.research_label_eligibility_common_cohort import (
 )
 
 
+def _reject_nonstandard_json_constant(value: str) -> None:
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
 def _snapshot(path: str) -> dict:
     raw = Path(path).read_bytes()
     value = json.loads(
