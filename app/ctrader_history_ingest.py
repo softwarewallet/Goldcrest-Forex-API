@@ -146,6 +146,7 @@ _TREND_BAR_PAGE_SIZE = 1000
 _TREND_BAR_MAX_PAGES = 10_000
 _SEND_MAX_ATTEMPTS = 3
 _SEND_RETRY_BASE_DELAY_SECONDS = 2
+_SEND_RESPONSE_TIMEOUT_SECONDS = 20
 _TRANSIENT_SEND_ERRORS = {
     "TimeoutError",
     "TCPTimedOutError",
@@ -349,16 +350,18 @@ def download_ctrader_history(
             return None
         return response
 
-    def fail(failure: Any) -> Any:
-        failure_state["error_type"] = _safe_failure(failure)
+    def fail(failure: Any, stage: str) -> None:
+        # Consume the Deferred failure after preserving a sanitized stage/type diagnostic.
+        # Returning the original Failure here leaves Twisted to log it as unhandled.
+        failure_state["error_type"] = f"{stage}:{_safe_failure(failure)}"
         stop_loop()
-        return failure
 
     def send_with_retry(request: Any, callback: Callable[[Any], Any]) -> None:
-        """Retry transient request timeouts on the same live connection with bounded backoff."""
+        """Retry transient request timeouts with a bounded response timeout and backoff."""
         state = {"attempts": 0}
+        stage = type(request).__name__
 
-        def on_send_failure(failure: Any) -> Any:
+        def on_send_failure(failure: Any) -> None:
             value = getattr(failure, "value", failure)
             error_type = type(value).__name__
             if (
@@ -369,14 +372,18 @@ def download_ctrader_history(
                 delay = _SEND_RETRY_BASE_DELAY_SECONDS * state["attempts"]
                 loop.callLater(delay, attempt)
                 return None
-            return fail(failure)
+            fail(failure, stage)
+            return None
 
         def attempt() -> None:
             if failure_state:
                 return
             state["attempts"] += 1
             try:
-                deferred = client.send(request)
+                deferred = client.send(
+                    request,
+                    responseTimeoutInSeconds=_SEND_RESPONSE_TIMEOUT_SECONDS,
+                )
             except Exception as exc:
                 on_send_failure(exc)
                 return
