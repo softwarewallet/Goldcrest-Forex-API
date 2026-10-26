@@ -295,3 +295,25 @@ def test_cross_cap_rejects_source_fold_boundary_drift(tmp_path):
     assert any("test boundaries differ" in error for error in result["errors"])
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"audit_name":"first","audit_name":"shadowed"}',
+        b'{"metric":NaN}',
+        b'{"metric":Infinity}',
+        b'{"metric":-Infinity}',
+    ],
+)
+def test_cross_cap_reader_rejects_ambiguous_json(tmp_path, raw):
+    from app.research_cross_cap_stability import _read_json
+
+    path = tmp_path / "audit.json"
+    path.write_bytes(raw)
+
+    with pytest.raises(ValueError):
+        _read_json(path)
+
