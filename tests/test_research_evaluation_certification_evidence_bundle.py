@@ -197,4 +197,4 @@ def test_verifier_rejects_explicit_null_warnings_in_upstream_report(tmp_path):
         error["code"] == "bundle_report_warnings_schema_invalid" and error["role"] == "registry"
         for error in report["errors"]
     )
-\n
+
