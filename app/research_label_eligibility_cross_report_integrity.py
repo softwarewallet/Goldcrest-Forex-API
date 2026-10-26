@@ -8,7 +8,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
@@ -88,27 +90,59 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _write_report_no_clobber(output_path: str | Path, payload: dict, input_paths: Sequence[str]) -> Path:
+    """Atomically publish a complete JSON report without overwriting inputs or destinations."""
+    output = Path(output_path).expanduser().resolve()
+    inputs = {Path(path).expanduser().resolve() for path in input_paths}
+    if output in inputs:
+        raise ValueError("output_must_not_alias_input")
+    if output.exists():
+        raise ValueError(f"output_already_exists:{output}")
+
+    serialized = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\\n"
+    temporary: Path | None = None
+    published_identity: tuple[int, int] | None = None
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=output.parent,
+            prefix=f".{output.name}.", suffix=".tmp", delete=False,
+        ) as stream:
+            stream.write(serialized)
+            stream.flush()
+            os.fsync(stream.fileno())
+            temporary = Path(stream.name)
+        # Hard-link publication fails atomically if a competing writer wins.
+        os.link(temporary, output)
+        stat = output.stat()
+        published_identity = (stat.st_dev, stat.st_ino)
+        temporary.unlink()
+        temporary = None
+        return output
+    except Exception:
+        if published_identity is not None:
+            try:
+                current = output.stat()
+                if (current.st_dev, current.st_ino) == published_identity:
+                    output.unlink()
+            except OSError:
+                pass
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     report = audit_cross_report_integrity(
         args.comparison_report,
         allow_baseline_id_variation=args.allow_baseline_id_variation_with_matching_dataset_hash,
     )
-    output = Path(args.output).expanduser().resolve()
-    inputs = {Path(path).expanduser().resolve() for path in args.comparison_report}
-    if output in inputs:
-        print(json.dumps({"status": "FAIL", "error": "output_must_not_alias_input",
-                          "actionable": False, "execution_connected": False}), file=sys.stderr)
-        return 2
-    if output.exists():
-        print(json.dumps({"status": "FAIL", "error": "output_already_exists",
-                          "actionable": False, "execution_connected": False}), file=sys.stderr)
-        return 2
     try:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        with output.open("x", encoding="utf-8") as stream:
-            json.dump(report, stream, indent=2, sort_keys=True, allow_nan=False)
-            stream.write("\n")
+        output = _write_report_no_clobber(args.output, report, args.comparison_report)
     except (OSError, TypeError, ValueError) as exc:
         print(json.dumps({"status": "FAIL", "error": f"{type(exc).__name__}:{exc}",
                           "actionable": False, "execution_connected": False}), file=sys.stderr)
