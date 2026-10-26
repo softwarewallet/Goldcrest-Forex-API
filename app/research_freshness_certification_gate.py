@@ -54,11 +54,13 @@ def gate_freshness_certification(
                 "expected": audit_name,
                 "actual": payload.get("audit_name"),
             })
-        if payload.get("status") not in allowed_statuses:
+        input_status = payload.get("status")
+        # Treat malformed JSON status values as validation failures, not TypeErrors.
+        if not isinstance(input_status, str) or input_status not in allowed_statuses:
             errors.append({
                 "code": "input_report_not_passing",
                 "report": label,
-                "status": payload.get("status"),
+                "status": input_status,
             })
         for flag in FALSE_FLAGS:
             if payload.get(flag) is not False:
@@ -69,12 +71,17 @@ def gate_freshness_certification(
         elif input_errors:
             errors.append({"code": "input_report_contains_errors", "report": label})
         input_warnings = payload.get("warnings")
-        if "warnings" in payload and (
-            not isinstance(input_warnings, list)
-            or any(not isinstance(item, str) or not item.strip() for item in input_warnings)
-        ):
+        warnings_valid = isinstance(input_warnings, list) and all(
+            isinstance(item, str) and bool(item.strip()) for item in input_warnings
+        )
+        if "warnings" in payload and not warnings_valid:
             errors.append({"code": "input_warnings_schema_invalid", "report": label})
-        if payload.get("status") == "PASS_WITH_WARNINGS":
+        elif warnings_valid and (
+            (input_status == "PASS" and input_warnings)
+            or (input_status == "PASS_WITH_WARNINGS" and not input_warnings)
+        ):
+            errors.append({"code": "input_status_warning_mismatch", "report": label})
+        if input_status == "PASS_WITH_WARNINGS":
             warnings.append(f"{label}_passed_with_warnings")
 
     if isinstance(freshness, dict):
