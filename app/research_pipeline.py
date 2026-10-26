@@ -31,6 +31,33 @@ from app.research_validation import validate_completed_run
 from app.temporal_calibration_stability import write_temporal_calibration_stability_report
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects containing repeated keys."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    """Read a local JSON object with strict RFC 8259 parsing."""
+    value = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(value, dict):
+        raise ValueError(f"{path.name} must contain a JSON object")
+    return value
+
+
 def _sha256(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -147,10 +174,10 @@ def run_research_pipeline(
         local_manifest: dict[str, Any] = {}
         if local_manifest_path.is_file():
             try:
-                loaded_manifest = json.loads(local_manifest_path.read_text(encoding="utf-8"))
+                loaded_manifest = _read_json_object(local_manifest_path)
                 if isinstance(loaded_manifest, dict):
                     local_manifest = loaded_manifest
-            except (OSError, json.JSONDecodeError):
+            except (OSError, ValueError):
                 # The mandatory raw audit below will report a malformed companion manifest.
                 pass
 
