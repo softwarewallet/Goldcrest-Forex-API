@@ -394,3 +394,101 @@ def test_run_audit_verifies_point_in_time_invariance_receipt_and_source_binding(
     tampered = audit_research_run_manifest(manifest_path)
     assert tampered["status"] == "FAIL"
     assert "point_in_time_feature_invariance_audit_path_sha256_mismatch" in tampered["errors"]
+
+
+def _attach_feature_source_receipt(manifest_path: Path) -> Path:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_path = Path(manifest["dataset_path"])
+    dataset_manifest_path = Path(manifest["dataset_manifest_path"])
+    dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    schema_hash = "a" * 64
+    implementation_hash = "b" * 64
+    receipt_path = manifest_path.parent / "run_feature_source_audit.json"
+    receipt = {
+        "schema_version": 1,
+        "audit_name": "research_feature_source_provenance_audit",
+        "status": "PASS",
+        "dataset_sha256": _sha(dataset_path),
+        "manifest_sha256_declared": dataset_manifest.get("manifest_sha256"),
+        "feature_implementation_sha256_declared": implementation_hash,
+        "feature_schema_sha256_declared": schema_hash,
+        "feature_count": 1,
+        "dataset_rows": 1,
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+        "execution_connected": False,
+        "model_training_performed": False,
+        "automatic_model_selection": False,
+    }
+    _write_json(receipt_path, receipt)
+    manifest.update({
+        "feature_source_audit_path": str(receipt_path),
+        "feature_source_audit_sha256": _sha(receipt_path),
+        "feature_source_audit_status": "PASS",
+        "feature_schema_sha256": schema_hash,
+        "feature_implementation_sha256": implementation_hash,
+        "feature_count": 1,
+    })
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+    return receipt_path
+
+
+def test_run_audit_verifies_feature_source_provenance_receipt(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_feature_source_receipt(manifest_path)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "PASS"
+    assert result["errors"] == []
+    assert "feature_source_audit_path" in result["checked_artifacts"]
+
+    receipt_path.write_bytes(receipt_path.read_bytes() + b"\\n")
+    tampered = audit_research_run_manifest(manifest_path)
+    assert tampered["status"] == "FAIL"
+    assert "feature_source_audit_path_sha256_mismatch" in tampered["errors"]
+
+
+def test_run_audit_rejects_feature_source_receipt_bound_to_another_dataset(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_feature_source_receipt(manifest_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["dataset_sha256"] = "f" * 64
+    _write_json(receipt_path, receipt)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["feature_source_audit_sha256"] = _sha(receipt_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "feature_source_audit_dataset_sha256_mismatch" in result["errors"]
+
+
+def test_run_audit_rejects_feature_source_receipt_that_claims_actionability(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_feature_source_receipt(manifest_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["execution_connected"] = True
+    _write_json(receipt_path, receipt)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["feature_source_audit_sha256"] = _sha(receipt_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert "feature_source_audit_execution_connected_must_be_false" in result["errors"]
