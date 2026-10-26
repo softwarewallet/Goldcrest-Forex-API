@@ -611,7 +611,8 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                 errors.append("pipeline_completion_audit_run_id_mismatch")
             if completion.get("pipeline_manifest_sha256") != manifest.get("pipeline_manifest_sha256"):
                 errors.append("pipeline_completion_audit_manifest_hash_mismatch")
-            if completion.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
+            completion_status = completion.get("status")
+            if not isinstance(completion_status, str) or completion_status not in {"PASS", "PASS_WITH_WARNINGS"}:
                 errors.append("pipeline_completion_audit_not_passing")
             if completion.get("errors") != []:
                 errors.append("pipeline_completion_audit_contains_errors")
@@ -629,10 +630,18 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                 ):
                     if checks.get(field) != "PASS":
                         errors.append(f"pipeline_completion_audit_{field}_not_pass")
-            if completion.get("status") == "PASS_WITH_WARNINGS":
-                warnings.append("pipeline_completion_audit_passed_with_warnings")
-            if completion.get("warnings") and not isinstance(completion.get("warnings"), list):
+            completion_warnings = completion.get("warnings")
+            if (
+                not isinstance(completion_warnings, list)
+                or any(not isinstance(item, str) or not item.strip() for item in completion_warnings)
+            ):
                 errors.append("pipeline_completion_audit_warnings_invalid")
+            elif completion_status == "PASS" and completion_warnings:
+                errors.append("pipeline_completion_audit_status_warnings_mismatch")
+            elif completion_status == "PASS_WITH_WARNINGS" and not completion_warnings:
+                errors.append("pipeline_completion_audit_status_warnings_mismatch")
+            if completion_status == "PASS_WITH_WARNINGS":
+                warnings.append("pipeline_completion_audit_passed_with_warnings")
 
             # Schema v2 records the exact source-report bytes observed when the completion
             # receipt was produced. Re-check those hashes so later edits to validation or
