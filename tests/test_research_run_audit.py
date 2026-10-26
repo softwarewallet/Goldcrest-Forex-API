@@ -36,6 +36,8 @@ def _build_valid_run(tmp_path: Path) -> Path:
     _write_json(report, {
         "schema_version": 1,
         "run_id": "run-001",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
         "dataset_sha256": _sha(dataset),
         "actionable": False,
         "automatic_winner_selection": False,
@@ -622,6 +624,8 @@ def _attach_model_evaluation_gate(manifest_path: Path) -> Path:
         "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
         "status": "PASS",
         "run_id": manifest["run_id"],
+        "symbol": manifest["symbol"],
+        "timeframe": manifest["timeframe"],
         "source_matrix_sha256": _sha(matrix_path),
         "experiment_count": 1,
         "folds_checked": 1,
@@ -802,3 +806,22 @@ def test_run_audit_rejects_invalid_dataset_manifest_self_hash(tmp_path):
     result = audit_research_run_manifest(manifest_path)
     assert result["status"] == "FAIL"
     assert "dataset_manifest_self_hash_mismatch" in result["errors"]
+
+
+def test_run_audit_rejects_model_evaluation_gate_with_wrong_symbol(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_model_evaluation_gate(manifest_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["symbol"] = "GBPUSD"
+    _write_json(receipt_path, receipt)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["model_evaluation_gate_sha256"] = _sha(receipt_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "FAIL"
+    assert "model_evaluation_gate_symbol_mismatch" in result["errors"]
