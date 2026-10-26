@@ -63,7 +63,7 @@ def _validate_report_diagnostics(payload: Mapping[str, Any], label: str) -> list
             not isinstance(item, str) or not item.strip() for item in value
         ):
             raise ValueError(f"{label}_{field}_schema_invalid")
-        if field == "errors" and value and payload.get("status") in _PASS:
+        if field == "errors" and value and isinstance(payload.get("status"), str) and payload.get("status") in _PASS:
             raise ValueError(f"{label}_reports_errors_despite_pass_status")
         if field == "warnings":
             warnings.extend(value)
@@ -153,7 +153,7 @@ def _dataset_eligibility_for_cap(
     child_path_resolved = Path(child_path).expanduser().resolve()
     child = _read_json(child_path_resolved)
     _validate_report_diagnostics(child, f"{label}_seed_sweep")
-    if child.get("status") not in _PASS:
+    if not isinstance(child.get("status"), str) or child.get("status") not in _PASS:
         raise ValueError(f"{label}_seed_sweep_status_not_pass")
     if not _same_cap(child.get("max_label_elapsed_hours"), cap_hours):
         raise ValueError(f"{label}_seed_sweep_cap_mismatch")
@@ -175,7 +175,7 @@ def _dataset_eligibility_for_cap(
             raise ValueError(f"{label}_seed_identity_invalid")
         seen_seeds.add(seed)
         _validate_report_diagnostics(seed_result, f"{label}_seed_{seed}")
-        if seed_result.get("status") not in _PASS:
+        if not isinstance(seed_result.get("status"), str) or seed_result.get("status") not in _PASS:
             raise ValueError(f"{label}_seed_{seed}_status_not_pass")
         manifest_path = seed_result.get("capped_replay_manifest_path")
         if not isinstance(manifest_path, str) or not manifest_path:
@@ -311,7 +311,7 @@ def audit_threshold_report(
         warnings.extend(_validate_report_diagnostics(source, "source_threshold_sweep"))
     except ValueError as exc:
         errors.append(str(exc))
-    if source.get("status") not in _PASS:
+    if not isinstance(source.get("status"), str) or source.get("status") not in _PASS:
         errors.append("source_threshold_sweep_status_not_pass")
     for flag in ("actionable", "execution_connected", "automatic_model_selection", "inferential"):
         if source.get(flag) is not False:
@@ -341,7 +341,7 @@ def audit_threshold_report(
             if cap in seen_caps:
                 raise ValueError(f"duplicate_cap_record:{cap:g}")
             seen_caps.add(cap)
-            if cap_record.get("status") not in _PASS:
+            if not isinstance(cap_record.get("status"), str) or cap_record.get("status") not in _PASS:
                 failed_caps.append(cap)
                 errors.append(f"cap_{format(cap, 'g').replace('.', 'p')}h_source_record_not_pass")
                 continue

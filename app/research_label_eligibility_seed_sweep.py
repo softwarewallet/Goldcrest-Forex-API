@@ -177,7 +177,7 @@ def _fold_eligibility_counts(comparison: Mapping[str, Any]) -> list[dict[str, An
 
 
 def _extract_seed_result(seed: int, replay: Mapping[str, Any], comparison: Mapping[str, Any]) -> dict[str, Any]:
-    if comparison.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
+    if not isinstance(comparison.get("status"), str) or comparison.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
         raise ValueError(f"seed_{seed}_comparison_status_not_pass")
     if comparison.get("actionable") is not False or comparison.get("execution_connected") is not False:
         raise ValueError(f"seed_{seed}_comparison_safety_flags_invalid")
@@ -377,7 +377,7 @@ def run_label_eligibility_seed_sweep(
                 random_seed=seed,
                 bootstrap_resamples=bootstrap_resamples,
             )
-            if replay.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
+            if not isinstance(replay.get("status"), str) or replay.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
                 raise ValueError(
                     "paired_replay_failed:"
                     + ",".join(str(item) for item in replay.get("errors", []))
