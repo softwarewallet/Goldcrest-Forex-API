@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.research_label_horizon_audit import analyze_label_horizon
+import pytest
+
+from app.research_label_horizon_audit import analyze_label_horizon, _load_json_object
 
 
 def _fixture():
@@ -171,3 +173,12 @@ def test_label_horizon_audit_reports_repeated_prediction_timestamps():
     assert "repeated_prediction_timestamps_within_experiment_review_fold_overlap" in result["warnings"]
     assert result["experiments"][0]["repeated_timestamp_occurrence_count"] == 1
     assert result["repeated_prediction_timestamp_occurrence_count"] == 1
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="label-horizon.json")
