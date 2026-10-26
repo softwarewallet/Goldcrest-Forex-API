@@ -19,9 +19,11 @@ SAFE_FALSE_FLAGS = (
     "actionable",
     "automatic_model_selection",
     "inferential",
+    "statistical_significance_claimed",
     "execution_connected",
     "model_training_performed",
     "automatic_repair_performed",
+    "deployment_authorized",
 )
 KNOWN_STATUSES = {"PASS", "PASS_WITH_WARNINGS", "NOT_COMPARABLE", "FAIL"}
 
@@ -170,7 +172,7 @@ def audit_research_artifact_bundle(
             ):
                 entry_errors.append("status_warnings_mismatch")
             for flag in SAFE_FALSE_FLAGS:
-                if flag in payload and payload[flag] is not False:
+                if payload.get(flag) is not False:
                     entry_errors.append(f"safety_flag_not_false:{flag}")
             expected_report_digest = entry.get("expected_report_sha256")
             if expected_report_digest is not None:
