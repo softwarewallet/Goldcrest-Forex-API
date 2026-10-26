@@ -101,3 +101,20 @@ def test_unresolved_gap_does_not_silently_pass_without_closure_interval(tmp_path
     assert report["status"] == "PASS_WITH_WARNINGS"
     assert report["unresolved_gap_count"] == 1
     assert "unresolved_timestamp_gaps_remain" in report["warnings"]
+
+
+def test_missing_calendar_evidence_still_reports_detected_gaps(tmp_path):
+    csv_path, manifest, calendar, source, _, _ = fixture(tmp_path)
+    calendar.unlink()
+
+    report = adjudicate_market_calendar_gaps(csv_path, manifest, calendar, source)
+
+    assert report["status"] == "FAIL"
+    assert report["adjudication_complete"] is False
+    assert "calendar_evidence_unreadable:FileNotFoundError" in report["errors"]
+    assert report["gap_count_over_threshold"] == 1
+    assert report["adjudicated_gap_count"] == 0
+    assert report["unresolved_gap_count"] == 1
+    assert report["gaps"][0]["adjudication"] == "UNRESOLVED"
+    assert report["metadata"]["raw_snapshot_sha256"] == hashlib.sha256(csv_path.read_bytes()).hexdigest()
+    assert report["metadata"]["calendar_evidence_sha256"] is None

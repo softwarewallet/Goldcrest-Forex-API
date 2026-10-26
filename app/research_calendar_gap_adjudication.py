@@ -77,11 +77,8 @@ def adjudicate_market_calendar_gaps(
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         return _report("FAIL", [f"snapshot_manifest_unreadable:{type(exc).__name__}"], [], {}, [], None)
 
-    try:
-        evidence, evidence_bytes = _read_object(calendar_path)
-    except (OSError, UnicodeDecodeError, ValueError) as exc:
-        return _report("FAIL", [f"calendar_evidence_unreadable:{type(exc).__name__}"], [], {}, [], None)
-
+    # Read the raw snapshot before attempting evidence parsing. Missing or malformed
+    # calendar evidence must not hide real timestamp gaps behind a misleading zero count.
     try:
         csv_bytes = csv_path.read_bytes()
         checks["raw_snapshot_sha256"] = "PASS" if _sha256(csv_bytes) == manifest.get("snapshot_sha256") else "FAIL"
@@ -89,6 +86,13 @@ def adjudicate_market_calendar_gaps(
             errors.append("raw_snapshot_sha256_mismatch")
     except OSError:
         return _report("FAIL", ["raw_snapshot_unreadable"], [], {}, [], None)
+
+    evidence_bytes = b""
+    try:
+        evidence, evidence_bytes = _read_object(calendar_path)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        errors.append(f"calendar_evidence_unreadable:{type(exc).__name__}")
+        evidence = {}
 
     if evidence.get("schema_version") != 1 or evidence.get("evidence_type") != "market_calendar_gap_adjudication":
         errors.append("calendar_evidence_schema_or_type_invalid")
@@ -241,7 +245,7 @@ def adjudicate_market_calendar_gaps(
         "provider": evidence.get("provider"), "symbol": symbol, "timeframe": timeframe,
         "authority": evidence.get("authority"), "source_reference": evidence.get("source_reference"),
         "source_evidence_sha256": evidence.get("source_evidence_sha256"),
-        "calendar_evidence_sha256": _sha256(evidence_bytes),
+        "calendar_evidence_sha256": _sha256(evidence_bytes) if evidence_bytes else None,
         "coverage_start_utc": evidence.get("coverage_start_utc"),
         "coverage_end_utc": evidence.get("coverage_end_utc"),
         "threshold_hours_exclusive": threshold_hours,
