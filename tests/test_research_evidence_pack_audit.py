@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app import research_evidence_pack_audit
-from app.research_evidence_pack_audit import audit_research_evidence_pack
+from app.research_evidence_pack_audit import audit_research_evidence_pack, _load_json_object
 
 
 FALSE_FLAGS = {
@@ -257,3 +257,12 @@ def test_evidence_pack_cli_does_not_clobber_concurrent_output(tmp_path, monkeypa
     assert output.read_text(encoding="utf-8") == "created concurrently"
     assert "FileExistsError" in capsys.readouterr().out
     assert list(tmp_path.glob(".evidence-audit.json.*.tmp")) == []
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="evidence-pack.json")

@@ -13,6 +13,32 @@ from pathlib import Path
 from typing import Any
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 def _nonnegative_int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
@@ -166,7 +192,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         raw = args.input.read_bytes()
-        manifest = json.loads(raw.decode("utf-8"))
+        manifest = _load_json_object(raw, source=str(args.input))
         digest = hashlib.sha256(raw).hexdigest()
         report = audit_pipeline_leakage_boundaries(manifest, source_sha256=digest)
         output = args.output or args.input.with_name(args.input.stem + "_pipeline_leakage_audit.json")

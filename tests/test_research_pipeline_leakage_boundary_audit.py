@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from app.research_pipeline_leakage_boundary_audit import audit_pipeline_leakage_boundaries
+from app.research_pipeline_leakage_boundary_audit import audit_pipeline_leakage_boundaries, _load_json_object
 
 
 def digest() -> str:
@@ -100,3 +100,12 @@ def test_missing_optional_evidence_is_reported_as_warning_not_assumed_safe():
     assert report["status"] == "PASS_WITH_WARNINGS"
     assert "no_preprocessing_fit_records_supplied" in report["warnings"]
     assert any("no_label_records_supplied" in warning for warning in report["warnings"])
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="pipeline-manifest.json")

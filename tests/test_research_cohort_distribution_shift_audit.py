@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from app.research_cohort_distribution_shift_audit import audit_cohort_distribution_shift
+from app.research_cohort_distribution_shift_audit import audit_cohort_distribution_shift, _load_json_object
 
 
 def sha(value: bytes) -> str:
@@ -144,3 +144,12 @@ def test_bad_thresholds_and_manifest_hash_rejected():
         audit(manifest(), psi_warning_threshold=-0.1)
     with pytest.raises(ValueError, match="manifest_sha256_invalid"):
         audit_cohort_distribution_shift(manifest(), manifest_sha256="bad")
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="cohort-manifest.json")

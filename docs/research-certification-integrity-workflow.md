@@ -107,3 +107,8 @@ The freshness certification gate, reproducibility readiness audit, consolidated 
 ## Strict JSON in remaining provenance and data audits
 
 The report-artifact audit, artifact-provenance reader, raw-data audit, experiment-manifest provenance validator, experiment-registry audit, and feature-source provenance audit now reject duplicate JSON keys and non-standard numeric constants. The behavior is exercised by focused malformed-input regression tests. These readers remain offline and read-only; the changes do not enable data acquisition, model training/selection, or broker/trading execution.
+
+
+## Strict JSON in temporal, metric, evidence, and label audits
+
+The reproducibility auditor, pipeline leakage-boundary audit, feature temporal-integrity audit, metric-semantic recalculation audit, evidence-pack audit, cohort-distribution-shift audit, and label-horizon audit now reject duplicate JSON object keys and non-standard numeric constants in their JSON inputs. The feature temporal-integrity reader retains support for both object and array JSON roots while applying strict token parsing recursively. Regression tests cover duplicate keys and `NaN`/`Infinity` variants. All changes remain within offline research validation.
