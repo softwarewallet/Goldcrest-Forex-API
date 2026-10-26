@@ -74,8 +74,13 @@ def audit_research_artifact_bundle(
     if not isinstance(entries, list) or not entries:
         raise ValueError("artifacts_must_be_nonempty_list")
     required = manifest.get("required_audits", [])
-    if not isinstance(required, list) or any(not isinstance(item, str) or not item for item in required):
+    if not isinstance(required, list) or any(
+        not isinstance(item, str) or not item.strip() or item != item.strip()
+        for item in required
+    ):
         raise ValueError("required_audits_invalid")
+    if len(set(required)) != len(required):
+        raise ValueError("required_audits_must_be_unique")
     expected_dataset = manifest.get("expected_dataset_sha256")
     if expected_dataset is not None and not _valid_sha256(expected_dataset):
         raise ValueError("expected_dataset_sha256_invalid")
@@ -93,7 +98,7 @@ def audit_research_artifact_bundle(
         audit_type = entry.get("audit_name")
         relative_path = entry.get("path")
         entry_errors: list[str] = []
-        if not isinstance(audit_type, str) or not audit_type:
+        if not isinstance(audit_type, str) or not audit_type.strip() or audit_type != audit_type.strip():
             entry_errors.append("audit_name_invalid")
             audit_type = f"unknown_{index}"
         if not isinstance(relative_path, str) or not relative_path:
