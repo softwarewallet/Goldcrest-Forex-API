@@ -10,7 +10,7 @@ import argparse
 import hashlib
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
@@ -89,6 +89,7 @@ def capture_provenance(
 
     root = root.resolve(strict=True)
     seen: set[str] = set()
+    seen_paths: set[str] = set()
     captured: list[dict[str, Any]] = []
     for entry in entries:
         if not isinstance(entry, dict):
@@ -102,9 +103,19 @@ def capture_provenance(
         seen.add(artifact_id)
         if not isinstance(relative_path, str) or not relative_path.strip() or relative_path != relative_path.strip():
             raise ValueError(f"artifact_path_must_be_nonempty_and_canonical:{artifact_id}")
+        supplied_posix = PurePosixPath(relative_path)
+        if (
+            supplied_posix.is_absolute()
+            or ".." in supplied_posix.parts
+            or "\\" in relative_path
+            or supplied_posix.as_posix() != relative_path
+            or relative_path in {".", ""}
+        ):
+            raise ValueError(f"artifact_path_must_be_safe_canonical_relative_path:{artifact_id}")
+        if relative_path in seen_paths:
+            raise ValueError(f"duplicate_artifact_path:{relative_path}")
+        seen_paths.add(relative_path)
         supplied = Path(relative_path)
-        if supplied.is_absolute():
-            raise ValueError(f"artifact_path_must_be_relative:{artifact_id}")
         candidate = root / supplied
         if candidate.is_symlink():
             raise ValueError(f"symlink_not_allowed:{candidate}")
@@ -118,6 +129,8 @@ def capture_provenance(
             for dep in dependencies
         ):
             raise ValueError(f"dependencies_must_be_canonical_string_list:{artifact_id}")
+        if len(dependencies) != len(set(dependencies)):
+            raise ValueError(f"duplicate_dependency:{artifact_id}")
         captured.append({
             "artifact_id": artifact_id,
             "path": supplied.as_posix(),
@@ -214,6 +227,7 @@ def verify_provenance(
     root = root.resolve(strict=True)
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
+    seen_paths: set[str] = set()
     for item in entries:
         if not isinstance(item, dict):
             errors.append({"code": "ARTIFACT_ENTRY_INVALID"})
@@ -229,9 +243,23 @@ def verify_provenance(
             reasons.append("STALE_CODE_REVISION")
         if not SHA256_RE.fullmatch(item.get("sha256", "")):
             reasons.append("MISSING_OR_INVALID_ARTIFACT_HASH")
-        if not isinstance(path_text, str) or not path_text or path_text != path_text.strip() or Path(path_text).is_absolute():
+        path_is_safe = (
+            isinstance(path_text, str)
+            and bool(path_text)
+            and path_text == path_text.strip()
+            and "\\" not in path_text
+            and not PurePosixPath(path_text).is_absolute()
+            and ".." not in PurePosixPath(path_text).parts
+            and PurePosixPath(path_text).as_posix() == path_text
+            and path_text not in {".", ""}
+        )
+        if not path_is_safe:
             reasons.append("MISSING_OR_INVALID_ARTIFACT_PATH")
+        elif path_text in seen_paths:
+            reasons.append("DUPLICATE_ARTIFACT_PATH")
+            errors.append({"code": "ARTIFACT_PATH_DUPLICATE", "artifact_id": artifact_id, "path": path_text})
         else:
+            seen_paths.add(path_text)
             candidate = root / Path(path_text)
             try:
                 if candidate.is_symlink():
