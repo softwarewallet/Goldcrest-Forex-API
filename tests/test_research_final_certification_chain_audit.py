@@ -240,3 +240,16 @@ def test_final_chain_report_publication_does_not_clobber_concurrent_output(tmp_p
         _write_report_no_clobber(output, {"status": "PASS"}, [])
     assert output.read_text(encoding="utf-8") == "created concurrently"
     assert list(tmp_path.glob(".final.json.*.tmp")) == []
+
+def test_final_certification_reader_rejects_duplicate_json_keys(tmp_path):
+    from app.research_final_certification_chain_audit import _read_object
+
+    report_path = tmp_path / "readiness.json"
+    report_path.write_text(
+        '{"audit_name":"research_reproducibility_readiness",'
+        '"audit_name":"shadowed-name","status":"PASS"}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="duplicate_json_key:audit_name"):
+        _read_object(report_path)
