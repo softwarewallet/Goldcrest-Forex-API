@@ -143,3 +143,9 @@ def test_report_warnings_must_be_nonempty_strings(warnings):
     with pytest.raises(ValueError, match="warnings_invalid"):
         create_report_seal(payload)
 
+def test_explicit_null_report_warnings_cannot_be_sealed():
+    payload = report()
+    payload["warnings"] = None
+    with pytest.raises(ValueError, match="warnings_invalid"):
+        create_report_seal(payload)
+

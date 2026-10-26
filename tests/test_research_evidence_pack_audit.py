@@ -306,3 +306,14 @@ def test_malformed_upstream_warnings_array_fails_closed(tmp_path):
     assert report["status"] == "FAIL"
     assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
 
+def test_explicit_null_upstream_warnings_fail_closed(tmp_path):
+    workflow = workflow_report()
+    workflow["warnings"] = None
+    manifest = write_pack(
+        tmp_path,
+        [("experiment_registry", registry_report()), ("validation_workflow", workflow)],
+    )
+    report = audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
+

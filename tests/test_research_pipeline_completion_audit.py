@@ -361,3 +361,32 @@ def test_malformed_evaluation_warnings_array_is_integrity_failure(tmp_path):
     assert report["status"] == "FAIL"
     assert any(item["code"] == "model_evaluation_gate_warnings_schema_invalid" for item in report["errors"])
 
+def test_explicit_null_validation_warnings_are_integrity_failure(tmp_path):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    payload = json.loads(validation.read_text(encoding="utf-8"))
+    payload["warnings"] = None
+    _write(validation, payload)
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "validation_report_warnings_schema_invalid" for item in report["errors"])
+
+
+def test_explicit_null_evaluation_warnings_are_integrity_failure(tmp_path):
+    manifest, validation, reproducibility, evaluation, _ = fixture(tmp_path)
+    payload = json.loads(evaluation.read_text(encoding="utf-8"))
+    payload["warnings"] = None
+    _write(evaluation, payload)
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["model_evaluation_gate_sha256"] = hashlib.sha256(evaluation.read_bytes()).hexdigest()
+    manifest_payload.pop("pipeline_manifest_sha256", None)
+    manifest_payload["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
+    _write(manifest, manifest_payload)
+    validation_payload = json.loads(validation.read_text(encoding="utf-8"))
+    validation_payload["manifest_path"] = str(manifest.resolve())
+    _write(validation, validation_payload)
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "model_evaluation_gate_warnings_schema_invalid" for item in report["errors"])
+
