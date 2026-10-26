@@ -132,3 +132,8 @@ The paired label-eligibility comparison and threshold-sweep readers now reject d
 ### Phase 86 — Strict JSON for evaluation and pipeline artifacts
 
 The model-evaluation gate and consolidated evidence-report reader now reject duplicate keys and non-standard numeric constants. The research pipeline applies the same strict parser to companion cTrader manifests before reusing provenance fields; malformed manifests are ignored at this optional lookup stage and remain subject to the mandatory raw-artifact audit. Regression tests cover malformed JSON at all three boundaries. No training, model-selection, broker, or trading-execution behavior is changed.
+
+
+### Phase 87 — Shared strict JSON parsing contract
+
+The evidence report, model-evaluation gate, and pipeline companion-manifest reader now use one shared strict JSON implementation. The shared helper rejects duplicate object keys recursively and rejects the non-standard numeric tokens `NaN`, `Infinity`, and `-Infinity`; object-only readers also enforce an object root. This reduces parser drift between offline integrity gates while preserving each reader's existing error and fail-closed behavior. This phase does not change model training or selection, broker access, Auto Live, order execution, or risk controls.

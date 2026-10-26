@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+
+from app.research_strict_json import strict_json_loads
 import math
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,21 +29,6 @@ _METRICS = {
 }
 _TIMESTAMP_FIELDS = ("train_start_utc", "train_end_utc", "validation_start_utc",
                      "validation_end_utc", "test_start_utc", "test_end_utc")
-
-
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects containing repeated keys."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
 
 
 def _finite_number(value: object) -> bool:
@@ -76,11 +63,7 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
         warnings.append({"code": code, "location": location, "detail": detail})
 
     try:
-        payload = json.loads(
-            source.read_text(encoding="utf-8"),
-            object_pairs_hook=_reject_duplicate_json_keys,
-            parse_constant=_reject_nonstandard_json_constant,
-        )
+        payload = strict_json_loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError) as exc:
         return {
             "schema_version": 1, "status": "FAIL", "source_path": str(source),
