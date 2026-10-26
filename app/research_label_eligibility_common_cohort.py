@@ -44,6 +44,11 @@ def _metrics(rows: Sequence[Mapping[str, Any]], probability_field: str) -> dict[
     }
 
 
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
 def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
     result: dict[str, Any] = {}
@@ -60,6 +65,7 @@ def _read_report(path: str | Path, *, raw_bytes: bytes | None = None) -> dict[st
     value = json.loads(
         raw.decode("utf-8"),
         object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
     )
     if not isinstance(value, dict) or value.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
         raise ValueError(f"{path}: input comparison report is not a passing report")

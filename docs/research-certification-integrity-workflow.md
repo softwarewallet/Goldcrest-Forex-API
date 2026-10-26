@@ -122,3 +122,8 @@ The feature-backend parity audit and walk-forward robustness audit now reject du
 ### Phase 84 — Strict JSON for label research readers
 
 The offline research-validation reader and label-eligibility recovery, seed-sweep, variant, and duration-profile readers reject duplicate object keys and non-standard JSON numeric constants (`NaN`, `Infinity`, and `-Infinity`). Malformed artifacts fail closed rather than allowing parser-dependent interpretations. Regression tests exercise each reader with these malformed inputs. This hardening is validation-only: it does not select models, change training, enable execution, or connect to brokers.
+
+
+### Phase 85 — Strict JSON for label comparison and cohort readers
+
+The paired label-eligibility comparison and threshold-sweep readers now reject duplicate JSON object keys and non-standard numeric constants. The common-held-out-cohort reader preserves its exact-byte snapshot hashing and additionally rejects `NaN`, `Infinity`, and `-Infinity`. Regression tests exercise malformed inputs at each reader boundary. The work remains offline and descriptive: it does not choose models, change training, or connect to broker/execution services.

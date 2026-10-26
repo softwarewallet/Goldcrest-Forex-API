@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.research_label_eligibility_comparison import (
+    _read_json,
     compare_label_eligibility_runs,
     _fold_direction_stability,
     _metric_summary,
@@ -401,3 +402,19 @@ def test_comparison_fails_when_shared_dataset_feature_differs(tmp_path):
 
     assert report["status"] == "FAIL"
     assert any("shared column" in error for error in report["errors"])
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)
