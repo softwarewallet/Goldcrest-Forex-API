@@ -128,7 +128,7 @@ def _write_json_no_clobber(path: Path, payload: str) -> None:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
-            newline="\\n",
+            newline="\n",
             dir=str(path.parent),
             prefix=f".{path.name}.",
             suffix=".tmp",
