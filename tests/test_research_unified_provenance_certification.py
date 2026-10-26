@@ -471,11 +471,7 @@ def test_input_contract_rejects_directory_where_json_file_required(tmp_path):
 @pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
 def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     from app.research_unified_provenance_certification import _read_object
-    if "_load_json_object" in "from app.research_unified_provenance_certification import _read_object":
-        with pytest.raises(ValueError):
-            _read_object(path)
-    else:
-        path = tmp_path / "invalid.json"
-        path.write_bytes(raw)
-        with pytest.raises(ValueError):
-            _read_object(path)
+    path = tmp_path / "invalid.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _read_object(path)
