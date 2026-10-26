@@ -15,6 +15,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _loads_strict_json(raw: bytes) -> Any:
+    return json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+
+
 from app.causal_ta_features import build_causal_ohlc_features
 from app.evaluation import ForexBar, chronological_split
 
@@ -39,8 +62,8 @@ def _read_bars(
             raise ValueError("input_csv_timestamp_column_missing")
     else:
         try:
-            payload = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            payload = _loads_strict_json(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("input_json_invalid") from exc
         records = payload.get("bars") if isinstance(payload, dict) else payload
     if not isinstance(records, list) or not records:
