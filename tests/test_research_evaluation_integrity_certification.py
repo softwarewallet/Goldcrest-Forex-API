@@ -123,6 +123,7 @@ def test_safety_flag_must_be_explicitly_false():
 def test_warning_is_preserved():
     values = fixtures()
     values[3]["status"] = "PASS_WITH_WARNINGS"
+    values[3]["warnings"] = ["fixture warning"]
     report = run(values)
     assert report["status"] == "PASS_WITH_WARNINGS"
     assert "row_window_lineage_passed_with_warnings" in report["warnings"]
@@ -270,3 +271,22 @@ def test_whitespace_padded_run_ids_fail_closed(matrix, expected_ids, expected_co
 
     assert report["status"] == "FAIL"
     assert any(error["code"] == expected_code for error in report["errors"])
+
+
+@pytest.mark.parametrize(
+    ("status", "warnings"),
+    [("PASS", ["warning not reflected in status"]), ("PASS_WITH_WARNINGS", [])],
+)
+def test_upstream_status_must_match_warning_collection(status, warnings):
+    values = fixtures()
+    values[3]["status"] = status
+    values[3]["warnings"] = warnings
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "upstream_status_warnings_mismatch"
+        and error["report"] == "row_window_lineage"
+        for error in report["errors"]
+    )

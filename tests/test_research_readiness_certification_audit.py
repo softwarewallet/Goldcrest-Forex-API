@@ -248,3 +248,25 @@ def test_explicit_null_warnings_fails_closed(tmp_path):
         for error in report["errors"]
     )
 
+
+
+@pytest.mark.parametrize(
+    ("status", "warnings"),
+    [("PASS", ["warning not reflected in status"]), ("PASS_WITH_WARNINGS", [])],
+)
+def test_readiness_rejects_status_warning_mismatch(tmp_path, status, warnings):
+    reports = standard_reports(tmp_path)
+    path, payload = write_report(
+        tmp_path,
+        "feature_backend_parity",
+        {"comparison_performed": True, "all_features_passed": True},
+        status=status,
+    )
+    payload["warnings"] = warnings
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    reports["feature_backend_parity"] = path
+
+    report = run_audit(tmp_path, manifest_for(reports))
+
+    assert report["status"] == "FAIL"
+    assert "status_warnings_mismatch" in str(report)
