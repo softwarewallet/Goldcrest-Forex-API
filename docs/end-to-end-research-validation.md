@@ -621,3 +621,13 @@ runs include the receipt and are checked automatically.
 This is a provenance/integrity gate, not proof that the feature implementation is causally
 valid or that a model has predictive value. The point-in-time invariance and model-evaluation
 gates remain separate requirements.
+
+
+## Run-auditor experiment-fingerprint verification
+
+The cross-artifact run auditor verifies the experiment-fingerprint receipt when declared by a
+pipeline manifest. It validates the receipt's canonical self-hash and research-only flags, checks
+the receipt file hash and manifest fingerprint identifier, and binds the receipt to the exact raw
+OHLC and prepared-dataset hashes. It also verifies the dataset-manifest file hash, canonical
+content hash, feature-schema fingerprint, and feature-implementation fingerprint. Tampering or a
+cross-run mismatch fails the audit. Legacy manifests without a fingerprint remain readable.

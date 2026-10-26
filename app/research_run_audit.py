@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.research_experiment_fingerprint import canonical_json, verify_experiment_fingerprint
+
 
 _ARTIFACT_FIELDS = {
     "raw_ohlc_path": "raw_ohlc_sha256",
@@ -265,6 +267,62 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
     dataset_manifest = related.get("dataset_manifest_path", {})
     if dataset_hash and dataset_manifest.get("output_dataset_sha256") != dataset_hash:
         errors.append("dataset_manifest_output_hash_mismatch")
+
+    # Verify the immutable experiment fingerprint receipt when present. This binds
+    # the configuration/code/data identity to the exact raw, dataset, and manifest bytes.
+    if manifest.get("experiment_fingerprint_path") or manifest.get("experiment_fingerprint_file_sha256"):
+        field = "experiment_fingerprint"
+        resolved = _resolve_artifact_path(manifest.get(f"{field}_path"), manifest_path)
+        expected_file_hash = manifest.get(f"{field}_file_sha256")
+        if resolved is None:
+            errors.append(f"{field}_path_missing")
+        elif not resolved.is_file():
+            errors.append(f"{field}_path_not_found")
+        else:
+            actual_file_hash = _sha256(resolved)
+            checked_artifacts[f"{field}_path"] = {
+                "path": str(resolved),
+                "sha256": actual_file_hash,
+            }
+            if not isinstance(expected_file_hash, str) or actual_file_hash != expected_file_hash:
+                errors.append(f"{field}_file_sha256_mismatch")
+            try:
+                related[f"{field}_path"] = _read_json(resolved)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
+
+        fingerprint = related.get(f"{field}_path", {})
+        if fingerprint:
+            verification = verify_experiment_fingerprint(dict(fingerprint))
+            if verification.get("status") != "PASS":
+                errors.append(f"{field}_self_integrity_failed")
+            if fingerprint.get("experiment_fingerprint_sha256") != manifest.get("experiment_fingerprint_sha256"):
+                errors.append(f"{field}_hash_link_mismatch")
+            if fingerprint.get("raw_ohlc_sha256") != checked_artifacts.get("raw_ohlc_path", {}).get("sha256"):
+                errors.append(f"{field}_raw_ohlc_hash_mismatch")
+            if fingerprint.get("dataset_sha256") != checked_artifacts.get("dataset_path", {}).get("sha256"):
+                errors.append(f"{field}_dataset_hash_mismatch")
+            dataset_manifest_path = checked_artifacts.get("dataset_manifest_path", {}).get("path")
+            dataset_manifest_file_hash = checked_artifacts.get("dataset_manifest_path", {}).get("sha256")
+            if fingerprint.get("dataset_manifest_file_sha256") != dataset_manifest_file_hash:
+                errors.append(f"{field}_dataset_manifest_file_hash_mismatch")
+            if dataset_manifest_path:
+                try:
+                    dataset_manifest_payload = _read_json(Path(dataset_manifest_path))
+                    unhashed_dataset_manifest = dict(dataset_manifest_payload)
+                    unhashed_dataset_manifest.pop("manifest_sha256", None)
+                    actual_content_hash = hashlib.sha256(canonical_json(unhashed_dataset_manifest)).hexdigest()
+                    if fingerprint.get("dataset_manifest_content_sha256") != actual_content_hash:
+                        errors.append(f"{field}_dataset_manifest_content_hash_mismatch")
+                    if dataset_manifest_payload.get("feature_schema_sha256") != fingerprint.get("feature_schema_sha256"):
+                        errors.append(f"{field}_feature_schema_hash_mismatch")
+                    if dataset_manifest_payload.get("feature_implementation_sha256") != fingerprint.get("feature_implementation_sha256"):
+                        errors.append(f"{field}_feature_implementation_hash_mismatch")
+                except (OSError, json.JSONDecodeError, ValueError):
+                    errors.append(f"{field}_dataset_manifest_unreadable")
+            for flag in ("actionable", "execution_connected", "automatic_model_selection"):
+                if fingerprint.get(flag) is not False:
+                    errors.append(f"{field}_{flag}_must_be_false")
 
     # Newer pipeline runs include a feature-source provenance receipt. Verify its
     # exact file hash, dataset binding, dataset-manifest fingerprints, and safety flags.
