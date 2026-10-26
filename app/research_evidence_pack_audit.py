@@ -141,7 +141,7 @@ def audit_research_evidence_pack(
             elif upstream_errors:
                 item_errors.append("upstream_report_contains_errors")
             upstream_warnings = payload.get("warnings")
-            if upstream_warnings is not None and (
+            if "warnings" in payload and (
                 not isinstance(upstream_warnings, list)
                 or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
             ):
