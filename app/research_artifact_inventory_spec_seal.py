@@ -34,7 +34,8 @@ def canonical_inventory_spec_bytes(spec: dict[str, Any]) -> bytes:
         raise ValueError("inventory_spec_must_be_object")
     if spec.get("audit_name") != "research_artifact_inventory_specification":
         raise ValueError("inventory_specification_invalid")
-    if spec.get("schema_version") != 1:
+    schema_version = spec.get("schema_version")
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version != 1:
         raise ValueError("inventory_specification_schema_version_unsupported")
     entries = spec.get("required_artifacts")
     if not isinstance(entries, list):
@@ -100,9 +101,18 @@ def verify_inventory_spec_seal(spec: dict[str, Any], seal: dict[str, Any]) -> di
             expected = None
             errors.append({"code": "INVENTORY_SPEC_INVALID", "detail": str(exc)})
         if expected is not None:
+            numeric_fields = {
+                "schema_version", "inventory_spec_bytes",
+                "inventory_spec_schema_version", "required_artifact_count",
+            }
             for key in ("schema_version", "canonicalization", "inventory_spec_sha256",
                         "inventory_spec_bytes", "inventory_spec_schema_version", "required_artifact_count"):
-                if seal.get(key) != expected.get(key):
+                actual = seal.get(key)
+                if key in numeric_fields and (
+                    not isinstance(actual, int) or isinstance(actual, bool)
+                ):
+                    errors.append({"code": "INVENTORY_SEAL_FIELD_TYPE_INVALID", "field": key})
+                elif actual != expected.get(key):
                     errors.append({"code": "INVENTORY_SEAL_FIELD_MISMATCH", "field": key})
             for flag in FALSE_FLAGS:
                 if seal.get(flag) is not False:

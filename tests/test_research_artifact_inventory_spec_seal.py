@@ -127,3 +127,33 @@ def test_inventory_spec_seal_rejects_duplicate_or_empty_contract(entries, error)
     payload["required_artifacts"] = entries
     with pytest.raises(ValueError, match=error):
         create_inventory_spec_seal(payload)
+
+
+
+@pytest.mark.parametrize("schema_version", [True, False, 1.0, "1"])
+def test_inventory_spec_schema_version_requires_canonical_integer(schema_version):
+    payload = spec()
+    payload["schema_version"] = schema_version
+
+    with pytest.raises(ValueError, match="schema_version_unsupported"):
+        create_inventory_spec_seal(payload)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["schema_version", "inventory_spec_schema_version", "required_artifact_count"],
+)
+def test_inventory_seal_rejects_boolean_numeric_metadata(field):
+    payload = spec()
+    payload["required_artifacts"] = payload["required_artifacts"][:1]
+    seal = create_inventory_spec_seal(payload)
+    seal[field] = True
+
+    report = verify_inventory_spec_seal(payload, seal)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        item.get("field") == field
+        and item["code"] == "INVENTORY_SEAL_FIELD_TYPE_INVALID"
+        for item in report["errors"]
+    )

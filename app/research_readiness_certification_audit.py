@@ -224,7 +224,12 @@ def audit_research_readiness(
             elif audit_name == "research_artifact_bundle_certification":
                 if payload.get("missing_required_audits") != []:
                     entry_errors.append("bundle_required_audit_coverage_incomplete")
-                if not isinstance(payload.get("artifacts_checked"), int) or payload["artifacts_checked"] < 1:
+                artifacts_checked = payload.get("artifacts_checked")
+                if (
+                    not isinstance(artifacts_checked, int)
+                    or isinstance(artifacts_checked, bool)
+                    or artifacts_checked < 1
+                ):
                     entry_errors.append("bundle_artifact_count_invalid")
 
         for code in entry_errors:
