@@ -88,6 +88,7 @@ def test_file_audit_writes_receipt_with_source_hash(tmp_path):
     b'{"metric":NaN}',
     b'{"metric":Infinity}',
     b'{"metric":-Infinity}',
+    b'[]',
 ])
 def test_file_auditor_rejects_ambiguous_or_nonstandard_json(tmp_path, raw):
     path = tmp_path / "experiment-matrix.json"
