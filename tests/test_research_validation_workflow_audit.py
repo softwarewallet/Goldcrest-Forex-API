@@ -151,9 +151,11 @@ def test_json_loader_rejects_duplicate_keys_and_nonstandard_constants(raw):
 
 @pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
 def test_validation_workflow_malformed_status_fails_closed(tmp_path, status):
-    reports = valid_reports()
-    reports["feature_temporal_integrity"]["status"] = status
-    manifest = write_manifest(tmp_path, reports)
-    report = audit(tmp_path, manifest)
+    manifest = make_manifest(tmp_path)
+    path = tmp_path / manifest["artifacts"][0]["path"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["status"] = status
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = run_audit(tmp_path, manifest)
     assert report["status"] == "FAIL"
     assert any(item["code"] == "status_unknown_or_missing" for item in report["errors"])
