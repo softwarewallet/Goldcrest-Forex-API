@@ -435,3 +435,13 @@ def test_explicit_null_evaluation_warnings_are_integrity_failure(tmp_path):
     assert report["status"] == "FAIL"
     assert any(item["code"] == "model_evaluation_gate_warnings_schema_invalid" for item in report["errors"])
 
+
+
+def test_malformed_validation_status_fails_closed_without_type_error(tmp_path):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    payload = json.loads(validation.read_text(encoding="utf-8"))
+    payload["status"] = []
+    _write(validation, payload)
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "validation_report_status_schema_invalid" for item in report["errors"])

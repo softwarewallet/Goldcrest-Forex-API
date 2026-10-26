@@ -317,3 +317,24 @@ def test_explicit_null_upstream_warnings_fail_closed(tmp_path):
     assert report["status"] == "FAIL"
     assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
 
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_evidence_pack_malformed_upstream_status_fails_closed(tmp_path, status):
+    workflow = workflow_report()
+    workflow["status"] = status
+    manifest = write_pack(tmp_path, [("experiment_registry", registry_report()), ("validation_workflow", workflow)])
+    report = audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_report_not_passing" for item in report["errors"])
+
+
+@pytest.mark.parametrize(("status", "warnings"), [("PASS", ["unexpected"]), ("PASS_WITH_WARNINGS", [])])
+def test_evidence_pack_status_warning_contract_is_enforced(tmp_path, status, warnings):
+    workflow = workflow_report()
+    workflow["status"] = status
+    workflow["warnings"] = warnings
+    manifest = write_pack(tmp_path, [("experiment_registry", registry_report()), ("validation_workflow", workflow)])
+    report = audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "status_warnings_mismatch" for item in report["errors"])

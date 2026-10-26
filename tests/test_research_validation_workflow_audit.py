@@ -147,3 +147,15 @@ def test_manifest_rejects_duplicate_required_audits(tmp_path):
 def test_json_loader_rejects_duplicate_keys_and_nonstandard_constants(raw):
     with pytest.raises(ValueError):
         _load_json_object(raw, source="test-manifest.json")
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_validation_workflow_malformed_status_fails_closed(tmp_path, status):
+    manifest = make_manifest(tmp_path)
+    path = tmp_path / manifest["artifacts"][0]["path"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["status"] = status
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = run_audit(tmp_path, manifest)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "status_unknown_or_missing" for item in report["errors"])

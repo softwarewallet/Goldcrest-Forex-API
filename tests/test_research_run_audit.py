@@ -919,3 +919,15 @@ def test_run_audit_rejects_nonstandard_json_constant_in_manifest(tmp_path):
 
     assert result["status"] == "FAIL"
     assert any(error.startswith("manifest_unreadable:ValueError") for error in result["errors"])
+
+
+
+def test_run_audit_rejects_malformed_completion_status_without_type_error(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _write_completion_receipt(manifest_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["status"] = []
+    _write_json(receipt_path, receipt)
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "FAIL"
+    assert "pipeline_completion_audit_not_passing" in result["errors"]
