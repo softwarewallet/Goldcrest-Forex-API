@@ -652,3 +652,13 @@ When the manifest includes an experiment fingerprint, the receipt's fingerprint 
 hash must match that checked artifact. This complements the completion receipt's byte-level
 hashing and avoids treating a missing completion receipt as permission to skip reproducibility
 verification.
+
+
+## Dataset-manifest self-integrity in the run auditor
+
+For dataset manifests that include the newer canonical self-hash and source metadata, the
+run auditor now verifies the self-hash, binds the declared input snapshot to the exact raw
+OHLC artifact, and cross-checks feature schema/source hashes against the pipeline manifest.
+The prepared dataset's byte hash remains independently checked. Legacy manifests without
+these newer fields remain readable; a present but invalid self-hash or mismatched raw snapshot
+is a hard audit failure.
