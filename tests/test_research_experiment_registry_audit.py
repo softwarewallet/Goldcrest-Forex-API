@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 
-from app.research_experiment_registry_audit import audit_experiment_registry
+import pytest
+
+from app.research_experiment_registry_audit import audit_experiment_registry, _load_json_object
 
 
 def sha(raw: bytes) -> str:
@@ -121,3 +123,12 @@ def test_missing_expected_run_fails_closed(tmp_path):
     report = audit_experiment_registry(registry, base_dir=tmp_path)
     assert report["status"] == "FAIL"
     assert any(e.get("run_id") == "missing" and e["code"] == "expected_run_missing" for e in report["errors"])
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="registry.json")
