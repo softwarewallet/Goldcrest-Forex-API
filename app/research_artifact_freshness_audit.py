@@ -119,7 +119,7 @@ def audit_artifact_freshness(
         if len(dependencies) != len(set(dependencies)):
             raise ValueError(f"duplicate_dependency:{artifact_id}")
         artifact_path = item.get("path")
-        if artifact_path is not None:
+        if artifact_path is not None and artifact_path != "":
             artifact_path = _canonical_artifact_path(artifact_path)
             if artifact_path in path_to_id:
                 raise ValueError(f"duplicate_artifact_path:{artifact_path}")
