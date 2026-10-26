@@ -195,3 +195,13 @@ def test_boolean_manifest_artifact_count_is_not_accepted_as_integer():
 
     assert report["status"] == "FAIL"
     assert any(item["code"] == "MANIFEST_ARTIFACT_COUNT_MISMATCH" for item in report["errors"])
+
+
+
+@pytest.mark.parametrize("schema_version", [True, False, 1.0, "1", None])
+def test_inventory_completeness_rejects_non_integer_schema_version(schema_version):
+    payload = spec()
+    payload["schema_version"] = schema_version
+
+    with pytest.raises(ValueError, match="schema_version_unsupported"):
+        audit_artifact_inventory_completeness(manifest(), payload)
