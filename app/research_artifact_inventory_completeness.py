@@ -7,6 +7,8 @@ import json
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 FALSE_FLAGS = {
     "actionable": False,
     "inferential": False,
@@ -113,7 +115,7 @@ def audit_artifact_inventory_completeness(
 
 
 def _read_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{path}")
     return payload
