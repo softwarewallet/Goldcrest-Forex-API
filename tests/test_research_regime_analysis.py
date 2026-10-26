@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
+
+import pytest
 from datetime import datetime, timedelta, timezone
 
-from app.research_regime_analysis import analyze_prediction_regimes
+from app.research_regime_analysis import analyze_prediction_regimes, _read_json
 
 
 def _matrix():
@@ -193,3 +195,11 @@ def test_regime_analysis_fails_closed_for_malformed_ohlc():
     assert result["errors"]
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+
+@pytest.mark.parametrize("payload", ['{"a":1,"a":2}', '{"a":NaN}', '{"a":Infinity}', '{"a":-Infinity}'])
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "input.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)

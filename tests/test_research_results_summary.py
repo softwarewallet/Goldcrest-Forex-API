@@ -5,7 +5,9 @@ import json
 import math
 from pathlib import Path
 
-from app.research_results_summary import summarize_research_run
+import pytest
+
+from app.research_results_summary import summarize_research_run, _read_json
 
 
 def _sha(path: Path) -> str:
@@ -185,3 +187,11 @@ def test_compact_summary_fails_when_pipeline_manifest_fingerprint_changes(tmp_pa
     assert result["status"] == "FAIL"
     assert "pipeline_manifest_sha256_mismatch" in result["errors"]
     assert "pipeline_safety_flags_invalid" in result["errors"]
+
+
+@pytest.mark.parametrize("payload", ['{"a":1,"a":2}', '{"a":NaN}', '{"a":Infinity}', '{"a":-Infinity}'])
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "input.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)

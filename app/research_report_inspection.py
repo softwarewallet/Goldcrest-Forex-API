@@ -12,6 +12,7 @@ import math
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.research_strict_json import strict_json_loads
 from app.research_reproducibility import verify_reproducibility_manifest
 from app.model_selection_audit import build_model_selection_audit
 from app.oos_period_robustness_audit import build_oos_period_robustness_audit
@@ -58,7 +59,7 @@ def inspect_experiment_report(report_path: str | Path) -> dict[str, Any]:
     """
     path = Path(report_path)
     try:
-        report = json.loads(path.read_text(encoding="utf-8"), parse_constant=lambda token: (_ for _ in ()).throw(ValueError(f"invalid JSON constant {token}")))
+        report = strict_json_loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"report cannot be read as strict JSON: {exc}") from exc
     if not isinstance(report, dict):
