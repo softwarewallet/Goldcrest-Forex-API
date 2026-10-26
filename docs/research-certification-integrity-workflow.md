@@ -112,3 +112,8 @@ The report-artifact audit, artifact-provenance reader, raw-data audit, experimen
 ## Strict JSON in temporal, metric, evidence, and label audits
 
 The reproducibility auditor, pipeline leakage-boundary audit, feature temporal-integrity audit, metric-semantic recalculation audit, evidence-pack audit, cohort-distribution-shift audit, and label-horizon audit now reject duplicate JSON object keys and non-standard numeric constants in their JSON inputs. The feature temporal-integrity reader retains support for both object and array JSON roots while applying strict token parsing recursively. Regression tests cover duplicate keys and `NaN`/`Infinity` variants. All changes remain within offline research validation.
+
+
+## Strict JSON in backend-parity, label-eligibility, and robustness audits
+
+The feature-backend parity audit and walk-forward robustness audit now reject duplicate JSON keys and non-standard numeric constants. The label-eligibility cross-report integrity snapshot reader retains its existing duplicate-key protection and additionally rejects `NaN`, `Infinity`, and `-Infinity`; the threshold-report reader now applies strict parsing to its input artifacts. Tests cover these malformed JSON cases. This remains descriptive, offline research auditing and does not automate backend or model selection.
