@@ -1,5 +1,28 @@
 # End-to-end offline research validation
 
+## Point-in-time feature invariance gate
+
+Before feature/label preparation or model training, the research pipeline runs an offline
+prefix-invariance audit over the immutable OHLC input. It recomputes features on selected
+historical prefixes and compares each prefix's feature values with the same timestamps
+computed using the full history. If adding later OHLC observations changes an earlier feature,
+the pipeline writes a failing receipt and stops before dataset preparation.
+
+The standalone audit can be run with:
+
+```bash
+python -m app.research_point_in_time_feature_invariance_audit \
+  --ohlc-csv data/research/EURUSD_M15_demo.csv \
+  --symbol EURUSD --timeframe M15 \
+  --output data/research/EURUSD_M15_point_in_time_audit.json
+```
+
+The report binds to the exact source CSV SHA-256 and records the tested cutoffs, compared
+feature values, numeric tolerances, and explicit non-actionable safety flags. Output files
+are never overwritten. A PASS is a metamorphic check against future-data dependence in the
+computed features; it does not prove that all labels, temporal folds, or model-selection
+procedures are leakage-free, and it does not qualify a model for deployment.
+
 The research pipeline writes a separate `<run-id>_validation_report.json` after building
 the pipeline manifest. The report combines artifact integrity checks, prepared-dataset
 quality, walk-forward result structure, fold-level test-metric summaries, and a local
