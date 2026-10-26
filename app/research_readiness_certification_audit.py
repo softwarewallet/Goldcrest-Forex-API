@@ -44,6 +44,32 @@ def _valid_sha256(value: Any) -> bool:
     )
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 def audit_research_readiness(
     manifest: dict[str, Any],
     *,
@@ -128,7 +154,7 @@ def audit_research_readiness(
                         entry_errors.append("expected_report_sha256_invalid")
                     elif digest != expected_digest.lower():
                         entry_errors.append("report_sha256_mismatch")
-                decoded = json.loads(raw.decode("utf-8"))
+                decoded = _load_json_object(raw, source=str(path))
                 if not isinstance(decoded, dict):
                     entry_errors.append("report_root_not_object")
                 else:
@@ -264,7 +290,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         raw = args.input.read_bytes()
-        manifest = json.loads(raw.decode("utf-8"))
+        manifest = _load_json_object(raw, source=str(args.input))
         report = audit_research_readiness(
             manifest,
             manifest_sha256=_sha256(raw),
