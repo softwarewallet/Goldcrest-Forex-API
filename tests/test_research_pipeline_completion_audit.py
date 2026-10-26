@@ -257,3 +257,23 @@ def test_unparseable_required_report_does_not_claim_hash_check_pass(tmp_path):
     assert report["checks"]["validation_report_readable"] == "FAIL"
     assert report["checks"]["validation_report_file_hash"] == "FAIL"
     assert any(item["code"] == "required_report_hash_unavailable" for item in report["errors"])
+
+def test_duplicate_json_key_in_required_report_fails_closed(tmp_path):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    original = manifest.read_text(encoding="utf-8")
+    assert '"run_id":' in original
+    manifest.write_text(
+        original.replace(
+            '"run_id": "run-001",',
+            '"run_id": "run-001",\\n  "run_id": "shadow-run",',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+
+    assert report["status"] == "FAIL"
+    assert report["checks"]["pipeline_manifest_readable"] == "FAIL"
+    assert any(item["code"] == "required_report_unreadable" for item in report["errors"])
+    assert report["deployment_authorized"] is False
