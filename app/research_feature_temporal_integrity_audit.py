@@ -15,31 +15,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _loads_strict_json(raw: bytes) -> Any:
-    return json.loads(
-        raw.decode("utf-8"),
-        object_pairs_hook=_reject_duplicate_json_keys,
-        parse_constant=_reject_nonstandard_json_constant,
-    )
+    return strict_json_loads(raw.decode("utf-8"))
 
 
 from app.causal_ta_features import build_causal_ohlc_features
 from app.evaluation import ForexBar, chronological_split
+from app.research_strict_json import strict_json_loads
 
 
 def _sha256(data: bytes) -> str:
