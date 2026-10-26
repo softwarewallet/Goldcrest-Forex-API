@@ -57,8 +57,9 @@ def certify_evaluation_integrity(
             continue
         if payload.get("audit_name") != audit_name:
             errors.append({"code": "input_audit_name_mismatch", "report": name, "expected": audit_name, "actual": payload.get("audit_name")})
-        if payload.get("status") not in allowed:
-            errors.append({"code": "input_report_not_passing", "report": name, "status": payload.get("status")})
+        input_status = payload.get("status")
+        if not isinstance(input_status, str) or input_status not in allowed:
+            errors.append({"code": "input_report_not_passing", "report": name, "status": input_status})
         for flag in REQUIRED_FALSE_FLAGS:
             if payload.get(flag) is not False:
                 errors.append({"code": "safety_flag_not_explicitly_false", "report": name, "flag": flag})
