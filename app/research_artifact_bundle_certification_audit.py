@@ -127,6 +127,9 @@ def audit_research_artifact_bundle(
         if payload is not None:
             if payload.get("audit_name") != audit_type:
                 entry_errors.append("audit_name_mismatch")
+            schema_version = payload.get("schema_version")
+            if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version != 1:
+                entry_errors.append("schema_version_invalid")
             status = payload.get("status")
             if not isinstance(status, str) or status not in KNOWN_STATUSES:
                 entry_errors.append("status_unknown_or_missing")
