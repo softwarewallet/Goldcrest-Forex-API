@@ -118,7 +118,7 @@ def audit_research_release_readiness(
     else:
         normalized_reference = reference.strip()
         if re.search(
-            r"<[^>]+>|\\b(?:TODO|TBD|PLACEHOLDER|REPLACE THIS|EXACT PROVIDER TERMS REFERENCE)\\b",
+            r"<[^>]+>|\x5cb(?:TODO|TBD|PLACEHOLDER|REPLACE THIS|EXACT PROVIDER TERMS REFERENCE)\x5cb",
             normalized_reference,
             flags=re.IGNORECASE,
         ):
@@ -126,7 +126,7 @@ def audit_research_release_readiness(
         actual_terms_hash = hashlib.sha256(normalized_reference.encode("utf-8")).hexdigest()
         if declared_terms_hash != actual_terms_hash:
             errors.append("provider_terms_reference_hash_mismatch")
-        if not re.match(r"^https?://[^\\s]+$", normalized_reference, flags=re.IGNORECASE):
+        if not re.match(r"^https?://[^\x5cs]+$", normalized_reference, flags=re.IGNORECASE):
             errors.append("provider_terms_reference_must_be_http_or_https_uri")
 
     try:
