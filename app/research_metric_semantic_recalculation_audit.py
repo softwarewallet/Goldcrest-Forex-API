@@ -97,6 +97,17 @@ def audit_metric_semantics(
         raise ValueError("plan_report_invalid_or_not_passing")
     if registry_report.get("audit_name") != "research_experiment_registry" or registry_report.get("status") not in PASS_STATUSES:
         raise ValueError("registry_report_invalid_or_not_passing")
+    registry_errors = registry_report.get("errors")
+    if not isinstance(registry_errors, list):
+        raise ValueError("registry_report_errors_schema_invalid")
+    if registry_errors:
+        raise ValueError("registry_report_contains_errors")
+    registry_warnings = registry_report.get("warnings")
+    if registry_warnings is not None and (
+        not isinstance(registry_warnings, list)
+        or any(not isinstance(item, str) or not item.strip() for item in registry_warnings)
+    ):
+        raise ValueError("registry_report_warnings_schema_invalid")
     if not math.isfinite(abs_tolerance) or abs_tolerance < 0 or not math.isfinite(rel_tolerance) or rel_tolerance < 0:
         raise ValueError("tolerance_invalid")
     matrix, records = plan.get("run_matrix"), registry_report.get("run_results")
@@ -111,6 +122,8 @@ def audit_metric_semantics(
     root = registry_root.resolve()
     errors: list[dict[str, Any]] = []
     warnings: list[str] = []
+    if registry_report.get("status") == "PASS_WITH_WARNINGS" or registry_warnings:
+        warnings.append("registry_report_has_warnings")
     seen: set[str] = set()
     runs_checked = metrics_checked = 0
     for index, record in enumerate(records):
