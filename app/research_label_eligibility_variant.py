@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from app.research_label_eligibility_comparison import compare_label_eligibility_runs
-from app.research_strict_json import strict_json_loads
 from app.research_pipeline import run_research_pipeline
 from app.research_run_audit import audit_research_run_manifest
+from app.research_strict_json import strict_json_loads
 
 
 DEFAULT_RANDOM_SEED = 20261021
