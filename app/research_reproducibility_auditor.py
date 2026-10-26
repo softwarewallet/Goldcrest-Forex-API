@@ -19,6 +19,14 @@ def _read_object(path: Path) -> dict[str, Any]:
     return value
 
 
+def _load_json_object(raw: bytes, *, source: str = "<bytes>") -> dict[str, Any]:
+    """Parse strict JSON bytes for compatibility with existing audit callers."""
+    value = strict_json_loads(raw.decode("utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return value
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
