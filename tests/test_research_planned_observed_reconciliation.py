@@ -117,3 +117,32 @@ def test_nonpassing_registry_report_is_rejected():
     registry["status"] = "FAIL"
     with pytest.raises(ValueError, match="registry_report_not_passing"):
         reconcile_planned_observed_runs(plan, registry)
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"audit_name":"research_experiment_plan","audit_name":"shadowed"}',
+        b'{"metric":NaN}',
+        b'{"metric":Infinity}',
+        b'{"metric":-Infinity}',
+    ],
+)
+def test_reconciliation_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, raw):
+    from app.research_planned_observed_reconciliation import _read_object
+
+    path = tmp_path / "input.json"
+    path.write_bytes(raw)
+
+    with pytest.raises(ValueError):
+        _read_object(path)
+
+
+def test_reconciliation_reader_requires_object_root(tmp_path):
+    from app.research_planned_observed_reconciliation import _read_object
+
+    path = tmp_path / "input.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="json_root_must_be_object"):
+        _read_object(path)
+
