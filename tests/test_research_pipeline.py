@@ -190,6 +190,12 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert raw_audit["errors"] == []
     assert "snapshot_manifest_missing_provenance_hash_unverified" in raw_audit["warnings"]
     assert stored["raw_ohlc_audit_sha256"]
+    assert stored["label_maturity_audit_status"] == "PASS"
+    label_audit_path = Path(stored["label_maturity_audit_path"])
+    label_audit = json.loads(label_audit_path.read_text(encoding="utf-8"))
+    assert label_audit["raw_ohlc_sha256"] == stored["raw_ohlc_sha256"]
+    assert label_audit["dataset_sha256"] == stored["dataset_sha256"]
+    assert stored["label_maturity_audit_sha256"] == research_pipeline._sha256(label_audit_path)
     assert stored["dataset_sha256"]
     assert stored["feature_source_audit_status"] == "PASS"
     assert stored["feature_source_audit_errors"] == []
