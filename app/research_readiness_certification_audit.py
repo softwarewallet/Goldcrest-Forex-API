@@ -27,12 +27,12 @@ KNOWN_STATUSES = {"PASS", "PASS_WITH_WARNINGS", "NOT_COMPARABLE", "FAIL"}
 REQUIRED_FALSE_FLAGS = (
     "actionable",
     "inferential",
-    "execution_connected",
-    "model_training_performed",
-)
-OPTIONAL_FALSE_FLAGS = (
+    "statistical_significance_claimed",
     "automatic_model_selection",
+    "model_training_performed",
+    "execution_connected",
     "automatic_repair_performed",
+    "deployment_authorized",
 )
 
 
@@ -204,10 +204,6 @@ def audit_research_readiness(
             for flag in REQUIRED_FALSE_FLAGS:
                 if payload.get(flag) is not False:
                     entry_errors.append(f"required_safety_flag_not_explicitly_false:{flag}")
-            for flag in OPTIONAL_FALSE_FLAGS:
-                if flag in payload and payload[flag] is not False:
-                    entry_errors.append(f"safety_flag_not_false:{flag}")
-
             dataset_hash = payload.get("dataset_sha256")
             if dataset_hash is None:
                 warnings.append(f"dataset_fingerprint_not_exposed:{audit_name}")
@@ -296,11 +292,13 @@ def audit_research_readiness(
             "READY_WITH_WARNINGS" if status == "PASS_WITH_WARNINGS" else "READY"
         ),
         "actionable": False,
-        "automatic_model_selection": False,
         "inferential": False,
+        "statistical_significance_claimed": False,
+        "automatic_model_selection": False,
         "model_training_performed": False,
         "execution_connected": False,
         "automatic_repair_performed": False,
+        "deployment_authorized": False,
         "scope_limitations": [
             "Only supplied report artifacts and their declared evidence are checked.",
             "This result is not proof of profitability, predictive validity, or absence of all leakage.",
