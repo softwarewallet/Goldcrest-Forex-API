@@ -108,7 +108,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output.parent.mkdir(parents=True, exist_ok=True)
         with output.open("x", encoding="utf-8") as stream:
             json.dump(report, stream, indent=2, sort_keys=True, allow_nan=False)
-            stream.write("\\n")
+            stream.write("\n")
     except (OSError, TypeError, ValueError) as exc:
         print(json.dumps({"status": "FAIL", "error": f"{type(exc).__name__}:{exc}",
                           "actionable": False, "execution_connected": False}), file=sys.stderr)
