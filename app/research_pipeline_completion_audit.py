@@ -34,6 +34,13 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _sha256_if_readable(path: Path) -> str | None:
+    try:
+        return _sha256(path) if path.is_file() else None
+    except OSError:
+        return None
+
+
 def _resolve(value: object, manifest_path: Path) -> Path | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -81,7 +88,11 @@ def audit_pipeline_completion(
             errors.append({"code": "required_report_unreadable", "report": label})
 
     if not manifest:
-        return _report(manifest, errors, warnings, checks, validation, reproducibility, evaluation)
+        return _report(
+            manifest, errors, warnings, checks, validation, reproducibility, evaluation,
+            validation_report_sha256=_sha256_if_readable(validation_file),
+            reproducibility_audit_sha256=_sha256_if_readable(reproducibility_file),
+        )
 
     run_id = manifest.get("run_id")
     if not isinstance(run_id, str) or not run_id.strip():
@@ -173,13 +184,22 @@ def audit_pipeline_completion(
         else:
             checks[f"{label}_file_hash"] = "PASS"
 
-    return _report(manifest, errors, warnings, checks, validation, reproducibility, evaluation)
+    return _report(
+        manifest, errors, warnings, checks, validation, reproducibility, evaluation,
+        validation_report_sha256=_sha256_if_readable(validation_file),
+        reproducibility_audit_sha256=_sha256_if_readable(reproducibility_file),
+        model_evaluation_gate_sha256=_sha256_if_readable(evaluation_path) if evaluation_path else None,
+    )
 
 
-def _report(manifest, errors, warnings, checks, validation, reproducibility, evaluation):
+def _report(
+    manifest, errors, warnings, checks, validation, reproducibility, evaluation,
+    *, validation_report_sha256=None, reproducibility_audit_sha256=None,
+    model_evaluation_gate_sha256=None,
+):
     status = "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS"
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "audit_name": "research_pipeline_completion_audit",
         "scope": "OFFLINE_RESEARCH_PIPELINE_COMPLETION",
         "status": status,
@@ -193,6 +213,9 @@ def _report(manifest, errors, warnings, checks, validation, reproducibility, eva
         "validation_status": validation.get("status") if isinstance(validation, dict) else None,
         "reproducibility_status": reproducibility.get("status") if isinstance(reproducibility, dict) else None,
         "model_evaluation_status": evaluation.get("status") if isinstance(evaluation, dict) else None,
+        "validation_report_sha256": validation_report_sha256,
+        "reproducibility_audit_sha256": reproducibility_audit_sha256,
+        "model_evaluation_gate_sha256": model_evaluation_gate_sha256,
         "model_qualified": False,
         "checks": checks,
         "errors": errors,
