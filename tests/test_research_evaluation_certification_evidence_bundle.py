@@ -370,3 +370,27 @@ def test_verifier_rejects_unhashable_report_status_without_raising(tmp_path):
         error["code"] == "bundle_report_identity_or_status_mismatch" and error["role"] == "registry"
         for error in report["errors"]
     )
+
+
+@pytest.mark.parametrize(
+    ("declared_count", "expected_code"),
+    [
+        (True, "bundle_report_count_invalid"),
+        ("6", "bundle_report_count_invalid"),
+        (0, "bundle_report_count_invalid"),
+        (5, "bundle_report_count_mismatch"),
+        (7, "bundle_report_count_mismatch"),
+    ],
+)
+def test_verifier_rejects_invalid_or_inconsistent_declared_report_count(
+    tmp_path, declared_count, expected_code
+):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    bundle["report_count"] = declared_count
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == expected_code for error in report["errors"])
