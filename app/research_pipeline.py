@@ -212,7 +212,7 @@ def run_research_pipeline(
         raw_csv, symbol=instrument, timeframe=period
     )
     point_in_time_audit_path.write_text(
-        json.dumps(point_in_time_audit, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+        json.dumps(point_in_time_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     point_in_time_audit_sha256 = _sha256(point_in_time_audit_path)
