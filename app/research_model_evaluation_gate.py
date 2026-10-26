@@ -168,6 +168,22 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
                         error("invalid_fold_window", fold_loc,
                               f"{start_field} must precede {end_field}.")
 
+            # A walk-forward fold must preserve temporal order between data partitions.
+            # Merely validating each window independently would allow train/validation/test
+            # leakage through overlapping or reversed partition boundaries.
+            partition_boundaries = (
+                ("train_end_utc", "validation_start_utc"),
+                ("validation_end_utc", "test_start_utc"),
+            )
+            for earlier_end, later_start in partition_boundaries:
+                if earlier_end in parsed_times and later_start in parsed_times:
+                    if parsed_times[earlier_end] > parsed_times[later_start]:
+                        error(
+                            "fold_partition_overlap",
+                            fold_loc,
+                            f"{earlier_end} must not be later than {later_start}.",
+                        )
+
             metrics = fold.get("test_metrics")
             if not isinstance(metrics, dict):
                 error("test_metrics_missing", f"{fold_loc}.test_metrics",
