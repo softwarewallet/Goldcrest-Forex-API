@@ -16,3 +16,5 @@ For deliberately distinct baseline run IDs, the optional `--allow-baseline-id-va
 The audit snapshots each input's bytes and verifies that the same input identity/hash remains present after the underlying cohort audit. If an input changes while the audit is running, the result fails. The output refuses to overwrite an existing file or an input report.
 
 This is an integrity/provenance diagnostic, not a model-selection gate or profitability claim. Outputs preserve `automatic_model_selection=false`, `actionable=false`, and `execution_connected=false`. Identical predictions or metrics remain diagnostic observations and are not automatically classified as defects.
+
+Input comparison reports are parsed with strict JSON object handling. Duplicate keys are rejected so provenance fields cannot be shadowed by later duplicate entries.

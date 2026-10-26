@@ -189,3 +189,23 @@ def test_cross_report_integrity_detects_transient_mutation_restored_before_final
     assert any("snapshot receipts do not match" in error for error in result["errors"])
     assert second.read_bytes() == original
     assert result["actionable"] is False
+
+def test_cross_report_integrity_rejects_duplicate_json_keys(tmp_path):
+    first = _report(tmp_path / "cap1.json", 1.0)
+    second = _report(tmp_path / "cap8.json", 8.0)
+    original = first.read_text(encoding="utf-8")
+    first.write_text(
+        original.replace(
+            '"variant_run_id": "cap-1.0",',
+            '"variant_run_id": "cap-1.0",\n        "variant_run_id": "shadow-run",',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    result = audit_cross_report_integrity([str(first), str(second)])
+
+    assert result["status"] == "FAIL"
+    assert any("duplicate_json_key:variant_run_id" in error for error in result["errors"])
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
