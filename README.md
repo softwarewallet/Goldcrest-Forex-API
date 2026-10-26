@@ -88,6 +88,15 @@ when its generated audit has status `FAIL`. The audit is descriptive only: endpo
 separation is not a significance test, folds may be dependent, and it does not fit a
 calibrator, select a model, estimate profitability, or authorize execution.
 
+## Final pipeline completion integrity receipt
+
+Each completed research run writes a separate `<run-id>_pipeline_completion_audit.json`.
+It checks manifest self-integrity and links the validation and cross-artifact reproducibility
+receipts to the same run. Reproducibility/linkage failures fail the pipeline; validation
+findings and failed model-evaluation qualification remain visible as warnings unless the
+corresponding strict option is enabled. The receipt never qualifies a model or authorizes
+deployment. See `docs/end-to-end-research-validation.md`.
+
 ## Research run integrity audit
 
 After a completed offline research run, verify all artifact hashes and cross-file consistency:
