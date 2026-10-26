@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
+from app.research_atomic_output import write_text_no_clobber
 
 def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     payload = strict_json_loads(raw.decode("utf-8"))
@@ -136,10 +137,10 @@ def main() -> int:
             if args.output is None:
                 raise ValueError("output_required_for_create_mode")
             seal = create_inventory_spec_seal(spec)
-            if args.output.exists():
-                raise ValueError(f"output_already_exists:{args.output}")
-            args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+            write_text_no_clobber(
+                args.output,
+                json.dumps(seal, indent=2, sort_keys=True, allow_nan=False) + "\n",
+            )
             print(json.dumps({"status": "PASS", "inventory_spec_sha256": seal["inventory_spec_sha256"],
                               "seal_path": str(args.output.resolve()), "deployment_authorized": False}, indent=2))
             return 0
