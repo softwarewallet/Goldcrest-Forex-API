@@ -149,3 +149,22 @@ def test_explicit_null_report_warnings_cannot_be_sealed():
     with pytest.raises(ValueError, match="warnings_invalid"):
         create_report_seal(payload)
 
+
+
+def test_scope_limitations_tampering_is_detected():
+    payload = report()
+    seal = create_report_seal(payload)
+    seal["scope_limitations"] = ["All claims are independently authenticated."]
+    verified = verify_report_seal(payload, seal)
+    assert verified["status"] == "FAIL"
+    assert any(item.get("field") == "scope_limitations" for item in verified["errors"])
+
+
+def test_unexpected_seal_metadata_is_rejected():
+    payload = report()
+    seal = create_report_seal(payload)
+    seal["producer_verified"] = True
+    verified = verify_report_seal(payload, seal)
+    assert verified["status"] == "FAIL"
+    assert any(item.get("code") == "REPORT_SEAL_UNEXPECTED_FIELD"
+               and item.get("field") == "producer_verified" for item in verified["errors"])
