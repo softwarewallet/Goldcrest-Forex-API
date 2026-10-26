@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.research_strict_json import strict_json_loads
+
 from app.research_label_eligibility_seed_sweep import (
     DEFAULT_SEEDS,
     parse_random_seeds,
@@ -65,28 +67,9 @@ def choose_threshold_report_path(output_dir: str | Path, prefix: str) -> Path:
     raise ValueError("unable_to_find_free_threshold_sweep_report_path_after_10000_attempts")
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects containing repeated keys."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _read_json(path: str | Path) -> dict[str, Any]:
     try:
-        value = json.loads(
-            Path(path).read_text(encoding="utf-8"),
-            object_pairs_hook=_reject_duplicate_json_keys,
-            parse_constant=_reject_nonstandard_json_constant,
-        )
+        value = strict_json_loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"json_unreadable:{path}") from exc
     if not isinstance(value, dict):
@@ -105,7 +88,7 @@ def _fold_signature(report: Mapping[str, Any]) -> list[Any]:
     }
     if len(signatures) != 1:
         raise ValueError("seed_sweep_report_fold_windows_not_consistent")
-    signature = json.loads(next(iter(signatures)))
+    signature = strict_json_loads(next(iter(signatures)))
     if not isinstance(signature, list) or not signature:
         raise ValueError("seed_sweep_report_fold_signature_invalid")
     return signature
