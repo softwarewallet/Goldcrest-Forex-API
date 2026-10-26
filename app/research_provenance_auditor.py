@@ -11,6 +11,32 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 def _is_sha256(value: object) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(
         char in "0123456789abcdef" for char in value.lower()
@@ -162,11 +188,12 @@ def audit_experiment_matrix(payload: Mapping[str, Any]) -> dict[str, Any]:
 def audit_experiment_matrix_file(source: str | Path, destination: str | Path | None = None) -> dict[str, Any]:
     """Audit a JSON report and optionally write a deterministic JSON audit receipt."""
     source_path = Path(source)
-    payload = json.loads(source_path.read_text(encoding="utf-8"))
+    raw = source_path.read_bytes()
+    payload = _load_json_object(raw, source=str(source_path))
     if not isinstance(payload, dict):
         raise ValueError("experiment matrix report must be a JSON object")
     result = audit_experiment_matrix(payload)
-    result["source_report_sha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    result["source_report_sha256"] = hashlib.sha256(raw).hexdigest()
     if destination is not None:
         target = Path(destination)
         target.parent.mkdir(parents=True, exist_ok=True)
