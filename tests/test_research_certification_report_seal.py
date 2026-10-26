@@ -75,6 +75,14 @@ def test_missing_explicit_false_safety_flag_fails():
     assert any(item.get("field") == "deployment_authorized" for item in verified["errors"])
 
 
+@pytest.mark.parametrize("status", [["PASS"], {"value": "PASS"}])
+def test_unhashable_report_status_is_rejected_as_validation_error(status):
+    payload = report()
+    payload["status"] = status
+    with pytest.raises(ValueError, match="status_invalid"):
+        create_report_seal(payload)
+
+
 @pytest.mark.parametrize("status", ["UNKNOWN", None, 3])
 def test_invalid_report_status_is_rejected(status):
     payload = report()
