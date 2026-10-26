@@ -411,7 +411,7 @@ def _artifact_record(
         if flag in report and report.get(flag) is not False:
             errors.append(f"{section_name}_{flag}_must_be_false")
     status = report.get("status")
-    if status not in _ALLOWED_STATUSES:
+    if not isinstance(status, str) or status not in _ALLOWED_STATUSES:
         errors.append(f"{section_name}_status_invalid")
     elif status == "FAIL":
         errors.append(f"{section_name}_reported_fail")
@@ -540,7 +540,7 @@ def build_evidence_interpretation(
             for item in baseline.get("warnings", [])
         )
     )
-    if isinstance(baseline, dict) and baseline.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+    if isinstance(baseline, dict) and isinstance(baseline.get("status"), str) and baseline.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
         experiments = baseline.get("experiments")
         for experiment in experiments if isinstance(experiments, list) else []:
             if not isinstance(experiment, dict):
@@ -608,7 +608,7 @@ def build_evidence_interpretation(
         "deltas_unavailable": 0,
     }
     calibration_rows: list[dict[str, Any]] = []
-    if isinstance(calibration, dict) and calibration.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+    if isinstance(calibration, dict) and isinstance(calibration.get("status"), str) and calibration.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
         raw_comparisons = calibration.get("comparisons")
         for row in raw_comparisons if isinstance(raw_comparisons, list) else []:
             if not isinstance(row, dict) or row.get("partition") not in (None, "test"):
@@ -652,7 +652,7 @@ def build_evidence_interpretation(
         "intervals_including_zero": 0,
         "intervals_unavailable": 0,
     }
-    if isinstance(regimes, dict) and regimes.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+    if isinstance(regimes, dict) and isinstance(regimes.get("status"), str) and regimes.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
         experiments = regimes.get("experiments")
         for experiment in experiments if isinstance(experiments, list) else []:
             if not isinstance(experiment, dict):
@@ -819,7 +819,7 @@ def build_evidence_interpretation(
         "prediction_horizon_crosses_long_gap_count": None,
         "prediction_horizon_crosses_long_gap_fraction": None,
     }
-    if isinstance(temporal_stability, dict) and temporal_stability.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
+    if isinstance(temporal_stability, dict) and isinstance(temporal_stability.get("status"), str) and temporal_stability.get("status") in {"PASS", "PASS_WITH_WARNINGS"}:
         gap_summary = {
             "status": temporal_stability.get("status"),
             "long_gap_count": temporal_stability.get("long_gap_count"),
