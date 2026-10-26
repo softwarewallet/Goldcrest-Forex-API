@@ -39,6 +39,7 @@ def certification(status="PASS"):
         "audit_name": "research_final_certification_chain",
         "status": status,
         "errors": [],
+        "warnings": ["fixture warning"] if status == "PASS_WITH_WARNINGS" else [],
         **FLAGS,
     }
 
@@ -150,3 +151,65 @@ def test_explicit_null_warnings_fails_closed():
     assert report["status"] == "FAIL"
     assert any(item["code"] == "input_warnings_schema_invalid" for item in report["errors"])
 
+
+
+@pytest.mark.parametrize(
+    ("report_name", "bad_status"),
+    [("freshness", ["PASS"]), ("certification", {"value": "PASS"})],
+)
+def test_unhashable_status_values_fail_closed(report_name, bad_status):
+    fresh = freshness()
+    cert = certification()
+    (fresh if report_name == "freshness" else cert)["status"] = bad_status
+
+    report = gate_freshness_certification(fresh, cert)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_report_not_passing" and error["report"] == report_name
+        for error in report["errors"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "warnings"),
+    [("PASS", ["unexpected warning"]), ("PASS_WITH_WARNINGS", [])],
+)
+def test_gate_rejects_status_warning_mismatch(status, warnings):
+    fresh = freshness()
+    fresh["status"] = status
+    fresh["warnings"] = warnings
+
+    report = gate_freshness_certification(fresh, certification())
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_status_warning_mismatch" and error["report"] == "freshness"
+        for error in report["errors"]
+    )
+
+
+def test_gate_rejects_certification_pass_with_warnings_but_no_warning_status():
+    cert = certification("PASS")
+    cert["warnings"] = ["unexpected warning"]
+
+    report = gate_freshness_certification(freshness(), cert)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_status_warning_mismatch" and error["report"] == "certification"
+        for error in report["errors"]
+    )
+
+
+def test_gate_requires_warning_for_pass_with_warnings_certification():
+    cert = certification("PASS_WITH_WARNINGS")
+    cert["warnings"] = []
+
+    report = gate_freshness_certification(freshness(), cert)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_status_warning_mismatch" and error["report"] == "certification"
+        for error in report["errors"]
+    )
