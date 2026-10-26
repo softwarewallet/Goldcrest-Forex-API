@@ -43,6 +43,12 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _is_sha256_hex(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(
+        character in "0123456789abcdef" for character in value
+    )
+
+
 def _resolve(value: object, manifest_path: Path) -> Path | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -182,6 +188,14 @@ def audit_pipeline_completion(
         if evaluation_source_hash != expected_evaluation_hash:
             raise ValueError("model_evaluation_gate_sha256_mismatch")
         checks["model_evaluation_gate_file_hash"] = "PASS"
+        if evaluation.get("run_id") != run_id:
+            errors.append({"code": "model_evaluation_gate_run_id_mismatch", "report": "model_evaluation_gate"})
+        expected_matrix_sha256 = manifest.get("experiment_matrix_report_sha256")
+        if expected_matrix_sha256 is not None:
+            if not _is_sha256_hex(expected_matrix_sha256):
+                errors.append({"code": "manifest_experiment_matrix_sha256_invalid", "report": "pipeline_manifest"})
+            elif evaluation.get("source_matrix_sha256") != expected_matrix_sha256:
+                errors.append({"code": "model_evaluation_gate_source_matrix_sha256_mismatch", "report": "model_evaluation_gate"})
         evaluation_errors = evaluation.get("errors")
         if not isinstance(evaluation_errors, list):
             errors.append({"code": "model_evaluation_gate_errors_schema_invalid", "report": "model_evaluation_gate"})
