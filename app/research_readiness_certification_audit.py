@@ -166,6 +166,12 @@ def audit_research_readiness(
                 entry_errors.append("upstream_errors_field_missing_or_invalid")
             elif upstream_errors:
                 entry_errors.append("upstream_report_contains_errors")
+            upstream_warnings = payload.get("warnings")
+            if upstream_warnings is not None and (
+                not isinstance(upstream_warnings, list)
+                or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
+            ):
+                entry_errors.append("upstream_warnings_field_invalid")
 
             for flag in REQUIRED_FALSE_FLAGS:
                 if payload.get(flag) is not False:
