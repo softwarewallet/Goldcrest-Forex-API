@@ -113,3 +113,33 @@ def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, 
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+def test_missing_errors_array_fails_closed():
+    fresh = freshness()
+    fresh.pop("errors")
+    report = gate_freshness_certification(fresh, certification())
+    assert report["status"] == "FAIL"
+    assert any(
+        item["code"] == "input_errors_schema_invalid" and item["report"] == "freshness"
+        for item in report["errors"]
+    )
+
+
+def test_malformed_empty_errors_value_fails_closed():
+    cert = certification()
+    cert["errors"] = {}
+    report = gate_freshness_certification(freshness(), cert)
+    assert report["status"] == "FAIL"
+    assert any(
+        item["code"] == "input_errors_schema_invalid" and item["report"] == "certification"
+        for item in report["errors"]
+    )
+
+
+def test_malformed_warnings_value_fails_closed():
+    fresh = freshness()
+    fresh["warnings"] = {"unexpected": "object"}
+    report = gate_freshness_certification(fresh, certification())
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "input_warnings_schema_invalid" for item in report["errors"])
+
