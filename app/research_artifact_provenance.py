@@ -221,7 +221,13 @@ def verify_provenance(
             errors.append({"code": f"CURRENT_{label.upper()}_UNAVAILABLE", "detail": str(exc)})
 
     entries = manifest.get("artifacts")
-    if not isinstance(entries, list) or manifest.get("artifact_count") != len(entries):
+    declared_artifact_count = manifest.get("artifact_count")
+    if (
+        not isinstance(entries, list)
+        or not isinstance(declared_artifact_count, int)
+        or isinstance(declared_artifact_count, bool)
+        or declared_artifact_count != len(entries)
+    ):
         errors.append({"code": "ARTIFACT_INVENTORY_INVALID"})
         entries = entries if isinstance(entries, list) else []
     root = root.resolve(strict=True)
