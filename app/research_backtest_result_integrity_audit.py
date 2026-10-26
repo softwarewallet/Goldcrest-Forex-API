@@ -13,6 +13,32 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 _FALSE_FLAGS = {
     "actionable": False,
     "inferential": False,
@@ -273,7 +299,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         raw = args.input.read_bytes()
-        manifest = json.loads(raw.decode("utf-8"))
+        manifest = _load_json_object(raw, source=str(args.input))
         report = audit_backtest_result_integrity(
             manifest,
             manifest_sha256=_sha256(raw),
