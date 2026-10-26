@@ -550,6 +550,25 @@ def test_component_report_claiming_pass_with_errors_blocks_certification(monkeyp
 @pytest.mark.parametrize(
     "payload",
     [
+        {"status": ["PASS"], "errors": [], "warnings": []},
+        {"status": {"value": "PASS"}, "errors": [], "warnings": []},
+        {"status": "UNKNOWN", "errors": [], "warnings": []},
+        {"status": "PASS_WITH_WARNINGS", "errors": [], "warnings": []},
+        {"status": "PASS_WITH_WARNINGS", "errors": [{"code": "failure"}], "warnings": ["warning"]},
+    ],
+)
+def test_component_report_contract_rejects_invalid_status_and_warning_consistency(payload):
+    from app.research_unified_provenance_certification import _normalize_component_report
+
+    normalized = _normalize_component_report("test_component", payload)
+
+    assert normalized["status"] == "FAIL"
+    assert normalized["component_report_rejected"] is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
         None,
         [],
         {"status": "PASS", "errors": "not-a-list"},
