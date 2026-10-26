@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -198,3 +199,56 @@ def test_verifier_rejects_explicit_null_warnings_in_upstream_report(tmp_path):
         for error in report["errors"]
     )
 
+
+
+def _refresh_bundle_digest(bundle):
+    body = dict(bundle)
+    body.pop("bundle_sha256", None)
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    bundle["bundle_sha256"] = hashlib.sha256(canonical).hexdigest()
+
+
+def test_verifier_binds_top_level_plan_identity_to_plan_report(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    bundle["plan_id"] = "different-plan"
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "bundle_report_plan_binding_mismatch" and item["role"] == "plan" for item in report["errors"])
+
+
+def test_verifier_binds_top_level_registry_identity_to_registry_report(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    bundle["registry_id"] = "different-registry"
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "bundle_report_registry_binding_mismatch" and item["role"] == "registry" for item in report["errors"])
+
+
+def test_builder_rejects_invalid_plan_identity(tmp_path):
+    paths = fixture(tmp_path)
+    plan_path = paths["plan"]
+    payload = json.loads(plan_path.read_text(encoding="utf-8"))
+    payload["plan_sha256"] = "not-a-digest"
+    plan_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="plan_sha256_invalid:plan"):
+        build_evidence_bundle(paths)
+
+
+def test_builder_rejects_missing_registry_identity(tmp_path):
+    paths = fixture(tmp_path)
+    registry_path = paths["registry"]
+    payload = json.loads(registry_path.read_text(encoding="utf-8"))
+    payload["registry_id"] = "   "
+    registry_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="registry_id_invalid:registry"):
+        build_evidence_bundle(paths)
