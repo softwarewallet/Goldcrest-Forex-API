@@ -40,6 +40,8 @@ def canonical_inventory_spec_bytes(spec: dict[str, Any]) -> bytes:
         raise ValueError("inventory_spec_required_artifacts_must_be_list")
     if not entries:
         raise ValueError("inventory_spec_artifacts_must_not_be_empty")
+    seen_ids: set[str] = set()
+    seen_paths: set[str] = set()
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
             raise ValueError(f"inventory_spec_artifact_entry_must_be_object:{index}")
@@ -48,6 +50,9 @@ def canonical_inventory_spec_bytes(spec: dict[str, Any]) -> bytes:
             raise ValueError(f"inventory_spec_artifact_id_required:{index}")
         if artifact_id != artifact_id.strip():
             raise ValueError(f"inventory_spec_artifact_id_must_be_canonical_unpadded:{index}")
+        if artifact_id in seen_ids:
+            raise ValueError(f"inventory_spec_duplicate_artifact_id:{index}")
+        seen_ids.add(artifact_id)
         path = entry.get("path")
         if not isinstance(path, str) or not path.strip():
             raise ValueError(f"inventory_spec_artifact_path_required:{index}")
@@ -56,6 +61,9 @@ def canonical_inventory_spec_bytes(spec: dict[str, Any]) -> bytes:
         parsed_path = PurePosixPath(path)
         if parsed_path.is_absolute() or ".." in parsed_path.parts or path == "." or "\\" in path or parsed_path.as_posix() != path:
             raise ValueError(f"inventory_spec_artifact_path_must_be_safe_normalized_posix:{index}")
+        if path in seen_paths:
+            raise ValueError(f"inventory_spec_duplicate_artifact_path:{index}")
+        seen_paths.add(path)
     return (json.dumps(spec, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
                        allow_nan=False) + "\n").encode("utf-8")
 
