@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from app.research_backtest_result_integrity_audit import audit_backtest_result_integrity
+from app.research_backtest_result_integrity_audit import audit_backtest_result_integrity, _load_json_object
 
 
 def sha(value: bytes) -> str:
@@ -114,3 +114,14 @@ def test_invalid_hash_and_tolerance_rejected():
         audit_backtest_result_integrity(manifest(), manifest_sha256="bad")
     with pytest.raises(ValueError, match="equity_tolerance"):
         audit(manifest(), equity_tolerance=-1)
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_json_loader_rejects_duplicate_keys_and_nonstandard_constants(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="test-manifest.json")
