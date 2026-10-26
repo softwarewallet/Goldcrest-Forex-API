@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.research_label_eligibility_seed_sweep import (
+from app import research_label_eligibility_seed_sweep as seed_sweep\nfrom app.research_label_eligibility_seed_sweep import (
     _read_json,
     _fold_eligibility_counts,
     _fold_signature,
@@ -239,3 +239,15 @@ def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
     path.write_text(payload, encoding="utf-8")
     with pytest.raises(ValueError):
         _read_json(path)
+
+
+@pytest.mark.parametrize("status", [["PASS"], {"status": "PASS"}, None, 7])
+def test_seed_sweep_rejects_malformed_comparison_status(status):
+    comparison = {
+        "status": status,
+        "actionable": False,
+        "execution_connected": False,
+        "automatic_model_selection": False,
+    }
+    with pytest.raises(ValueError, match="comparison_status_not_pass"):
+        seed_sweep._extract_seed_result(1, {}, comparison)
