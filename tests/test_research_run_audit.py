@@ -84,6 +84,48 @@ def _build_valid_run(tmp_path: Path) -> Path:
     return manifest_path
 
 
+def test_audit_accepts_matching_provider_terms_lineage(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest_path = Path(manifest["dataset_manifest_path"])
+    dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    reference = "https://example.test/provider-terms"
+    reference_hash = hashlib.sha256(reference.encode("utf-8")).hexdigest()
+    dataset_manifest["terms_reference"] = reference
+    dataset_manifest["terms_reference_sha256"] = reference_hash
+    _write_json(dataset_manifest_path, dataset_manifest)
+    manifest["dataset_manifest_sha256"] = _sha(dataset_manifest_path)
+    manifest["terms_reference"] = reference
+    manifest["terms_reference_sha256"] = reference_hash
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "PASS"
+    assert result["errors"] == []
+
+
+def test_audit_rejects_unlinked_provider_terms_reference(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    reference = "https://example.test/provider-terms"
+    manifest["terms_reference"] = reference
+    manifest["terms_reference_sha256"] = hashlib.sha256(reference.encode("utf-8")).hexdigest()
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "FAIL"
+    assert "dataset_manifest_terms_reference_missing" in result["errors"]
+    assert "terms_reference_sha256_mismatch_between_manifests" in result["errors"]
+
+
 def test_audit_accepts_consistent_research_run(tmp_path):
     result = audit_research_run_manifest(_build_valid_run(tmp_path))
     assert result["status"] == "PASS"
