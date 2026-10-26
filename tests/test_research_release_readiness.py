@@ -47,6 +47,8 @@ def test_gate_fails_closed_without_complete_pipeline_artifacts(tmp_path):
     assert result["deployment_authorized"] is False
     assert "cross_artifact_integrity_failed" in result["errors"]
     assert "pipeline_completion_receipt_missing" in result["errors"]
+    assert "provider_terms_reference_is_placeholder" not in result["errors"]
+    assert "provider_terms_reference_must_be_http_or_https_uri" not in result["errors"]
 
 
 def test_gate_detects_provider_evidence_hash_mismatch(tmp_path):
