@@ -475,3 +475,31 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+ 
+@pytest.mark.parametrize(
+    "target,error_code",
+    [
+        ("verify_manifest_seal", "PROVENANCE_SEAL_VERIFICATION_EXECUTION_FAILED"),
+        ("verify_inventory_spec_seal", "INVENTORY_SPEC_SEAL_VERIFICATION_EXECUTION_FAILED"),
+        ("gate_freshness_certification", "FRESHNESS_CERTIFICATION_GATE_EXECUTION_FAILED"),
+    ],
+)
+def test_component_verifier_exceptions_return_consolidated_failure(
+    monkeypatch, tmp_path, target, error_code
+):
+    import app.research_unified_provenance_certification as module
+
+    def fail(*args, **kwargs):
+        raise ValueError("injected_component_failure")
+
+    monkeypatch.setattr(module, target, fail)
+    report = call(monkeypatch, tmp_path)
+    assert report["status"] == "FAIL"
+    assert report["deployment_authorized"] is False
+    assert any(error["code"] == error_code for error in (
+        report["errors"]
+        + report["provenance_manifest_seal_verification"].get("errors", [])
+        + report["artifact_inventory_spec_seal_verification"].get("errors", [])
+        + report["freshness_certification_gate"].get("errors", [])
+    ))
