@@ -141,3 +141,17 @@ def test_audit_rejects_duplicate_declared_model_types():
     result = audit_experiment_matrix(payload)
     assert result["status"] == "FAIL"
     assert "duplicate_declared_model_types" in result["errors"]
+
+
+
+def test_audit_receipt_refuses_to_overwrite_existing_destination(tmp_path):
+    source = tmp_path / "source.json"
+    destination = tmp_path / "receipt.json"
+    source.write_text(json.dumps(sample_report()), encoding="utf-8")
+    original = '{"owner":"existing"}\n'
+    destination.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="output_already_exists"):
+        audit_experiment_matrix_file(source, destination)
+
+    assert destination.read_text(encoding="utf-8") == original
