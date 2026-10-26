@@ -185,7 +185,7 @@ def test_registry_report_with_errors_fails_closed(tmp_path):
         audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
 
 
-@pytest.mark.parametrize("warnings", [{"not": "a-list"}, [""], [None], ["valid", 1]])
+@pytest.mark.parametrize("warnings", [None, {"not": "a-list"}, [""], [None], ["valid", 1]])
 def test_registry_malformed_warnings_fail_closed(tmp_path, warnings):
     plan, registry = fixture(tmp_path)
     registry["warnings"] = warnings
