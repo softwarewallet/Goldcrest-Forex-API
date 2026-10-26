@@ -310,6 +310,8 @@ def audit_research_release_readiness(
         "execution_connected": False,
         "model_training_performed": False,
         "automatic_model_selection": False,
+        "automatic_winner_selection": False,
+        "test_metrics_used_for_selection": False,
         "automatic_repair_performed": False,
         "model_qualified": False,
         "deployment_authorized": False,
