@@ -250,6 +250,8 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
         "errors": errors,
         "warnings": warnings,
         "actionable": False,
+        "test_metrics_used_for_selection": payload.get("test_metrics_used_for_selection"),
+        "automatic_winner_selection": payload.get("automatic_winner_selection"),
         "interpretation": (
             "PASS means only that the checked report structure, recorded safeguards, and metric ranges "
             "are internally consistent. It does not prove leakage-free research, model quality, statistical "
