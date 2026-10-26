@@ -540,6 +540,32 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if pipeline_value is not None and dataset_manifest.get(dataset_field) is not None and dataset_manifest.get(dataset_field) != pipeline_value:
                 errors.append(error_name)
 
+    # Newer runs bind the provider-terms reference across the pipeline and dataset
+    # manifests. This proves recorded-reference consistency and detects later drift; it
+    # does not independently certify the legal applicability of the referenced terms.
+    if any(
+        field in manifest or field in dataset_manifest
+        for field in ("terms_reference", "terms_reference_sha256")
+    ):
+        for prefix, payload in (("pipeline", manifest), ("dataset_manifest", dataset_manifest)):
+            reference = payload.get("terms_reference")
+            declared_hash = payload.get("terms_reference_sha256")
+            if not isinstance(reference, str) or not reference.strip():
+                errors.append(f"{prefix}_terms_reference_missing")
+                continue
+            actual_hash = hashlib.sha256(reference.strip().encode("utf-8")).hexdigest()
+            if not isinstance(declared_hash, str) or declared_hash != actual_hash:
+                errors.append(f"{prefix}_terms_reference_sha256_mismatch")
+        pipeline_reference = manifest.get("terms_reference")
+        dataset_reference = dataset_manifest.get("terms_reference")
+        if isinstance(pipeline_reference, str) and isinstance(dataset_reference, str):
+            if pipeline_reference.strip() != dataset_reference.strip():
+                errors.append("terms_reference_mismatch_between_manifests")
+        pipeline_terms_hash = manifest.get("terms_reference_sha256")
+        dataset_terms_hash = dataset_manifest.get("terms_reference_sha256")
+        if pipeline_terms_hash != dataset_terms_hash:
+            errors.append("terms_reference_sha256_mismatch_between_manifests")
+
     label_cap = manifest.get("max_label_elapsed_hours")
     eligibility_mode = manifest.get("label_eligibility_mode", "all_labels_included")
     dataset_eligibility = dataset_manifest.get("label_eligibility")
