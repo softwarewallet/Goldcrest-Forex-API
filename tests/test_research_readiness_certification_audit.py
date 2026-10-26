@@ -25,6 +25,9 @@ def write_report(tmp_path, name, extra=None, status="PASS"):
         "execution_connected": False,
         "model_training_performed": False,
         "automatic_model_selection": False,
+        "statistical_significance_claimed": False,
+        "automatic_repair_performed": False,
+        "deployment_authorized": False,
     }
     payload.update(extra or {})
     path = tmp_path / f"{name}.json"
@@ -403,3 +406,37 @@ def test_readiness_rejects_noncanonical_artifact_audit_name(tmp_path):
 
     assert report["status"] == "FAIL"
     assert any(error["code"] == "audit_name_invalid" for error in report["errors"])
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "actionable",
+        "inferential",
+        "statistical_significance_claimed",
+        "automatic_model_selection",
+        "model_training_performed",
+        "execution_connected",
+        "automatic_repair_performed",
+        "deployment_authorized",
+    ],
+)
+@pytest.mark.parametrize("mode", ["missing", "true"])
+def test_readiness_requires_all_safety_flags_explicitly_false(tmp_path, flag, mode):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_backend_parity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if mode == "missing":
+        payload.pop(flag, None)
+    else:
+        payload[flag] = True
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    report = run_audit(tmp_path, manifest_for(reports))
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == f"required_safety_flag_not_explicitly_false:{flag}"
+        and error["audit_name"] == "feature_backend_parity"
+        for error in report["errors"]
+    )
