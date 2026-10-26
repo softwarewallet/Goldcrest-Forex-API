@@ -262,7 +262,7 @@ def run_research_pipeline(
         max_label_elapsed_hours=max_label_elapsed_hours,
     )
     label_maturity_audit_path.write_text(
-        json.dumps(label_maturity_audit, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+        json.dumps(label_maturity_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     label_maturity_audit_sha256 = _sha256(label_maturity_audit_path)
