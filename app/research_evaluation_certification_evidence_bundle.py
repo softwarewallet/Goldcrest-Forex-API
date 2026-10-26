@@ -36,6 +36,16 @@ def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _valid_identity_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _valid_sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(
+        character in "0123456789abcdef" for character in value
+    )
+
+
 def _canonical(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
@@ -97,6 +107,10 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
         plan_sha = payload.get("plan_sha256")
         registry_id = payload.get("registry_id")
         if role == "plan":
+            if not _valid_identity_string(plan_id):
+                raise ValueError("plan_id_invalid:plan")
+            if not _valid_sha256(plan_sha):
+                raise ValueError("plan_sha256_invalid:plan")
             shared_plan_id, shared_plan_sha = plan_id, plan_sha
         else:
             if plan_id != shared_plan_id and shared_plan_id is not None:
@@ -106,6 +120,8 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
             if role != "registry" and registry_id != shared_registry_id and shared_registry_id is not None:
                 raise ValueError(f"registry_id_mismatch:{role}")
         if role == "registry":
+            if not _valid_identity_string(registry_id):
+                raise ValueError("registry_id_invalid:registry")
             shared_registry_id = registry_id
         entries[role] = {
             "path": path.name,
@@ -146,6 +162,12 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
         errors.append({"code": "bundle_sha256_mismatch"})
     if bundle.get("status") != "PASS":
         errors.append({"code": "bundle_status_not_passing"})
+    if not _valid_identity_string(bundle.get("plan_id")):
+        errors.append({"code": "bundle_plan_id_invalid"})
+    if not _valid_sha256(bundle.get("plan_sha256")):
+        errors.append({"code": "bundle_plan_sha256_invalid"})
+    if not _valid_identity_string(bundle.get("registry_id")):
+        errors.append({"code": "bundle_registry_id_invalid"})
     for flag, expected in FALSE_FLAGS.items():
         if bundle.get(flag) is not expected:
             errors.append({"code": "bundle_safety_flag_not_false", "flag": flag})
@@ -213,10 +235,10 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
         if _identity(payload) != entry.get("identity"):
             errors.append({"code": "bundle_report_identity_metadata_mismatch", "role": role})
             continue
-        if role != "plan" and (payload.get("plan_id") != bundle.get("plan_id") or payload.get("plan_sha256") != bundle.get("plan_sha256")):
+        if payload.get("plan_id") != bundle.get("plan_id") or payload.get("plan_sha256") != bundle.get("plan_sha256"):
             errors.append({"code": "bundle_report_plan_binding_mismatch", "role": role})
             continue
-        if role not in {"plan", "registry"} and payload.get("registry_id") != bundle.get("registry_id"):
+        if role != "plan" and payload.get("registry_id") != bundle.get("registry_id"):
             errors.append({"code": "bundle_report_registry_binding_mismatch", "role": role})
             continue
         verified += 1
