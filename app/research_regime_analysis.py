@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.research_strict_json import strict_json_loads
+
 from app.research_baseline_analysis import (
     _brier,
     _log_loss,
@@ -36,7 +38,7 @@ _PREDICTION_BASELINES = {
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value
