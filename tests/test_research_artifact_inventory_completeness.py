@@ -117,3 +117,32 @@ def test_invalid_specification_fails_closed():
     payload["schema_version"] = 99
     with pytest.raises(ValueError, match="schema_version_unsupported"):
         audit_artifact_inventory_completeness(manifest(), payload)
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"audit_name":"research_artifact_provenance_manifest","audit_name":"shadowed"}',
+        b'{"metric":NaN}',
+        b'{"metric":Infinity}',
+        b'{"metric":-Infinity}',
+    ],
+)
+def test_inventory_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, raw):
+    from app.research_artifact_inventory_completeness import _read_object
+
+    path = tmp_path / "input.json"
+    path.write_bytes(raw)
+
+    with pytest.raises(ValueError):
+        _read_object(path)
+
+
+def test_inventory_reader_requires_object_root(tmp_path):
+    from app.research_artifact_inventory_completeness import _read_object
+
+    path = tmp_path / "input.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="json_root_must_be_object"):
+        _read_object(path)
+
