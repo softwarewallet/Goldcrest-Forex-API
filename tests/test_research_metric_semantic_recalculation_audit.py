@@ -160,7 +160,7 @@ def test_registry_nonempty_errors_fails_closed(tmp_path):
         audit_metric_semantics(plan, registry, registry_root=tmp_path)
 
 
-@pytest.mark.parametrize("warnings", [{"bad": "shape"}, [""], [None], ["ok", 1]])
+@pytest.mark.parametrize("warnings", [None, {"bad": "shape"}, [""], [None], ["ok", 1]])
 def test_registry_malformed_warnings_fails_closed(tmp_path, warnings):
     plan, registry = fixture(tmp_path)
     registry["warnings"] = warnings
