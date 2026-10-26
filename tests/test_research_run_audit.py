@@ -56,6 +56,8 @@ def _build_valid_run(tmp_path: Path) -> Path:
     manifest = {
         "schema_version": 1,
         "run_id": "run-001",
+        "symbol": "EURUSD",
+        "timeframe": "M15",
         "raw_ohlc_path": str(raw),
         "raw_ohlc_sha256": _sha(raw),
         "raw_ohlc_audit_path": str(raw_audit),
