@@ -87,6 +87,33 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
         )
         return manifest
 
+    monkeypatch.setattr(
+        research_pipeline,
+        "audit_point_in_time_invariance",
+        lambda source, **kwargs: {
+            "schema_version": 1,
+            "audit_name": "research_point_in_time_feature_invariance_audit",
+            "scope": "OFFLINE_OHLC_PREFIX_INVARIANCE",
+            "status": "PASS",
+            "source_path": str(source),
+            "source_sha256": research_pipeline._sha256(source),
+            "symbol": kwargs["symbol"],
+            "timeframe": kwargs["timeframe"],
+            "rows": 1,
+            "feature_count": 1,
+            "feature_names": ["ret_1"],
+            "indicator_backend": "test",
+            "cutoff_rows_checked": [0],
+            "cutoff_count": 1,
+            "feature_values_compared": 1,
+            "errors": [],
+            "warnings": [],
+            "actionable": False,
+            "execution_connected": False,
+            "model_training_performed": False,
+            "automatic_model_selection": False,
+        },
+    )
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
     monkeypatch.setattr(
         research_pipeline,
@@ -136,6 +163,11 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     assert stored["actionable"] is False
     assert stored["raw_ohlc_sha256"]
     assert stored["raw_ohlc_audit_status"] == "PASS_WITH_WARNINGS"
+    assert stored["point_in_time_feature_invariance_audit_status"] == "PASS"
+    point_in_time_path = Path(stored["point_in_time_feature_invariance_audit_path"])
+    point_in_time_report = json.loads(point_in_time_path.read_text(encoding="utf-8"))
+    assert point_in_time_report["source_sha256"] == stored["raw_ohlc_sha256"]
+    assert stored["point_in_time_feature_invariance_audit_sha256"] == research_pipeline._sha256(point_in_time_path)
     raw_audit_path = Path(stored["raw_ohlc_audit_path"])
     assert raw_audit_path.is_file()
     raw_audit = json.loads(raw_audit_path.read_text(encoding="utf-8"))
@@ -417,3 +449,40 @@ def test_pipeline_stops_before_training_when_feature_source_audit_fails(tmp_path
         )
 
     assert not (tmp_path / "run" / "feature-source-gate_experiment_matrix.json").exists()
+
+
+
+def test_pipeline_stops_before_dataset_preparation_when_point_in_time_audit_fails(tmp_path, monkeypatch):
+    raw = tmp_path / "ohlc.csv"
+    raw.write_text(
+        "symbol,timeframe,timestamp,open,high,low,close\n"
+        "EURUSD,M15,2026-01-01T00:00:00Z,1,1.1,0.9,1.05\n",
+        encoding="utf-8",
+    )
+
+    def should_not_prepare(*args, **kwargs):
+        pytest.fail("dataset preparation must not run when point-in-time invariance fails")
+
+    monkeypatch.setattr(research_pipeline, "prepare_research_dataset", should_not_prepare)
+    monkeypatch.setattr(
+        research_pipeline,
+        "audit_point_in_time_invariance",
+        lambda *args, **kwargs: {
+            "status": "FAIL",
+            "source_sha256": research_pipeline._sha256(raw),
+            "errors": [{"code": "future_data_changed_past_feature"}],
+        },
+    )
+
+    with pytest.raises(ValueError, match="point-in-time feature invariance audit failed before feature preparation"):
+        research_pipeline.run_research_pipeline(
+            symbol="EURUSD", timeframe="M15", horizon_bars=4, class_1_means="UP",
+            terms_reference="actual provider terms", source_version="test-export-v1",
+            output_dir=tmp_path / "run", run_id="point-in-time-gate",
+            retrieved_at_utc="2026-10-23T00:00:00Z", ohlc_csv=raw,
+            initial_train_bars=100, validation_bars=20, test_bars=20, step_bars=20,
+        )
+
+    report_path = tmp_path / "run" / "point-in-time-gate_point_in_time_feature_invariance.json"
+    assert report_path.is_file()
+    assert not (tmp_path / "run" / "point-in-time-gate_EURUSD_M15_research_dataset.csv").exists()
