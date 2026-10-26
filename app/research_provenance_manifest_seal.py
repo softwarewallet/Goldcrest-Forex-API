@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
@@ -50,15 +50,32 @@ def create_manifest_seal(manifest: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("manifest_artifacts_must_be_list")
     if manifest.get("artifact_count") != len(artifacts):
         raise ValueError("manifest_artifact_count_mismatch")
+    seen_ids: set[str] = set()
+    seen_paths: set[str] = set()
     for index, artifact in enumerate(artifacts):
         if not isinstance(artifact, dict):
             raise ValueError(f"manifest_artifact_entry_invalid:{index}")
         artifact_id = artifact.get("artifact_id")
         if not isinstance(artifact_id, str) or not artifact_id.strip() or artifact_id != artifact_id.strip():
             raise ValueError(f"manifest_artifact_id_noncanonical:{index}")
+        if artifact_id in seen_ids:
+            raise ValueError(f"manifest_artifact_id_duplicate:{index}")
+        seen_ids.add(artifact_id)
         path = artifact.get("path")
-        if not isinstance(path, str) or not path.strip() or path != path.strip():
+        if (
+            not isinstance(path, str)
+            or not path.strip()
+            or path != path.strip()
+            or "\\" in path
+            or PurePosixPath(path).is_absolute()
+            or ".." in PurePosixPath(path).parts
+            or PurePosixPath(path).as_posix() != path
+            or path in {".", ""}
+        ):
             raise ValueError(f"manifest_artifact_path_noncanonical:{index}")
+        if path in seen_paths:
+            raise ValueError(f"manifest_artifact_path_duplicate:{index}")
+        seen_paths.add(path)
         digest = artifact.get("sha256")
         if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
             raise ValueError(f"manifest_artifact_sha256_noncanonical:{index}")
