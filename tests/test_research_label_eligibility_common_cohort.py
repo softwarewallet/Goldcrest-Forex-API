@@ -360,3 +360,38 @@ def test_common_cohort_rejects_missing_model_feature_identity(tmp_path):
 
     assert result["status"] == "FAIL"
     assert any("invalid model-feature key" in error for error in result["errors"])
+
+
+
+def test_common_cohort_flags_identical_predictions_and_metrics_across_caps(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows(prob1=0.8))
+    b = _report(tmp_path / "cap8.json", 8.0, _rows(prob1=0.8))
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "PASS"
+    diagnostic = result["experiments"][0]["identical_cap_diagnostics"][0]
+    assert diagnostic["left_cap_hours"] == 1.0
+    assert diagnostic["right_cap_hours"] == 8.0
+    assert diagnostic["folds_compared"] == 1
+    assert diagnostic["folds_with_identical_common_cohort_probabilities"] == 1
+    assert diagnostic["folds_with_identical_common_cohort_metrics"] == 1
+    assert diagnostic["identical_probabilities_all_folds"] is True
+    assert diagnostic["identical_metrics_all_folds"] is True
+    assert any("predicted probabilities are identical" in warning for warning in result["warnings"])
+    assert result["automatic_model_selection"] is False
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
+
+
+def test_common_cohort_does_not_flag_different_probabilities_as_identical(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows(prob1=0.75))
+    b = _report(tmp_path / "cap8.json", 8.0, _rows(prob1=0.85))
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "PASS"
+    diagnostic = result["experiments"][0]["identical_cap_diagnostics"][0]
+    assert diagnostic["identical_probabilities_all_folds"] is False
+    assert diagnostic["folds_with_identical_common_cohort_probabilities"] == 0
+    assert result["automatic_model_selection"] is False
