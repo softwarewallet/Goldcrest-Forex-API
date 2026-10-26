@@ -224,10 +224,11 @@ def test_run_audit_verifies_pipeline_completion_receipt(tmp_path):
 
     result = audit_research_run_manifest(manifest_path)
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "PASS_WITH_WARNINGS"
     assert result["checked_artifact_count"] == 7
     assert "pipeline_completion_audit_path" in result["checked_artifacts"]
     assert result["errors"] == []
+    assert "pipeline_completion_audit_source_hashes_unavailable" in result["warnings"]
 
 
 def test_run_audit_rejects_failed_pipeline_completion_receipt(tmp_path):
@@ -271,3 +272,63 @@ def test_run_audit_preserves_completion_warning_status(tmp_path):
 
     assert result["status"] == "PASS_WITH_WARNINGS"
     assert "pipeline_completion_audit_passed_with_warnings" in result["warnings"]
+
+
+def _write_v2_completion_receipt(manifest_path: Path):
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    run_id = manifest["run_id"]
+    validation_path = manifest_path.parent / f"{run_id}_validation_report.json"
+    reproducibility_path = manifest_path.parent / f"{run_id}_reproducibility_audit.json"
+    evaluation_path = manifest_path.parent / f"{run_id}_model_evaluation_gate.json"
+    _write_json(validation_path, {"status": "PASS", "run_id": run_id, "actionable": False})
+    _write_json(reproducibility_path, {"status": "PASS", "run_id": run_id, "actionable": False})
+    _write_json(evaluation_path, {"status": "PASS", "run_id": run_id, "actionable": False})
+
+    manifest.update({
+        "reproducibility_audit_path": str(reproducibility_path),
+        "model_evaluation_gate_path": str(evaluation_path),
+        "model_evaluation_gate_sha256": _sha(evaluation_path),
+    })
+    manifest.pop("pipeline_manifest_sha256", None)
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    receipt = {
+        "schema_version": 2,
+        "audit_name": "research_pipeline_completion_audit",
+        "status": "PASS",
+        "run_id": run_id,
+        "pipeline_manifest_sha256": manifest["pipeline_manifest_sha256"],
+        "validation_report_sha256": _sha(validation_path),
+        "reproducibility_audit_sha256": _sha(reproducibility_path),
+        "model_evaluation_gate_sha256": _sha(evaluation_path),
+        "errors": [],
+        "warnings": [],
+        "checks": {
+            "pipeline_manifest_self_hash": "PASS",
+            "reproducibility_audit_status": "PASS",
+            "model_evaluation_gate_file_hash": "PASS",
+            "validation_report_status": "PASS",
+        },
+        "actionable": False,
+        "execution_connected": False,
+        "model_qualified": False,
+        "deployment_authorized": False,
+    }
+    _write_json(manifest_path.parent / f"{run_id}_pipeline_completion_audit.json", receipt)
+    return validation_path
+
+
+def test_run_audit_verifies_completion_receipt_source_hashes(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    validation_path = _write_v2_completion_receipt(manifest_path)
+
+    valid = audit_research_run_manifest(manifest_path)
+    assert valid["status"] == "PASS"
+    assert valid["errors"] == []
+
+    validation_path.write_text(validation_path.read_text(encoding="utf-8") + "\\n", encoding="utf-8")
+    tampered = audit_research_run_manifest(manifest_path)
+    assert tampered["status"] == "FAIL"
+    assert "pipeline_completion_audit_validation_report_source_hash_mismatch" in tampered["errors"]
