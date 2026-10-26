@@ -23,11 +23,24 @@ _FALSE_FLAGS = (
 _PASS = {"PASS", "PASS_WITH_WARNINGS"}
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
 def _read_object_with_hash(path: Path) -> tuple[dict[str, Any], str]:
     """Parse and fingerprint one byte snapshot so the digest matches the audited content."""
     raw = path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
-    payload = json.loads(raw.decode("utf-8"))
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+    )
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{path.name}")
     return payload, digest
