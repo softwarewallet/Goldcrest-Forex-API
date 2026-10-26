@@ -264,3 +264,32 @@ def test_final_certification_reader_rejects_nonstandard_json_constants(tmp_path,
 
     with pytest.raises(ValueError, match="nonstandard_json_constant"):
         _read_object(report_path)
+
+def test_missing_readiness_errors_array_fails_closed():
+    readiness, bundle, verification = fixtures()
+    readiness.pop("errors")
+    report = audit_final_certification_chain(readiness, bundle, verification)
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_errors_schema_invalid" and error["report"] == "readiness"
+        for error in report["errors"]
+    )
+
+
+def test_missing_verification_errors_array_fails_closed():
+    readiness, bundle, verification = fixtures()
+    verification.pop("errors")
+    report = audit_final_certification_chain(readiness, bundle, verification)
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_errors_schema_invalid" and error["report"] == "verification"
+        for error in report["errors"]
+    )
+
+
+def test_bundle_artifact_may_omit_errors_field():
+    readiness, bundle, verification = fixtures()
+    bundle.pop("errors")
+    report = audit_final_certification_chain(readiness, bundle, verification)
+    assert report["status"] == "PASS"
+

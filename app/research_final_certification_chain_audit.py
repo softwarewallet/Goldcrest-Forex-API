@@ -84,12 +84,16 @@ def audit_final_certification_chain(
                 "code": "deployment_must_remain_unauthorized",
                 "report": name,
             })
-        if "errors" in payload:
-            input_errors = payload.get("errors")
-            if not isinstance(input_errors, list):
-                errors.append({"code": "input_errors_schema_invalid", "report": name})
-            elif input_errors:
-                errors.append({"code": "input_report_contains_errors", "report": name})
+        input_errors = payload.get("errors")
+        # Readiness and verification are generated audit reports and must explicitly
+        # declare an error list. The bundle is a content-addressed artifact whose
+        # current schema intentionally has no errors field.
+        if name != "bundle" and not isinstance(input_errors, list):
+            errors.append({"code": "input_errors_schema_invalid", "report": name})
+        elif input_errors is not None and not isinstance(input_errors, list):
+            errors.append({"code": "input_errors_schema_invalid", "report": name})
+        elif input_errors:
+            errors.append({"code": "input_report_contains_errors", "report": name})
         if "warnings" in payload:
             input_warnings = payload.get("warnings")
             if not isinstance(input_warnings, list) or any(
