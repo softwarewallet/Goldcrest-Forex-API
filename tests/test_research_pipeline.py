@@ -117,6 +117,16 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
     monkeypatch.setattr(
         research_pipeline,
+        "audit_label_maturity",
+        lambda *args, **kwargs: {
+            "status": "PASS", "errors": [], "checked_label_rows": 1,
+            "eligible_label_rows": 1, "ineligible_label_rows": 0,
+            "actionable": False, "execution_connected": False,
+            "automatic_model_selection": False,
+        },
+    )
+    monkeypatch.setattr(
+        research_pipeline,
         "load_historical_dataset",
         lambda path, names: ([], [], "a" * 64),
     )
@@ -199,6 +209,7 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
         "app/research_reproducibility_auditor.py",
         "app/research_pipeline_completion_audit.py",
         "app/research_data_audit.py",
+        "app/research_label_maturity_audit.py",
     }.issubset(fingerprinted_modules)
     assert stored["experiment_fingerprint_file_sha256"] == research_pipeline._sha256(fingerprint_path)
     assert result["reproducibility_audit_status"] == "PASS"
@@ -425,6 +436,16 @@ def test_pipeline_stops_before_training_when_feature_source_audit_fails(tmp_path
         return {}
 
     monkeypatch.setattr(research_pipeline, "prepare_research_dataset", fake_prepare)
+    monkeypatch.setattr(
+        research_pipeline,
+        "audit_label_maturity",
+        lambda *args, **kwargs: {
+            "status": "PASS", "errors": [], "checked_label_rows": 1,
+            "eligible_label_rows": 1, "ineligible_label_rows": 0,
+            "actionable": False, "execution_connected": False,
+            "automatic_model_selection": False,
+        },
+    )
     monkeypatch.setattr(
         research_pipeline,
         "audit_feature_source_provenance",
