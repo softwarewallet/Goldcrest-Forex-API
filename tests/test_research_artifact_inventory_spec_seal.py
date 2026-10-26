@@ -90,7 +90,7 @@ def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, 
 @pytest.mark.parametrize(
     ("field", "value", "error"),
     [
-        ("artifact_id", " metrics ", "artifact_id_must_be_canonical_unpadded"),
+        ("artifact_id", " metrics ", "artifact_id_must_match_canonical_identifier_pattern"),
         ("path", " reports/metrics.json ", "path_must_be_canonical_unpadded"),
         ("path", "../metrics.json", "safe_normalized_posix"),
     ],
@@ -157,3 +157,32 @@ def test_inventory_seal_rejects_boolean_numeric_metadata(field):
         and item["code"] == "INVENTORY_SEAL_FIELD_TYPE_INVALID"
         for item in report["errors"]
     )
+
+
+
+@pytest.mark.parametrize(
+    "artifact_id",
+    [
+        "",
+        " padded ",
+        "/metrics",
+        ".metrics",
+        "-metrics",
+        "metrics/report",
+        "metrics\\\\report",
+        "métrics",
+        "x" * 129,
+    ],
+)
+def test_inventory_spec_seal_rejects_noncanonical_identifier_pattern(artifact_id):
+    payload = spec()
+    payload["required_artifacts"][0]["artifact_id"] = artifact_id
+    with pytest.raises(ValueError, match="must_match_canonical_identifier_pattern"):
+        create_inventory_spec_seal(payload)
+
+
+def test_inventory_spec_seal_accepts_canonical_identifier_punctuation():
+    payload = spec()
+    payload["required_artifacts"][0]["artifact_id"] = "feature_set:v2"
+    seal = create_inventory_spec_seal(payload)
+    assert verify_inventory_spec_seal(payload, seal)["status"] == "PASS"
