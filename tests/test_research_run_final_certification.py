@@ -30,6 +30,7 @@ def make_inputs(tmp_path):
     paths = {}
     for role, (audit_name, _) in REPORT_SPECS.items():
         payload = {
+            "schema_version": 1,
             "audit_name": audit_name,
             "status": "PASS",
             "plan_id": "plan-abc",
@@ -46,6 +47,7 @@ def make_inputs(tmp_path):
         paths[role] = path
     bundle = build_evidence_bundle(paths)
     readiness = {
+        "schema_version": 1,
         "audit_name": "research_reproducibility_readiness",
         "status": "PASS",
         "plan_id": "plan-abc",
