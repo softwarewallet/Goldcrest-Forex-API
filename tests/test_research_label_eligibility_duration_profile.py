@@ -5,7 +5,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
-from app.research_label_eligibility_duration_profile import audit_duration_cap_boundaries
+from app.research_label_eligibility_duration_profile import _read_json, audit_duration_cap_boundaries
 
 
 def _sha256(path):
@@ -114,3 +114,19 @@ def test_duration_profile_rejects_changed_dataset_hash(tmp_path):
         assert "baseline_dataset_file_hash_mismatch" in str(exc)
     else:
         raise AssertionError("Expected changed dataset SHA-256 to be rejected")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)
