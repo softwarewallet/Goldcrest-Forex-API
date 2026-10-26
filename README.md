@@ -26,15 +26,27 @@ For cTrader historical research, put `CTRADER_HOST`, `CTRADER_CLIENT_ID`, `CTRAD
 The API bind address and port are set by the Uvicorn command, not by the `GOLDCREST_BIND_HOST` / `GOLDCREST_PORT` settings in `.env`. For trusted-LAN access, run Uvicorn with `--host 0.0.0.0 --port 8090` and configure the host firewall to permit port 8090 only from the required private subnet. Never expose this API or llama.cpp directly to the public Internet. The production systemd service should use explicit, reviewed bind and port arguments.
 
 ## Routes
-- `GET /api/v1/health`
-- `GET /api/v1/models`
-- `POST /api/v1/predictions`
-- `GET /api/v1/predictions/{prediction_id}`
-- `POST /api/v1/outcomes`
-- `GET /api/v1/performance`
-- `GET /api/v1/audit`
+- `GET /api/v1/health` — basic database and model-listing status
+- `GET /api/v1/readiness/inference` — protected live completion probe; performs actual inference
+- `GET /api/v1/models` — protected model listing
+- `POST /api/v1/predictions` — protected prediction analysis
+- `GET /api/v1/predictions/{prediction_id}` — protected prediction lookup
+- `POST /api/v1/outcomes` — protected outcome recording
+- `GET /api/v1/performance` — protected counts; no directional performance claims yet
+- `GET /api/v1/audit` — protected audit history
 
-Protected routes use `X-API-Key`. Set `LLAMA_MODEL_ID` to the exact ID returned by llama.cpp `/v1/models`, or leave it empty to auto-select only when exactly one model is served.
+Protected routes use `X-API-Key`. Set `LLAMA_MODEL_ID` to the exact ID returned by llama.cpp `/v1/models`, or leave it empty to auto-select only when exactly one model is served. Inference currently uses llama.cpp's `/v1/completions` endpoint and parses `choices[0].text`.
+
+## Live inference smoke test
+1. Confirm the llama.cpp server is reachable at `LLAMA_BASE_URL` and `GET /v1/models` returns the expected model ID.
+2. Start the API with the same `.env` configuration.
+3. Set `API_KEY` to a fresh random secret (at least 32 characters); never commit or share it.
+4. Call the protected inference readiness endpoint from the API host:
+   ```bash
+   curl -i http://127.0.0.1:8090/api/v1/readiness/inference \
+     -H "X-API-Key: $API_KEY"
+   ```
+5. Expect HTTP 200 with `{"status":"ok","model_id":"...","completion_valid":true}`. A 503 indicates inference or output validation failed; inspect the API logs without exposing secrets or market payloads.
 
 ## Prediction status
 The initial prediction service is scaffolding, not a validated trading strategy. It deliberately returns `NO_TRADE` even when the LLM suggests BUY or SELL, until a quantitative rule is validated. Model self-reported confidence is not used as a calibrated probability. No broker credentials are accepted or stored.
