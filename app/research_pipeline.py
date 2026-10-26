@@ -465,6 +465,8 @@ def run_research_pipeline(
     manifest_path = destination / f"{run_id}_pipeline_manifest.json"
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
 
+    result = dict(payload)
+
     # Audit the persisted pipeline manifest and all linked artifacts after the run. The
     # receipt is separate so it cannot create a hash cycle with the pipeline manifest.
     reproducibility_audit = audit_experiment_reproducibility(
@@ -484,7 +486,6 @@ def run_research_pipeline(
     # Non-strict mode records validation findings; strict mode controls only the CLI exit code.
     validation_path = destination / f"{run_id}_validation_report.json"
     validation = validate_completed_run(manifest_path, output_path=validation_path)
-    result = dict(payload)
     result["validation_report_path"] = str(validation_path)
     result["validation_status"] = validation["status"]
     result["validation_errors"] = validation["errors"]
