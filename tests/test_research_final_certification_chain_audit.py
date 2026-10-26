@@ -102,6 +102,7 @@ def test_safety_flags_must_be_explicitly_false():
 def test_readiness_warnings_are_preserved():
     readiness, bundle, verification = fixtures()
     readiness["status"] = "PASS_WITH_WARNINGS"
+    readiness["warnings"] = ["fixture warning"]
     report = audit_final_certification_chain(readiness, bundle, verification)
     assert report["status"] == "PASS_WITH_WARNINGS"
     assert "readiness_passed_with_warnings" in report["warnings"]
@@ -305,3 +306,26 @@ def test_bundle_explicit_null_errors_field_is_rejected():
         for error in report["errors"]
     )
 
+
+
+
+@pytest.mark.parametrize(
+    ("status", "warnings"),
+    [
+        ("PASS", ["unexpected warning"]),
+        ("PASS_WITH_WARNINGS", []),
+    ],
+)
+def test_input_status_must_match_warning_collection(status, warnings):
+    readiness, bundle, verification = fixtures()
+    readiness["status"] = status
+    readiness["warnings"] = warnings
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_status_warning_mismatch"
+        and error["report"] == "readiness"
+        for error in report["errors"]
+    )
