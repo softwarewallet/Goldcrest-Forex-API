@@ -127,3 +127,8 @@ The offline research-validation reader and label-eligibility recovery, seed-swee
 ### Phase 85 — Strict JSON for label comparison and cohort readers
 
 The paired label-eligibility comparison and threshold-sweep readers now reject duplicate JSON object keys and non-standard numeric constants. The common-held-out-cohort reader preserves its exact-byte snapshot hashing and additionally rejects `NaN`, `Infinity`, and `-Infinity`. Regression tests exercise malformed inputs at each reader boundary. The work remains offline and descriptive: it does not choose models, change training, or connect to broker/execution services.
+
+
+### Phase 86 — Strict JSON for evaluation and pipeline artifacts
+
+The model-evaluation gate and consolidated evidence-report reader now reject duplicate keys and non-standard numeric constants. The research pipeline applies the same strict parser to companion cTrader manifests before reusing provenance fields; malformed manifests are ignored at this optional lookup stage and remain subject to the mandatory raw-artifact audit. Regression tests cover malformed JSON at all three boundaries. No training, model-selection, broker, or trading-execution behavior is changed.
