@@ -51,7 +51,7 @@ def test_walk_forward_fits_each_fold_and_reports_non_actionable_metrics():
     bars = make_bars()
     plan = generate_walk_forward_folds(
         bars, initial_train_bars=60, validation_bars=20,
-        test_bars=20, step_bars=10, horizon_bars=2,
+        test_bars=20, step_bars=18, horizon_bars=2,
     )
     results = evaluate_binary_walk_forward(
         plan, examples_for(bars), feature_names=("close_delta", "hour_bucket"),
@@ -74,7 +74,7 @@ def test_rejects_unordered_or_mismatched_feature_rows():
     bars = make_bars()
     plan = generate_walk_forward_folds(
         bars, initial_train_bars=60, validation_bars=20,
-        test_bars=20, step_bars=10, horizon_bars=2,
+        test_bars=20, step_bars=18, horizon_bars=2,
     )
     examples = examples_for(bars)
     examples[1], examples[2] = examples[2], examples[1]
@@ -94,7 +94,7 @@ def test_fails_closed_when_training_labels_have_one_class():
     bars = make_bars()
     plan = generate_walk_forward_folds(
         bars, initial_train_bars=60, validation_bars=20,
-        test_bars=20, step_bars=10, horizon_bars=2,
+        test_bars=20, step_bars=18, horizon_bars=2,
     )
     rows = examples_for(bars)
     rows = [TimedBinaryExample(r.timestamp, r.features, 0, r.label_available_at) for r in rows]
@@ -109,7 +109,7 @@ def test_rejects_nonchronological_or_missing_fold_partitions():
     bars = make_bars()
     plan = generate_walk_forward_folds(
         bars, initial_train_bars=60, validation_bars=20,
-        test_bars=20, step_bars=10, horizon_bars=2,
+        test_bars=20, step_bars=18, horizon_bars=2,
     )
     fold = plan.folds[0]
     reordered_fold = replace(fold, validation=fold.test, test=fold.validation)
@@ -133,7 +133,7 @@ def test_rejects_float_labels_instead_of_silently_accepting_them():
     bars = make_bars()
     plan = generate_walk_forward_folds(
         bars, initial_train_bars=60, validation_bars=20,
-        test_bars=20, step_bars=10, horizon_bars=2,
+        test_bars=20, step_bars=18, horizon_bars=2,
     )
     rows = examples_for(bars)
     rows[0] = TimedBinaryExample(rows[0].timestamp, rows[0].features, 1.0, rows[0].label_available_at)
@@ -146,7 +146,7 @@ def test_walk_forward_excludes_ineligible_rows_from_fit_and_scoring():
     bars = make_bars()
     plan = generate_walk_forward_folds(
         bars, initial_train_bars=60, validation_bars=20,
-        test_bars=20, step_bars=10, horizon_bars=2,
+        test_bars=20, step_bars=18, horizon_bars=2,
     )
     first_fold = plan.folds[0]
     excluded_timestamps = {
