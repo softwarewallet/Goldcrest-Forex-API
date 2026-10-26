@@ -137,3 +137,17 @@ def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, 
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+
+@pytest.mark.parametrize("bad_status", [["PASS"], {"value": "PASS"}])
+def test_unhashable_input_status_fails_closed(bad_status):
+    plan, registry, reconciliation, evidence = reports()
+    registry["status"] = bad_status
+
+    report = audit_reproducibility_readiness(plan, registry, reconciliation, evidence)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_report_not_passing" and error["report"] == "registry"
+        for error in report["errors"]
+    )

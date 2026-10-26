@@ -213,3 +213,12 @@ def test_noncanonical_registry_run_id_fails_closed(tmp_path):
     report = audit_evaluation_output_integrity(plan, registry, registry_root=tmp_path)
     assert report["status"] == "FAIL"
     assert any(error["code"] == "registry_run_id_invalid" for error in report["errors"])
+
+
+@pytest.mark.parametrize("bad_status", [["PASS"], {"value": "PASS"}])
+def test_unhashable_registry_status_is_rejected(tmp_path, bad_status):
+    plan = make_plan()
+    registry = registry_for(tmp_path, plan)
+    registry["status"] = bad_status
+    with pytest.raises(ValueError, match="registry_report_not_passing"):
+        audit_evaluation_output_integrity(plan, registry, registry_root=tmp_path)

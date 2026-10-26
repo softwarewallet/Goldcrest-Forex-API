@@ -54,11 +54,12 @@ def audit_reproducibility_readiness(
                 "expected": expected_audit,
                 "actual": payload.get("audit_name"),
             })
-        if payload.get("status") not in allowed_statuses:
+        input_status = payload.get("status")
+        if not isinstance(input_status, str) or input_status not in allowed_statuses:
             errors.append({
                 "code": "input_report_not_passing",
                 "report": name,
-                "status": payload.get("status"),
+                "status": input_status,
             })
         for flag in REQUIRED_SAFETY_FALSE:
             if payload.get(flag) is not False:
