@@ -110,3 +110,15 @@ def test_warning_status_is_supported(tmp_path):
     assert bundle["status"] == "PASS"
     report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
     assert report["status"] == "PASS"
+
+@pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
+def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
+    from app.research_evaluation_certification_evidence_bundle import _read_object
+    if "_load_json_object" in "from app.research_evaluation_certification_evidence_bundle import _read_object":
+        with pytest.raises(ValueError):
+            _read_object(path)
+    else:
+        path = tmp_path / "invalid.json"
+        path.write_bytes(raw)
+        with pytest.raises(ValueError):
+            _read_object(path)
