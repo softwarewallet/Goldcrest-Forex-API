@@ -124,3 +124,4 @@ def test_matrix_canonicalizes_utc_offsets_before_provenance_audit(monkeypatch):
     assert audit["errors"] == []
     assert report.common_fold_test_windows[0]["test_start_utc"].endswith("Z")
     assert report.experiments[0]["fold_results"][0]["test_start_utc"].endswith("Z")
+    assert report.experiments[0]["fold_results"][0]["test_metrics_used_for_tuning"] is False
