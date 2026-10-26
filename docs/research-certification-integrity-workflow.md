@@ -84,3 +84,7 @@ The final certification-chain audit requires non-empty plan and registry identif
 The final certification-chain CLI rejects an output path that resolves to any supplied input and refuses to overwrite an existing report. It stages and fsyncs JSON in the destination directory, then publishes through a no-clobber filesystem link so a concurrent destination creation cannot silently replace another file. If publication fails, the staged temporary file is cleaned up. Use a fresh output filename for each audit attempt.
 
 Completion and final-certification audits reject duplicate JSON object keys in their input reports. Ambiguous inputs fail closed instead of allowing a later duplicate field to shadow the value first written.
+
+## Strict JSON input syntax
+
+The completion, run-integrity, and final-certification-chain readers reject duplicate object keys and non-standard numeric constants (NaN, Infinity, and -Infinity). These tokens are accepted by Python's JSON decoder by default but are not valid RFC 8259 JSON. A report containing one is treated as malformed and cannot pass an integrity gate. This syntax check complements, rather than replaces, exact-byte SHA-256 binding and schema/status validation. The audits remain offline and report-only; passing them does not authorize model selection, training, deployment, or trading.

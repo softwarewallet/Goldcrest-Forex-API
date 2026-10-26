@@ -277,3 +277,17 @@ def test_duplicate_json_key_in_required_report_fails_closed(tmp_path):
     assert report["checks"]["pipeline_manifest_readable"] == "FAIL"
     assert any(item["code"] == "required_report_unreadable" for item in report["errors"])
     assert report["deployment_authorized"] is False
+
+
+def test_completion_reader_rejects_nonstandard_json_constants(tmp_path):
+    from app.research_pipeline_completion_audit import _read_object_with_hash
+
+    report_path = tmp_path / "nonstandard.json"
+    report_path.write_text('{"status":"PASS","metric":NaN}', encoding="utf-8")
+
+    try:
+        _read_object_with_hash(report_path)
+    except ValueError as exc:
+        assert "nonstandard_json_constant:NaN" in str(exc)
+    else:
+        raise AssertionError("non-standard JSON constant must be rejected")
