@@ -83,13 +83,18 @@ def verify_report_seal(report: dict[str, Any], seal: dict[str, Any]) -> dict[str
             expected = None
             errors.append({"code": "CERTIFICATION_REPORT_INVALID", "detail": str(exc)})
         if expected is not None:
-            for key in ("schema_version", "canonicalization", "report_sha256", "report_bytes",
-                        "report_status", "source_revision", "error_count"):
-                if seal.get(key) != expected.get(key):
-                    errors.append({"code": "REPORT_SEAL_FIELD_MISMATCH", "field": key})
-            for flag in FALSE_FLAGS:
-                if seal.get(flag) is not False:
-                    errors.append({"code": "SAFETY_FLAG_NOT_EXPLICITLY_FALSE", "field": flag})
+            # Verify every expected field, including scope limitations, and reject
+            # unknown fields so detached seal metadata cannot be altered silently.
+            for key, expected_value in expected.items():
+                if seal.get(key) != expected_value:
+                    code = (
+                        "SAFETY_FLAG_NOT_EXPLICITLY_FALSE"
+                        if key in FALSE_FLAGS and seal.get(key) is not False
+                        else "REPORT_SEAL_FIELD_MISMATCH"
+                    )
+                    errors.append({"code": code, "field": key})
+            for key in sorted(set(seal) - set(expected)):
+                errors.append({"code": "REPORT_SEAL_UNEXPECTED_FIELD", "field": key})
     return {
         "schema_version": 1,
         "audit_name": "research_unified_certification_report_seal_verification",
