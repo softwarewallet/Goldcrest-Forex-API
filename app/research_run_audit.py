@@ -276,6 +276,48 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif audit.get("status") != "PASS":
             errors.append("provenance_audit_not_pass")
 
+    # Newer runs emit a final completion receipt after the manifest and validation
+    # report have been persisted. Verify its identity and fail-closed integrity findings
+    # when present, while keeping older schema-v1 runs readable.
+    completion_path = manifest_path.parent / f"{manifest.get('run_id', '')}_pipeline_completion_audit.json"
+    if completion_path.is_file():
+        try:
+            completion = _read_json(completion_path)
+            checked_artifacts["pipeline_completion_audit_path"] = {
+                "path": str(completion_path.resolve()),
+                "sha256": _sha256(completion_path),
+            }
+            if completion.get("audit_name") != "research_pipeline_completion_audit":
+                errors.append("pipeline_completion_audit_name_mismatch")
+            if completion.get("run_id") != manifest.get("run_id"):
+                errors.append("pipeline_completion_audit_run_id_mismatch")
+            if completion.get("pipeline_manifest_sha256") != manifest.get("pipeline_manifest_sha256"):
+                errors.append("pipeline_completion_audit_manifest_hash_mismatch")
+            if completion.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
+                errors.append("pipeline_completion_audit_not_passing")
+            if completion.get("errors") != []:
+                errors.append("pipeline_completion_audit_contains_errors")
+            for field in ("actionable", "execution_connected", "model_qualified", "deployment_authorized"):
+                if completion.get(field) is not False:
+                    errors.append(f"pipeline_completion_audit_{field}_must_be_false")
+            checks = completion.get("checks")
+            if not isinstance(checks, dict):
+                errors.append("pipeline_completion_audit_checks_invalid")
+            else:
+                for field in (
+                    "pipeline_manifest_self_hash",
+                    "reproducibility_audit_status",
+                    "model_evaluation_gate_file_hash",
+                ):
+                    if checks.get(field) != "PASS":
+                        errors.append(f"pipeline_completion_audit_{field}_not_pass")
+            if completion.get("status") == "PASS_WITH_WARNINGS":
+                warnings.append("pipeline_completion_audit_passed_with_warnings")
+            if completion.get("warnings") and not isinstance(completion.get("warnings"), list):
+                errors.append("pipeline_completion_audit_warnings_invalid")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            errors.append(f"pipeline_completion_audit_unreadable:{type(exc).__name__}")
+
     if manifest.get("provenance_audit_status") == "FAIL":
         errors.append("pipeline_provenance_audit_failed")
     if not checked_artifacts:
