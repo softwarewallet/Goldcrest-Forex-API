@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.research_artifact_provenance import capture_provenance, verify_provenance
+from app.research_artifact_provenance import capture_provenance, verify_provenance, _load_json_object
 
 REV = "a" * 40
 OTHER_REV = "b" * 40
@@ -127,3 +127,12 @@ def test_manifest_can_be_serialized_as_stable_json(tmp_path):
     first = json.dumps(manifest, sort_keys=True)
     second = json.dumps(capture(root, config, dataset, spec), sort_keys=True)
     assert first == second
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="artifact-manifest.json")
