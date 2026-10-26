@@ -394,3 +394,47 @@ def test_verifier_rejects_invalid_or_inconsistent_declared_report_count(
 
     assert report["status"] == "FAIL"
     assert any(error["code"] == expected_code for error in report["errors"])
+
+
+
+@pytest.mark.parametrize("bad_path", ["../plan.json", "nested/plan.json", " plan.json ", r"nested\\plan.json", ".", ".."])
+def test_verifier_rejects_noncanonical_report_basenames(tmp_path, bad_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    bundle["reports"]["plan"]["path"] = bad_path
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "bundle_report_path_invalid" and error["role"] == "plan"
+        for error in report["errors"]
+    )
+
+
+def test_builder_rejects_symlinked_report_input(tmp_path):
+    paths = fixture(tmp_path)
+    alias = tmp_path / "plan-alias.json"
+    alias.symlink_to(paths["plan"].name)
+    paths["plan"] = alias
+
+    with pytest.raises(ValueError, match="report_symlink_not_allowed"):
+        build_evidence_bundle(paths)
+
+
+def test_verifier_rejects_symlinked_report_even_when_target_is_inside_root(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    alias = tmp_path / "plan-alias.json"
+    alias.symlink_to(paths["plan"].name)
+    bundle["reports"]["plan"]["path"] = alias.name
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "bundle_report_symlink_not_allowed" and error["role"] == "plan"
+        for error in report["errors"]
+    )
