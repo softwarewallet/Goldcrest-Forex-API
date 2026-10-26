@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.research_label_eligibility_common_cohort import audit_common_heldout_cohort
+from app.research_strict_json import strict_json_loads
 
 CAPS_HOURS = (1.0, 1.5, 8.0)
 REFERENCE_CAP_HOURS = 1.0
@@ -28,7 +29,7 @@ _NEUTRAL_TOLERANCE = 1e-12
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path}: JSON root must be an object")
     return value
