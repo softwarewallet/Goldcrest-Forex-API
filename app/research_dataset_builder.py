@@ -208,6 +208,7 @@ def prepare_research_dataset(
         "source_version": source_version.strip(),
         "retrieved_at_utc": retrieved_at.isoformat().replace("+00:00", "Z"),
         "terms_reference": terms_reference.strip(),
+        "terms_reference_sha256": hashlib.sha256(terms_reference.strip().encode("utf-8")).hexdigest(),
         "input_snapshot_sha256": source_sha256,
         "output_dataset_sha256": output_sha256,
         "input_rows": len(bars),
