@@ -12,10 +12,11 @@ import hashlib
 import json
 import math
 import sys
-from app.research_strict_json import strict_json_loads
-from datetime import datetime, timezone
+from datetime datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+from app.research_strict_json import strict_json_loads
 
 _PIPELINE_SCOPE = "GOLDCREST_OFFLINE_RESEARCH_PIPELINE"
 _AUDIT_SCOPE = "GOLDCREST_LABEL_ELIGIBILITY_THRESHOLD_PROFILE_AUDIT"
