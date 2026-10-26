@@ -64,7 +64,8 @@ def audit_evaluation_output_integrity(
         raise ValueError("plan_report_not_passing")
     if not isinstance(registry_report, dict) or registry_report.get("audit_name") != "research_experiment_registry":
         raise ValueError("registry_report_invalid")
-    if registry_report.get("status") not in PASS_STATUSES:
+    registry_status = registry_report.get("status")
+    if not isinstance(registry_status, str) or registry_status not in PASS_STATUSES:
         raise ValueError("registry_report_not_passing")
     registry_errors = registry_report.get("errors")
     if not isinstance(registry_errors, list):
