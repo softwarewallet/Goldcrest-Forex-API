@@ -27,35 +27,14 @@ from app.research_data_audit import audit_raw_ohlc_file
 from app.research_experiment_matrix import run_experiment_matrix, write_experiment_matrix_report
 from app.research_provenance_auditor import audit_experiment_matrix_file
 from app.research_model_evaluation_gate import audit_model_evaluation_report
+from app.research_strict_json import strict_json_object
 from app.research_validation import validate_completed_run
 from app.temporal_calibration_stability import write_temporal_calibration_stability_report
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects containing repeated keys."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _read_json_object(path: Path) -> dict[str, Any]:
-    """Read a local JSON object with strict RFC 8259 parsing."""
-    value = json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_reject_duplicate_json_keys,
-        parse_constant=_reject_nonstandard_json_constant,
-    )
-    if not isinstance(value, dict):
-        raise ValueError(f"{path.name} must contain a JSON object")
-    return value
+    """Compatibility wrapper using the shared strict RFC 8259 parser."""
+    return strict_json_object(path)
 
 
 def _sha256(path: str | Path) -> str:
