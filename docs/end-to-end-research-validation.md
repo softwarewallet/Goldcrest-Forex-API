@@ -236,10 +236,12 @@ absolute paths to make validation robust when invoked from another working direc
 
 After writing the pipeline manifest, consolidated validation report, and cross-artifact
 reproducibility audit, the pipeline writes a separate
-`<run-id>_pipeline_completion_audit.json`. This receipt verifies the manifest's canonical
-self-hash, the validation report's run/manifest linkage, the reproducibility receipt's
-status and fingerprint linkage, and the model-evaluation-gate file hash. It is written
-outside the immutable manifest to avoid a circular hash dependency.
+`<run-id>_pipeline_completion_audit.json`. Schema v2 records SHA-256 hashes of the exact
+validation, reproducibility, and model-evaluation-gate report bytes observed during the audit.
+The run auditor rechecks those hashes later, detecting post-completion edits even if the
+changed report still contains the expected run ID. The receipt also verifies the manifest's
+canonical self-hash, report linkage, reproducibility status, and model-evaluation-gate file
+hash. It is written outside the immutable manifest to avoid a circular hash dependency.
 
 Inspect the summary fields in the pipeline's JSON output:
 
