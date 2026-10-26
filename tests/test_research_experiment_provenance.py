@@ -159,3 +159,22 @@ def test_comparison_rejects_whitespace_padded_run_id_in_pass_report():
 
     assert report["status"] == "FAIL"
     assert any(error["code"] == "run_id_invalid" for error in report["errors"])
+
+
+
+def test_cli_output_does_not_overwrite_existing_target(monkeypatch, tmp_path):
+    import sys
+    import app.research_experiment_provenance as module
+
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest()), encoding="utf-8")
+    output = tmp_path / "report.json"
+    original = '{"owner":"existing"}\n'
+    output.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", [
+        "research_experiment_provenance", "validate",
+        str(manifest_path), "--output", str(output),
+    ])
+    with pytest.raises(ValueError, match="output_already_exists"):
+        module.main()
+    assert output.read_text(encoding="utf-8") == original
