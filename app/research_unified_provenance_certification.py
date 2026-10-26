@@ -40,16 +40,18 @@ def _normalize_component_report(name: str, report: Any) -> dict[str, Any]:
     errors = report.get("errors")
     warnings = report.get("warnings", [])
     reasons: list[str] = []
-    if not isinstance(status, str) or not status.strip():
-        reasons.append("status_must_be_nonempty_string")
+    if not isinstance(status, str) or status not in {"PASS", "PASS_WITH_WARNINGS", "FAIL"}:
+        reasons.append("status_must_be_supported_string")
     if not isinstance(errors, list) or any(not isinstance(item, dict) for item in errors):
         reasons.append("errors_must_be_list_of_objects")
-    elif status == "PASS" and errors:
-        reasons.append("pass_status_must_not_contain_errors")
+    elif status in {"PASS", "PASS_WITH_WARNINGS"} and errors:
+        reasons.append("passing_status_must_not_contain_errors")
     if not isinstance(warnings, list) or any(not isinstance(item, str) or not item.strip() for item in warnings):
         reasons.append("warnings_must_be_list_of_nonempty_strings")
     elif status == "PASS" and warnings:
         reasons.append("pass_with_warnings_must_use_pass_with_warnings_status")
+    elif status == "PASS_WITH_WARNINGS" and not warnings:
+        reasons.append("pass_with_warnings_status_requires_warnings")
 
     if reasons:
         return {
