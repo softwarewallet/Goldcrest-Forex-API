@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from app.research_atomic_output import write_text_no_clobber
+
 from app.research_strict_json import strict_json_loads
 
 PASS_STATUSES = {"PASS", "PASS_WITH_WARNINGS"}
@@ -221,10 +223,10 @@ def main() -> int:
             _read_object(args.row_window_lineage_report),
             _read_object(args.metric_semantics_report),
         )
-        if args.output.exists():
-            raise ValueError(f"output_already_exists:{args.output}")
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+        write_text_no_clobber(
+            args.output,
+            json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        )
         print(json.dumps({"status": report["status"], "readiness": report["readiness"], "planned_runs": report["planned_runs"], "metrics_recalculated": report["metrics_recalculated"], "error_count": len(report["errors"]), "report_path": str(args.output.resolve()), "deployment_authorized": False}, indent=2))
         return 0 if report["status"] in PASS_STATUSES else 1
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
