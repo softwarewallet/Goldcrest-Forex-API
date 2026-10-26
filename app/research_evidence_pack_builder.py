@@ -109,7 +109,7 @@ def assemble_evidence_pack(
             "expected_sha256": _sha256(raw),
         })
 
-    selected_required = list(required_roles or sorted(_CORE_ROLES))
+    selected_required = sorted(_CORE_ROLES | set(required_roles or []))
     if len(set(selected_required)) != len(selected_required):
         raise ValueError("required_roles_must_be_unique")
     if not _CORE_ROLES.issubset(set(selected_required)):
