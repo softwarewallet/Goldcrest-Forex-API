@@ -45,7 +45,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False, gate_error=False, gate_contract_error=False, certification_status="PASS", certification_warnings=None):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False, gate_error=False, gate_contract_error=False, certification_status="PASS", certification_warnings=None, gate_warnings=None):
     import app.research_unified_provenance_certification as module
 
     if repo_path is None:
@@ -117,8 +117,8 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
     else:
         monkeypatch.setattr(module, "gate_freshness_certification", lambda fresh, cert: {
             "status": gate_status,
-            "errors": [] if gate_status == "PASS" else [{"code": "gate_failed"}],
-            "warnings": [],
+            "errors": [] if gate_status in {"PASS", "PASS_WITH_WARNINGS"} else [{"code": "gate_failed"}],
+            "warnings": gate_warnings if gate_warnings is not None else [],
         })
     selected_manifest = provenance or manifest()
     inventory_spec = inventory_override or {
@@ -645,16 +645,11 @@ def test_final_certification_warnings_propagate_to_unified_status(monkeypatch, t
 
 
 def test_final_certification_warnings_are_combined_with_freshness_warnings(monkeypatch, tmp_path):
-    import app.research_unified_provenance_certification as module
-
-    monkeypatch.setattr(module, "gate_freshness_certification", lambda fresh, cert: {
-        "status": "PASS_WITH_WARNINGS",
-        "errors": [],
-        "warnings": ["freshness_warning"],
-    })
     report = call(
         monkeypatch,
         tmp_path,
+        gate_status="PASS_WITH_WARNINGS",
+        gate_warnings=["freshness_warning"],
         certification_status="PASS_WITH_WARNINGS",
         certification_warnings=["final_chain_warning"],
     )
