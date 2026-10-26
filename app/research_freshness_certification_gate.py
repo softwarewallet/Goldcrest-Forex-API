@@ -67,7 +67,7 @@ def gate_freshness_certification(
         elif input_errors:
             errors.append({"code": "input_report_contains_errors", "report": label})
         input_warnings = payload.get("warnings")
-        if input_warnings is not None and (
+        if "warnings" in payload and (
             not isinstance(input_warnings, list)
             or any(not isinstance(item, str) or not item.strip() for item in input_warnings)
         ):

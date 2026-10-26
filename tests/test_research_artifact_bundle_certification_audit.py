@@ -168,3 +168,15 @@ def test_malformed_warnings_array_fails_closed(tmp_path):
     assert report["status"] == "FAIL"
     assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
 
+def test_explicit_null_warnings_fails_closed(tmp_path):
+    path, payload, _ = write_report(tmp_path)
+    payload["warnings"] = None
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = audit_research_artifact_bundle(
+        {"artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}]},
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "upstream_warnings_field_invalid" for item in report["errors"])
+

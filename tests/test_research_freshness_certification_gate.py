@@ -143,3 +143,10 @@ def test_malformed_warnings_value_fails_closed():
     assert report["status"] == "FAIL"
     assert any(item["code"] == "input_warnings_schema_invalid" for item in report["errors"])
 
+def test_explicit_null_warnings_fails_closed():
+    fresh = freshness()
+    fresh["warnings"] = None
+    report = gate_freshness_certification(fresh, certification())
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "input_warnings_schema_invalid" for item in report["errors"])
+
