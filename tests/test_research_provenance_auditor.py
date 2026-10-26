@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.research_provenance_auditor import audit_experiment_matrix, audit_experiment_matrix_file
 
 
@@ -79,3 +81,16 @@ def test_file_audit_writes_receipt_with_source_hash(tmp_path):
     stored = json.loads(destination.read_text(encoding="utf-8"))
     assert stored["source_report_sha256"] == result["source_report_sha256"]
     assert stored["status"] == "PASS"
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"schema_version":1,"schema_version":1}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_file_auditor_rejects_ambiguous_or_nonstandard_json(tmp_path, raw):
+    path = tmp_path / "experiment-matrix.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        audit_experiment_matrix_file(path)
