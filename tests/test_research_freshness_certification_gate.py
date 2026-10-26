@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from app.research_freshness_certification_gate import gate_freshness_certification
+import pytest
+
+from app.research_freshness_certification_gate import gate_freshness_certification, _read_object
 
 FLAGS = {
     "actionable": False,
@@ -98,3 +100,16 @@ def test_inputs_are_not_mutated():
     gate_freshness_certification(fresh, final)
     assert fresh == before_fresh
     assert final == before_final
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, raw):
+    path = tmp_path / "malformed.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _read_object(path)
