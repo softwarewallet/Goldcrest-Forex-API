@@ -231,3 +231,17 @@ def test_canonical_artifact_identifier_punctuation_is_supported():
     ]
     report = audit_artifact_inventory_completeness(manifest(entries), spec(entries))
     assert report["status"] == "PASS"
+
+
+
+def test_manifest_fingerprint_is_stable_and_sensitive_to_manifest_changes():
+    first_manifest = manifest()
+    first = audit_artifact_inventory_completeness(first_manifest, spec())
+    repeated = audit_artifact_inventory_completeness(first_manifest, spec())
+    changed = dict(first_manifest)
+    changed["source_revision"] = "revision-2"
+    changed_report = audit_artifact_inventory_completeness(changed, spec())
+
+    assert first["manifest_sha256"] == repeated["manifest_sha256"]
+    assert first["manifest_sha256"] != changed_report["manifest_sha256"]
+    assert len(first["manifest_sha256"]) == 64
