@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -35,10 +36,12 @@ def _is_sha256_hex(value: object) -> bool:
     )
 
 
+IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
 def _valid_nonempty_string(value: object) -> bool:
-    # Identity fields are canonical only when non-empty and free of outer whitespace.
-    # Silently accepting padded IDs can make visibly different artifacts appear linked.
-    return isinstance(value, str) and bool(value.strip()) and value == value.strip()
+    # Apply the same bounded identity grammar as the upstream evidence-bundle contract.
+    return isinstance(value, str) and IDENTITY_RE.fullmatch(value) is not None
 
 
 def audit_final_certification_chain(
