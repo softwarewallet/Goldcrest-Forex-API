@@ -7,6 +7,7 @@ from pathlib import Path
 from app.research_label_eligibility_cross_report_integrity import (
     audit_cross_report_integrity,
     main,
+    _write_report_no_clobber,
 )
 
 
@@ -91,3 +92,44 @@ def test_cross_report_integrity_cli_refuses_input_alias_and_existing_output(tmp_
     assert main(["--comparison-report", str(first), "--comparison-report", str(second),
                  "--output", str(output)]) == 2
     assert output.read_text(encoding="utf-8") == "preserve"
+
+
+
+def test_cross_report_integrity_detects_input_mutation_during_audit(tmp_path, monkeypatch):
+    import app.research_label_eligibility_cross_report_integrity as module
+
+    first = _report(tmp_path / "cap1.json", 1.0)
+    second = _report(tmp_path / "cap8.json", 8.0)
+    real_audit = module.audit_common_heldout_cohort
+
+    def mutate_after_audit(paths, *, allow_baseline_id_variation=False):
+        result = real_audit(paths, allow_baseline_id_variation=allow_baseline_id_variation)
+        payload = json.loads(second.read_text(encoding="utf-8"))
+        payload["variant_run_id"] = "tampered-after-audit"
+        second.write_text(json.dumps(payload), encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(module, "audit_common_heldout_cohort", mutate_after_audit)
+    result = audit_cross_report_integrity([str(first), str(second)])
+
+    assert result["status"] == "FAIL"
+    assert any("changed during audit" in error for error in result["errors"])
+    assert result["actionable"] is False
+
+
+def test_atomic_writer_refuses_competing_destination_without_clobber(tmp_path, monkeypatch):
+    import app.research_label_eligibility_cross_report_integrity as module
+    import pytest
+
+    output = tmp_path / "audit.json"
+    real_link = module.os.link
+
+    def create_destination_then_link(source, destination):
+        Path(destination).write_text("created by competing writer", encoding="utf-8")
+        return real_link(source, destination)
+
+    monkeypatch.setattr(module.os, "link", create_destination_then_link)
+    with pytest.raises(FileExistsError):
+        _write_report_no_clobber(output, {"status": "PASS"}, [])
+    assert output.read_text(encoding="utf-8") == "created by competing writer"
+    assert list(tmp_path.glob(".audit.json.*.tmp")) == []
