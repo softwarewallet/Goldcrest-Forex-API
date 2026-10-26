@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from app.research_pipeline_completion_audit import audit_pipeline_completion
+from app.research_pipeline_completion_audit import audit_pipeline_completion, main
 
 
 FLAGS = {
@@ -130,3 +130,99 @@ def test_changed_fingerprint_blocks_completion(tmp_path):
     report = audit_pipeline_completion(manifest, validation, reproducibility)
     assert report["status"] == "FAIL"
     assert any(item["code"] == "reproducibility_fingerprint_hash_mismatch" for item in report["errors"])
+
+
+
+def test_completion_audit_cli_writes_report_and_returns_success(tmp_path, capsys):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    output = tmp_path / "reports" / "completion.json"
+
+    result = main([
+        "--manifest", str(manifest),
+        "--validation-report", str(validation),
+        "--reproducibility-audit", str(reproducibility),
+        "--output", str(output),
+    ])
+
+    assert result == 0
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == "PASS"
+    assert report["model_qualified"] is False
+    assert json.loads(capsys.readouterr().out)["status"] == "PASS"
+
+
+def test_completion_audit_cli_refuses_output_aliasing_input(tmp_path, capsys):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    original = manifest.read_bytes()
+
+    result = main([
+        "--manifest", str(manifest),
+        "--validation-report", str(validation),
+        "--reproducibility-audit", str(reproducibility),
+        "--output", str(manifest),
+    ])
+
+    assert result == 2
+    assert manifest.read_bytes() == original
+    assert "output_must_not_alias_input" in capsys.readouterr().err
+
+
+def test_completion_audit_cli_refuses_to_overwrite_existing_output(tmp_path, capsys):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    output = tmp_path / "completion.json"
+    output.write_text("preserve", encoding="utf-8")
+
+    result = main([
+        "--manifest", str(manifest),
+        "--validation-report", str(validation),
+        "--reproducibility-audit", str(reproducibility),
+        "--output", str(output),
+    ])
+
+    assert result == 2
+    assert output.read_text(encoding="utf-8") == "preserve"
+    assert "output_already_exists" in capsys.readouterr().err
+
+
+def test_completion_audit_cli_writes_failure_receipt_and_returns_nonzero(tmp_path):
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    payload = json.loads(reproducibility.read_text(encoding="utf-8"))
+    payload["status"] = "FAIL"
+    payload["errors"] = ["fingerprint_mismatch"]
+    _write(reproducibility, payload)
+    output = tmp_path / "completion-failed.json"
+
+    result = main([
+        "--manifest", str(manifest),
+        "--validation-report", str(validation),
+        "--reproducibility-audit", str(reproducibility),
+        "--output", str(output),
+    ])
+
+    assert result == 1
+    assert json.loads(output.read_text(encoding="utf-8"))["status"] == "FAIL"
+
+
+def test_completion_audit_cli_does_not_clobber_concurrent_output(tmp_path, monkeypatch, capsys):
+    import app.research_pipeline_completion_audit as module
+
+    manifest, validation, reproducibility, _, _ = fixture(tmp_path)
+    output = tmp_path / "completion.json"
+    real_link = module.os.link
+
+    def create_destination_then_link(source, destination):
+        Path(destination).write_text("created concurrently", encoding="utf-8")
+        return real_link(source, destination)
+
+    monkeypatch.setattr(module.os, "link", create_destination_then_link)
+    result = main([
+        "--manifest", str(manifest),
+        "--validation-report", str(validation),
+        "--reproducibility-audit", str(reproducibility),
+        "--output", str(output),
+    ])
+
+    assert result == 2
+    assert output.read_text(encoding="utf-8") == "created concurrently"
+    assert "FileExistsError" in capsys.readouterr().err
+    assert list(tmp_path.glob(".completion.json.*.tmp")) == []
