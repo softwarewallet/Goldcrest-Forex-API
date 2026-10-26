@@ -289,17 +289,31 @@ def run_research_pipeline(
         "strict_model_evaluation_gate": strict_model_evaluation_gate,
     }
     implementation_root = Path(__file__).resolve().parent
+    # Fingerprint the full offline research decision path, not only feature generation.
+    # Changes to fold construction, label eligibility, evaluation gates, report auditors,
+    # or final completion checks must invalidate the source-identity receipt as well.
     implementation_paths = {
         f"app/{name}": implementation_root / name
         for name in (
             "research_pipeline.py",
             "research_dataset_builder.py",
-            "research_experiment_matrix.py",
             "historical_tabular_research.py",
             "causal_ta_features.py",
+            "evaluation.py",
+            "walk_forward.py",
+            "model_walk_forward.py",
+            "research_experiment_matrix.py",
             "research_feature_source_provenance_audit.py",
             "research_point_in_time_feature_invariance_audit.py",
             "research_experiment_fingerprint.py",
+            "research_model_evaluation_gate.py",
+            "research_provenance_auditor.py",
+            "temporal_calibration_stability.py",
+            "research_validation.py",
+            "research_reproducibility_auditor.py",
+            "research_pipeline_completion_audit.py",
+            "research_data_audit.py",
+            "research_strict_json.py",
         )
     }
     experiment_fingerprint = build_experiment_fingerprint(
