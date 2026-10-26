@@ -188,12 +188,14 @@ def audit_pipeline_completion(
         manifest, errors, warnings, checks, validation, reproducibility, evaluation,
         validation_report_sha256=_sha256_if_readable(validation_file),
         reproducibility_audit_sha256=_sha256_if_readable(reproducibility_file),
+        model_evaluation_gate_sha256=_sha256_if_readable(evaluation_path) if evaluation_path else None,
     )
 
 
 def _report(
     manifest, errors, warnings, checks, validation, reproducibility, evaluation,
     *, validation_report_sha256=None, reproducibility_audit_sha256=None,
+    model_evaluation_gate_sha256=None,
 ):
     status = "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS"
     return {
@@ -213,10 +215,7 @@ def _report(
         "model_evaluation_status": evaluation.get("status") if isinstance(evaluation, dict) else None,
         "validation_report_sha256": validation_report_sha256,
         "reproducibility_audit_sha256": reproducibility_audit_sha256,
-        "model_evaluation_gate_sha256": (
-            _sha256_if_readable(_resolve(manifest.get("model_evaluation_gate_path"), Path.cwd()))
-            if isinstance(manifest, dict) else None
-        ),
+        "model_evaluation_gate_sha256": model_evaluation_gate_sha256,
         "model_qualified": False,
         "checks": checks,
         "errors": errors,
