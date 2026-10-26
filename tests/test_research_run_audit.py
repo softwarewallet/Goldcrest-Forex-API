@@ -281,7 +281,19 @@ def _write_v2_completion_receipt(manifest_path: Path):
     reproducibility_path = manifest_path.parent / f"{run_id}_reproducibility_audit.json"
     evaluation_path = manifest_path.parent / f"{run_id}_model_evaluation_gate.json"
     _write_json(validation_path, {"status": "PASS", "run_id": run_id, "actionable": False})
-    _write_json(reproducibility_path, {"status": "PASS", "run_id": run_id, "actionable": False})
+    _write_json(reproducibility_path, {
+        "schema_version": 1,
+        "audit_name": "research_experiment_reproducibility_audit",
+        "status": "PASS",
+        "errors": [],
+        "checks": {},
+        "pipeline_manifest_path": str(manifest_path.resolve()),
+        "fingerprint_path": None,
+        "fingerprint_file_sha256": None,
+        "actionable": False,
+        "execution_connected": False,
+        "automatic_model_selection": False,
+    })
     _write_json(evaluation_path, {
         "schema_version": 1,
         "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
