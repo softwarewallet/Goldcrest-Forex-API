@@ -141,7 +141,11 @@ def audit_pipeline_completion(
         validation_errors = validation.get("errors")
         if not isinstance(validation_errors, list):
             errors.append({"code": "validation_report_errors_schema_invalid", "report": "validation_report"})
-        elif validation_status in {"FAIL", "PASS_WITH_WARNINGS"} or validation_errors:
+        elif (
+            not isinstance(validation_status, str)
+            or validation_status not in _PASS
+            or validation_errors
+        ):
             warnings.append("validation_report_contains_quality_or_integrity_findings")
         validation_warnings = validation.get("warnings")
         if (
