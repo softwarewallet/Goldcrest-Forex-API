@@ -146,3 +146,12 @@ def test_reconciliation_reader_requires_object_root(tmp_path):
     with pytest.raises(ValueError, match="json_root_must_be_object"):
         _read_object(path)
 
+
+
+@pytest.mark.parametrize("bad_status", [["PASS"], {"value": "PASS"}])
+def test_unhashable_registry_status_is_rejected(bad_status):
+    plan = plan_report()
+    registry = registry_report(plan)
+    registry["status"] = bad_status
+    with pytest.raises(ValueError, match="registry_report_not_passing"):
+        reconcile_planned_observed_runs(plan, registry)
