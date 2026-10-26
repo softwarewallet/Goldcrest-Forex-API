@@ -15,6 +15,32 @@ from pathlib import Path
 from typing import Any, Sequence
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
@@ -29,8 +55,8 @@ def _sha256_file(path: Path) -> str:
 
 def _read_json(path: Path) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        value = _load_json_object(path.read_bytes(), source=str(path))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"cannot read JSON artifact {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"JSON artifact must contain an object: {path}")
