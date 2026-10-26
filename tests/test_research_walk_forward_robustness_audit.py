@@ -4,7 +4,7 @@ import hashlib
 
 import pytest
 
-from app.research_walk_forward_robustness_audit import audit_walk_forward_robustness
+from app.research_walk_forward_robustness_audit import audit_walk_forward_robustness, _load_json_object
 
 
 def sha(value: bytes) -> str:
@@ -152,3 +152,12 @@ def test_invalid_arguments_are_rejected():
         )
     with pytest.raises(ValueError, match="manifest_sha256_invalid"):
         audit_walk_forward_robustness(valid_manifest(), manifest_sha256="bad")
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="walk-forward-manifest.json")
