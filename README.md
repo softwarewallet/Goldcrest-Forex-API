@@ -250,3 +250,21 @@ file hash matches. Any unresolved warning or missing evidence fails closed. The 
 does not independently determine legal applicability. A PASS is not a model-quality,
 profitability, or live-deployment certification. See
 `docs/research-release-readiness.md`.
+
+
+## Cross-run research protocol registry
+
+Before combining multiple completed runs, verify protocol consistency, distinct random seeds,
+common data fingerprints, required audit statuses, and clean per-run integrity receipts:
+
+```bash
+python -m app.research_experiment_registry \
+  --manifest data/research/runs/<run-a>_pipeline_manifest.json \
+  --manifest data/research/runs/<run-b>_pipeline_manifest.json \
+  --output data/research/evidence/<registry-id>_experiment_registry.json
+```
+
+The report can be supplied as the `experiment_registry` role to the evidence-pack auditor.
+Any non-clean run, protocol mismatch, reused seed, or data fingerprint mismatch fails closed.
+The registry never selects models or authorizes deployment. See
+`docs/research-experiment-registry.md`.
