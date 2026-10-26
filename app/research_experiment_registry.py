@@ -31,6 +31,8 @@ _PROTOCOL_FIELDS = (
     "class_1_means",
     "max_label_elapsed_hours",
     "label_eligibility_mode",
+)
+_CONFIG_PROTOCOL_FIELDS = (
     "initial_train_bars",
     "validation_bars",
     "test_bars",
@@ -48,8 +50,6 @@ _REQUIRED_PASS_STATUSES = (
     "provenance_audit_status",
     "temporal_calibration_audit_status",
     "model_evaluation_gate_status",
-    "reproducibility_audit_status",
-    "pipeline_completion_audit_status",
 )
 _FALSE_FLAGS = (
     "actionable",
@@ -110,6 +110,7 @@ def build_experiment_registry(manifest_paths: list[str | Path]) -> dict[str, Any
     seen_paths: set[Path] = set()
     seen_seeds: dict[int, str] = {}
     protocol_values: dict[str, set[str]] = {field: set() for field in _PROTOCOL_FIELDS}
+    protocol_values.update({f"research_config.{field}": set() for field in _CONFIG_PROTOCOL_FIELDS})
     dataset_fingerprints: dict[str, list[str]] = {}
 
     for index, raw_path in enumerate(manifest_paths):
@@ -174,15 +175,45 @@ def build_experiment_registry(manifest_paths: list[str | Path]) -> dict[str, Any
             else:
                 seen_seeds[seed] = run_id
 
-            # Fields nested under research_config are included in the same protocol comparison.
-            for field in ("initial_train_bars", "validation_bars", "test_bars", "step_bars",
-                          "trials_per_fold", "bootstrap_resamples", "max_experiments", "include_ablation"):
+            for field in _CONFIG_PROTOCOL_FIELDS:
                 value = config.get(field)
+                key = f"research_config.{field}"
                 if value is None:
                     run_errors.append(f"research_config_field_missing:{field}")
-                elif field not in ("initial_train_bars", "validation_bars", "test_bars", "step_bars",
-                                   "trials_per_fold", "bootstrap_resamples", "max_experiments", "include_ablation"):
-                    pass
+                else:
+                    protocol_values.setdefault(key, set()).add(
+                        json.dumps(value, sort_keys=True, allow_nan=False)
+                    )
+
+        reproducibility_path = manifest.get("reproducibility_audit_path")
+        if not isinstance(reproducibility_path, str) or not reproducibility_path.strip():
+            run_errors.append("reproducibility_audit_path_missing")
+        else:
+            resolved_repro = Path(reproducibility_path).expanduser()
+            if not resolved_repro.is_absolute():
+                resolved_repro = path.parent / resolved_repro
+            try:
+                reproducibility = _read_manifest(resolved_repro.resolve())
+                if reproducibility.get("status") != "PASS" or reproducibility.get("errors") != []:
+                    run_errors.append("reproducibility_audit_not_clean_pass")
+                if reproducibility.get("pipeline_manifest_path") and Path(
+                    str(reproducibility["pipeline_manifest_path"])
+                ).expanduser().resolve() != path:
+                    run_errors.append("reproducibility_manifest_path_mismatch")
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                run_errors.append(f"reproducibility_audit_unreadable:{type(exc).__name__}")
+
+        completion_path = path.parent / f"{run_id}_pipeline_completion_audit.json"
+        try:
+            completion = _read_manifest(completion_path)
+            if completion.get("run_id") != run_id:
+                run_errors.append("completion_receipt_run_id_mismatch")
+            if completion.get("status") != "PASS" or completion.get("errors") != [] or completion.get("warnings") != []:
+                run_errors.append("completion_receipt_not_clean_pass")
+            if completion.get("pipeline_manifest_sha256") != manifest.get("pipeline_manifest_sha256"):
+                run_errors.append("completion_receipt_manifest_hash_mismatch")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            run_errors.append(f"completion_receipt_unreadable:{type(exc).__name__}")
 
         dataset_hash = manifest.get("dataset_sha256")
         if isinstance(dataset_hash, str) and len(dataset_hash) == 64:
