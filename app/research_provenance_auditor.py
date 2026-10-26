@@ -188,7 +188,8 @@ def audit_experiment_matrix(payload: Mapping[str, Any]) -> dict[str, Any]:
 def audit_experiment_matrix_file(source: str | Path, destination: str | Path | None = None) -> dict[str, Any]:
     """Audit a JSON report and optionally write a deterministic JSON audit receipt."""
     source_path = Path(source)
-    raw = source_path.read_bytes()\n    payload = _load_json_object(raw, source=str(source_path))
+    raw = source_path.read_bytes()
+    payload = _load_json_object(raw, source=str(source_path))
     if not isinstance(payload, dict):
         raise ValueError("experiment matrix report must be a JSON object")
     result = audit_experiment_matrix(payload)
