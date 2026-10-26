@@ -234,3 +234,17 @@ def test_malformed_warnings_array_fails_closed(tmp_path):
         for error in report["errors"]
     )
 
+def test_explicit_null_warnings_fails_closed(tmp_path):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_backend_parity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["warnings"] = None
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    report = run_audit(tmp_path, manifest_for(reports))
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "upstream_warnings_field_invalid"
+        and error["audit_name"] == "feature_backend_parity"
+        for error in report["errors"]
+    )
+
