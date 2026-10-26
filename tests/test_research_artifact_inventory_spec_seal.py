@@ -90,7 +90,7 @@ def test_json_reader_rejects_duplicate_keys_and_nonstandard_constants(tmp_path, 
 @pytest.mark.parametrize(
     ("field", "value", "error"),
     [
-        ("artifact_id", " metrics ", "artifact_id_must_be_canonical_unpadded"),
+        ("artifact_id", " metrics ", "artifact_id_must_match_canonical_identifier_pattern"),
         ("path", " reports/metrics.json ", "path_must_be_canonical_unpadded"),
         ("path", "../metrics.json", "safe_normalized_posix"),
     ],
