@@ -43,3 +43,14 @@ def test_write_text_no_clobber_does_not_overwrite_concurrent_target(monkeypatch,
 
     assert target.read_text(encoding="utf-8") == competitor_payload
     assert sorted(p.name for p in tmp_path.iterdir()) == ["report.json"]
+
+
+
+def test_write_text_atomic_replace_updates_existing_payload(tmp_path):
+    target = tmp_path / "receipt.json"
+    target.write_text('{"version":1}\\n', encoding="utf-8")
+
+    atomic_output.write_text_atomic_replace(target, '{"version":2}\\n')
+
+    assert target.read_text(encoding="utf-8") == '{"version":2}\\n'
+    assert list(tmp_path.iterdir()) == [target]

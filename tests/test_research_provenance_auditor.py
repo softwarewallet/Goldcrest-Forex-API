@@ -141,3 +141,4 @@ def test_audit_rejects_duplicate_declared_model_types():
     result = audit_experiment_matrix(payload)
     assert result["status"] == "FAIL"
     assert "duplicate_declared_model_types" in result["errors"]
+

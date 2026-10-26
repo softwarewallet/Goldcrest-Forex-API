@@ -10,6 +10,8 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.research_atomic_output import write_text_atomic_replace
+
 from app.research_strict_json import strict_json_loads
 
 
@@ -194,6 +196,8 @@ def audit_experiment_matrix_file(source: str | Path, destination: str | Path | N
     result["source_report_sha256"] = hashlib.sha256(raw).hexdigest()
     if destination is not None:
         target = Path(destination)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        write_text_atomic_replace(
+            target,
+            json.dumps(result, indent=2, sort_keys=True) + "\n",
+        )
     return result
