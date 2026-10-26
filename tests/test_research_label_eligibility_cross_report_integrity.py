@@ -18,7 +18,7 @@ def _report(path: Path, cap: float, *, symbol: str = "EURUSD") -> Path:
          "baseline_probability_class_1": 0.8, "variant_probability_class_1": 0.75},
     ]
     fingerprint = hashlib.sha256(
-        ("\\n".join(row["timestamp_utc"] for row in rows) + "\\n").encode()
+        ("\n".join(row["timestamp_utc"] for row in rows) + "\n").encode()
     ).hexdigest()
     report = {
         "status": "PASS",
