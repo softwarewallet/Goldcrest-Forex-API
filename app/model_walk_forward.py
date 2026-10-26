@@ -179,6 +179,27 @@ def evaluate_binary_walk_forward(
     results: list[ModelFoldResult] = []
     if not plan.folds:
         raise ValueError("walk-forward plan contains no folds")
+    # Validate plan-wide fold identity and test-window separation before fitting
+    # any model. A hand-built or modified plan must not bypass the generator's guard.
+    fold_indices = [fold.fold_index for fold in plan.folds]
+    if any(isinstance(index, bool) or not isinstance(index, int) or index < 0
+           for index in fold_indices):
+        raise ValueError("fold indices must be non-negative integers")
+    if fold_indices != list(range(len(plan.folds))):
+        raise ValueError("walk-forward plan fold indices must be contiguous from zero")
+
+    test_windows: list[tuple[int, datetime, datetime]] = []
+    for fold in plan.folds:
+        if not fold.test:
+            raise ValueError("each fold requires a non-empty test partition")
+        test_times = [_utc(bar.timestamp, "fold") for bar in fold.test]
+        if test_times != sorted(test_times) or len(set(test_times)) != len(test_times):
+            raise ValueError("each fold test partition must be strictly chronological")
+        test_windows.append((fold.fold_index, test_times[0], test_times[-1]))
+    test_windows.sort(key=lambda item: item[0])
+    for previous, current in zip(test_windows, test_windows[1:]):
+        if previous[2] >= current[1]:
+            raise ValueError("walk-forward plan test windows must not overlap across folds")
     seen_fold_indices: set[int] = set()
     for fold in plan.folds:
         if isinstance(fold.fold_index, bool) or not isinstance(fold.fold_index, int) or fold.fold_index < 0:

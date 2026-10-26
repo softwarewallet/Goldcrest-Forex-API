@@ -172,3 +172,48 @@ def test_walk_forward_excludes_ineligible_rows_from_fit_and_scoring():
     assert first.validation.sample_count == len(first_fold.validation) - 1
     assert first.test.sample_count == len(first_fold.test) - 1
 
+
+
+def test_rejects_sparse_fold_indices_before_fitting_any_model():
+    bars = make_bars()
+    plan = generate_walk_forward_folds(
+        bars, initial_train_bars=60, validation_bars=20,
+        test_bars=20, step_bars=18, horizon_bars=2,
+    )
+    assert len(plan.folds) >= 2
+    sparse_plan = replace(plan, folds=(plan.folds[0], replace(plan.folds[1], fold_index=2)))
+    factory_calls = []
+
+    def factory():
+        factory_calls.append(True)
+        return FakeModel()
+
+    with pytest.raises(ValueError, match="indices must be contiguous"):
+        evaluate_binary_walk_forward(
+            sparse_plan, examples_for(bars),
+            feature_names=("close_delta", "hour_bucket"), model_factory=factory,
+        )
+    assert factory_calls == []
+
+
+def test_rejects_overlapping_test_windows_before_fitting_any_model():
+    bars = make_bars()
+    plan = generate_walk_forward_folds(
+        bars, initial_train_bars=60, validation_bars=20,
+        test_bars=20, step_bars=18, horizon_bars=2,
+    )
+    assert len(plan.folds) >= 2
+    overlapping_second = replace(plan.folds[1], test=plan.folds[0].test)
+    overlapping_plan = replace(plan, folds=(plan.folds[0], overlapping_second))
+    factory_calls = []
+
+    def factory():
+        factory_calls.append(True)
+        return FakeModel()
+
+    with pytest.raises(ValueError, match="test windows must not overlap"):
+        evaluate_binary_walk_forward(
+            overlapping_plan, examples_for(bars),
+            feature_names=("close_delta", "hour_bucket"), model_factory=factory,
+        )
+    assert factory_calls == []
