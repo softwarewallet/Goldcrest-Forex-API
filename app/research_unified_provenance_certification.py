@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from app.research_strict_json import strict_json_loads
+
 from app.research_artifact_freshness_audit import audit_artifact_freshness, fingerprint_path
 from app.research_artifact_inventory_completeness import audit_artifact_inventory_completeness
 from app.research_artifact_inventory_spec_seal import verify_inventory_spec_seal
@@ -292,27 +294,8 @@ def run_unified_certification(
     }
 
 
-def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate_json_key:{key}")
-        result[key] = value
-    return result
-
-
-def _reject_nonstandard_json_constant(value: str) -> None:
-    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
-    raise ValueError(f"nonstandard_json_constant:{value}")
-
-
 def _read_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(
-        path.read_text(encoding="utf-8"),
-        object_pairs_hook=_reject_duplicate_json_keys,
-        parse_constant=_reject_nonstandard_json_constant,
-    )
+    payload = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{path}")
     return payload
