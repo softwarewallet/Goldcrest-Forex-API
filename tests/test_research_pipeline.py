@@ -188,6 +188,18 @@ def test_pipeline_orchestrates_offline_stages_and_marks_report_non_actionable(tm
     fingerprint_receipt = json.loads(fingerprint_path.read_text(encoding="utf-8"))
     assert verify_experiment_fingerprint(fingerprint_receipt)["status"] == "PASS"
     assert stored["experiment_fingerprint_sha256"] == fingerprint_receipt["experiment_fingerprint_sha256"]
+    fingerprinted_modules = set(fingerprint_receipt["implementation_file_sha256"])
+    assert {
+        "app/walk_forward.py",
+        "app/model_walk_forward.py",
+        "app/research_model_evaluation_gate.py",
+        "app/research_provenance_auditor.py",
+        "app/temporal_calibration_stability.py",
+        "app/research_validation.py",
+        "app/research_reproducibility_auditor.py",
+        "app/research_pipeline_completion_audit.py",
+        "app/research_data_audit.py",
+    }.issubset(fingerprinted_modules)
     assert stored["experiment_fingerprint_file_sha256"] == research_pipeline._sha256(fingerprint_path)
     assert result["reproducibility_audit_status"] == "PASS"
     reproducibility_path = Path(result["reproducibility_audit_path"])
