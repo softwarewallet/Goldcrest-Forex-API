@@ -26,6 +26,7 @@ FLAGS = {
 
 def fixtures():
     readiness = {
+        "schema_version": 1,
         "audit_name": "research_reproducibility_readiness",
         "status": "PASS",
         "plan_id": "plan-123",
@@ -36,6 +37,7 @@ def fixtures():
         **FLAGS,
     }
     bundle = {
+        "schema_version": 1,
         "audit_name": "research_evaluation_certification_evidence_bundle",
         "status": "PASS",
         "plan_id": "plan-123",
@@ -47,6 +49,7 @@ def fixtures():
         **FLAGS,
     }
     verification = {
+        "schema_version": 1,
         "audit_name": "research_evaluation_certification_evidence_bundle_verification",
         "status": "PASS",
         "readiness": "EVIDENCE_BUNDLE_CONTENT_VERIFIED",
@@ -375,5 +378,27 @@ def test_input_status_must_match_warning_collection(status, warnings):
     assert any(
         error["code"] == "input_status_warning_mismatch"
         and error["report"] == "readiness"
+        for error in report["errors"]
+    )
+
+
+
+@pytest.mark.parametrize("report_name", ["readiness", "bundle", "verification"])
+@pytest.mark.parametrize("schema_version", [True, False, 1.0, "1", None, 2])
+def test_final_chain_rejects_invalid_schema_versions(report_name, schema_version):
+    readiness, bundle, verification = fixtures()
+    payload = {
+        "readiness": readiness,
+        "bundle": bundle,
+        "verification": verification,
+    }[report_name]
+    payload["schema_version"] = schema_version
+
+    report = audit_final_certification_chain(readiness, bundle, verification)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "input_schema_version_invalid"
+        and error["report"] == report_name
         for error in report["errors"]
     )
