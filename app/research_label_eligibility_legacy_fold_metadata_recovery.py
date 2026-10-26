@@ -10,9 +10,10 @@ import copy
 import json
 import math
 import re
-from app.research_strict_json import strict_json_loads
 from pathlib import Path
 from typing import Any
+
+from app.research_strict_json import strict_json_loads
 
 ROOT = Path("data/research/runs")
 DEFAULT_REPORTS = {
