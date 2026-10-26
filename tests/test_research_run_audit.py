@@ -907,3 +907,15 @@ def test_run_audit_rejects_duplicate_json_keys_in_referenced_artifact(tmp_path):
     assert "dataset_manifest_path_invalid_json:ValueError" in result["errors"]
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+
+def test_run_audit_rejects_nonstandard_json_constant_in_manifest(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    text = manifest_path.read_text(encoding="utf-8")
+    text = text.replace('"run_id": "run-001",', '"run_id": "run-001",\n  "unexpected": NaN,', 1)
+    manifest_path.write_text(text, encoding="utf-8")
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert any(error.startswith("manifest_unreadable:ValueError") for error in result["errors"])
