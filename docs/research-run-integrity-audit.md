@@ -4,7 +4,9 @@ After a research pipeline run, verify that the manifest and its five core artifa
 still match their recorded SHA-256 hashes and that their run IDs, dataset hashes, and audit
 receipts agree. Newer runs also include a raw OHLC audit receipt and temporal calibration
 stability receipt; each optional receipt is verified whenever its path/hash is present in the
-manifest. Older schema-v1 manifests without those optional receipts remain readable.
+manifest. Newer runs also produce a separate pipeline-completion receipt, which is checked
+against the manifest's run ID and self-hash when present. Older schema-v1 manifests and runs
+without a completion receipt remain readable.
 
 From the repository root, with the project virtual environment active:
 
