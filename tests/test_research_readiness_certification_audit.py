@@ -292,7 +292,7 @@ def test_readiness_malformed_upstream_status_fails_closed_without_raising(tmp_pa
     ("field", "value"),
     [
         ("prefix_invariance", []),
-        ("future_perturbation_invariance", {"all_passed": True}),
+        ("future_perturbation_invariance", {"all_passed": []}),
         ("chronological_partition_isolation", None),
     ],
 )
