@@ -23,22 +23,22 @@ _FALSE_FLAGS = (
 _PASS = {"PASS", "PASS_WITH_WARNINGS"}
 
 
-def _read_object(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _read_object_with_hash(path: Path) -> tuple[dict[str, Any], str]:
+    """Parse and fingerprint one byte snapshot so the digest matches the audited content."""
+    raw = path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    payload = json.loads(raw.decode("utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"json_root_must_be_object:{path.name}")
-    return payload
+    return payload, digest
+
+
+def _read_object(path: Path) -> dict[str, Any]:
+    return _read_object_with_hash(path)[0]
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _sha256_if_readable(path: Path) -> str | None:
-    try:
-        return _sha256(path) if path.is_file() else None
-    except OSError:
-        return None
 
 
 def _resolve(value: object, manifest_path: Path) -> Path | None:
@@ -68,6 +68,8 @@ def audit_pipeline_completion(
     validation: dict[str, Any] = {}
     reproducibility: dict[str, Any] = {}
     evaluation: dict[str, Any] = {}
+    source_hashes: dict[str, str] = {}
+    evaluation_source_hash: str | None = None
 
     for label, path, target in (
         ("pipeline_manifest", manifest_file, "manifest"),
@@ -75,7 +77,8 @@ def audit_pipeline_completion(
         ("reproducibility_audit", reproducibility_file, "reproducibility"),
     ):
         try:
-            value = _read_object(path)
+            value, source_hash = _read_object_with_hash(path)
+            source_hashes[label] = source_hash
             if target == "manifest":
                 manifest = value
             elif target == "validation":
@@ -90,8 +93,8 @@ def audit_pipeline_completion(
     if not manifest:
         return _report(
             manifest, errors, warnings, checks, validation, reproducibility, evaluation,
-            validation_report_sha256=_sha256_if_readable(validation_file),
-            reproducibility_audit_sha256=_sha256_if_readable(reproducibility_file),
+            validation_report_sha256=source_hashes.get("validation_report"),
+            reproducibility_audit_sha256=source_hashes.get("reproducibility_audit"),
         )
 
     run_id = manifest.get("run_id")
@@ -162,9 +165,9 @@ def audit_pipeline_completion(
     try:
         if evaluation_path is None or not evaluation_path.is_file():
             raise OSError("model_evaluation_gate_missing")
-        if _sha256(evaluation_path) != expected_evaluation_hash:
+        evaluation, evaluation_source_hash = _read_object_with_hash(evaluation_path)
+        if evaluation_source_hash != expected_evaluation_hash:
             raise ValueError("model_evaluation_gate_sha256_mismatch")
-        evaluation = _read_object(evaluation_path)
         checks["model_evaluation_gate_file_hash"] = "PASS"
         if evaluation.get("status") not in _PASS:
             warnings.append("model_evaluation_gate_did_not_pass")
@@ -186,9 +189,9 @@ def audit_pipeline_completion(
 
     return _report(
         manifest, errors, warnings, checks, validation, reproducibility, evaluation,
-        validation_report_sha256=_sha256_if_readable(validation_file),
-        reproducibility_audit_sha256=_sha256_if_readable(reproducibility_file),
-        model_evaluation_gate_sha256=_sha256_if_readable(evaluation_path) if evaluation_path else None,
+        validation_report_sha256=source_hashes.get("validation_report"),
+        reproducibility_audit_sha256=source_hashes.get("reproducibility_audit"),
+        model_evaluation_gate_sha256=evaluation_source_hash,
     )
 
 
