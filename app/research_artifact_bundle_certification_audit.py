@@ -129,7 +129,7 @@ def audit_research_artifact_bundle(
             try:
                 raw = resolved.read_bytes()
                 digest = _sha256(raw)
-                decoded = _load_json_object(raw, source=str(path))
+                decoded = _load_json_object(raw, source=str(resolved))
                 if not isinstance(decoded, dict):
                     entry_errors.append("artifact_root_not_object")
                 else:
