@@ -135,6 +135,17 @@ def audit_research_evidence_pack(
         if payload is not None:
             if payload.get("status") not in PASS_STATUSES:
                 item_errors.append("upstream_report_not_passing")
+            upstream_errors = payload.get("errors")
+            if not isinstance(upstream_errors, list):
+                item_errors.append("upstream_errors_field_missing_or_invalid")
+            elif upstream_errors:
+                item_errors.append("upstream_report_contains_errors")
+            upstream_warnings = payload.get("warnings")
+            if upstream_warnings is not None and (
+                not isinstance(upstream_warnings, list)
+                or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
+            ):
+                item_errors.append("upstream_warnings_field_invalid")
             for flag in FALSE_FLAGS:
                 if payload.get(flag) is not False:
                     item_errors.append(f"safety_flag_not_explicitly_false:{flag}")
