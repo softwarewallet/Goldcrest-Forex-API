@@ -35,7 +35,7 @@ def canonical_report_bytes(report: dict[str, Any]) -> bytes:
     if report.get("status") in {"PASS", "PASS_WITH_WARNINGS"} and errors:
         raise ValueError("passing_certification_report_must_not_contain_errors")
     warnings = report.get("warnings")
-    if warnings is not None and (
+    if "warnings" in report and (
         not isinstance(warnings, list)
         or any(not isinstance(item, str) or not item.strip() for item in warnings)
     ):
