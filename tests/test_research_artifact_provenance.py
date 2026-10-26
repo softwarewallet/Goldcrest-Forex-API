@@ -112,6 +112,41 @@ def test_capture_rejects_invalid_git_revision(tmp_path):
         capture_provenance(spec, source_revision="main", config_path=config, dataset_path=dataset, root=root)
 
 
+@pytest.mark.parametrize("source_revision", ["A" * 40, " " + REV, REV + " "])
+def test_capture_rejects_noncanonical_git_revision(tmp_path, source_revision):
+    root, config, dataset, spec = setup_tree(tmp_path)
+    with pytest.raises(ValueError, match="source_revision"):
+        capture_provenance(spec, source_revision=source_revision, config_path=config, dataset_path=dataset, root=root)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("artifact_id", " plan ", "artifact_id_must_be_nonempty_and_canonical"),
+        ("path", " plan.json ", "artifact_path_must_be_nonempty_and_canonical"),
+        ("depends_on", [" plan "], "dependencies_must_be_canonical_string_list"),
+    ],
+)
+def test_capture_rejects_noncanonical_artifact_identity_fields(tmp_path, field, value, error):
+    root, config, dataset, spec = setup_tree(tmp_path)
+    entry = {"artifact_id": "plan", "path": "plan.json", "depends_on": []}
+    entry[field] = value
+    with pytest.raises(ValueError, match=error):
+        capture(root, config, dataset, {"artifacts": [entry]})
+
+
+def test_verifier_rejects_padded_artifact_identity_and_path(tmp_path):
+    root, config, dataset, spec = setup_tree(tmp_path)
+    manifest = capture(root, config, dataset, spec)
+    manifest["artifacts"][0]["artifact_id"] = " plan "
+    manifest["artifacts"][1]["path"] = " metrics.csv "
+    report = verify(manifest, root, config, dataset)
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "ARTIFACT_ID_INVALID_OR_DUPLICATE" for item in report["errors"])
+    metrics = next(item for item in report["artifacts"] if item["artifact_id"] == "metrics")
+    assert "MISSING_OR_INVALID_ARTIFACT_PATH" in metrics["reasons"]
+
+
 def test_verifier_fails_when_safety_flag_is_not_false(tmp_path):
     root, config, dataset, spec = setup_tree(tmp_path)
     manifest = capture(root, config, dataset, spec)
