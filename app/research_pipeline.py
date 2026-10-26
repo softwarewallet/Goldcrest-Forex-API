@@ -465,7 +465,7 @@ def run_research_pipeline(
     )
     completion_audit_path = destination / f"{run_id}_pipeline_completion_audit.json"
     completion_audit_path.write_text(
-        json.dumps(completion_audit, indent=2, sort_keys=True, allow_nan=False) + "\\n",
+        json.dumps(completion_audit, indent=2, sort_keys=True, allow_nan=False) + "\n",
         encoding="utf-8",
     )
     result["pipeline_completion_audit_path"] = str(completion_audit_path)
@@ -563,6 +563,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if result.get("reproducibility_audit_status") == "FAIL":
         print("research pipeline completed, but cross-artifact reproducibility audit failed; inspect reproducibility_audit_errors", file=sys.stderr)
         return 7
+    if result.get("pipeline_completion_audit_status") == "FAIL":
+        print("research pipeline completed, but final completion integrity audit failed; inspect pipeline_completion_audit_errors", file=sys.stderr)
+        return 8
     return 0
 
 
