@@ -44,10 +44,23 @@ def _metrics(rows: Sequence[Mapping[str, Any]], probability_field: str) -> dict[
     }
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
 def _read_report(path: str | Path, *, raw_bytes: bytes | None = None) -> dict[str, Any]:
     # Parse the exact byte snapshot whose digest is recorded by the caller.
     raw = Path(path).read_bytes() if raw_bytes is None else raw_bytes
-    value = json.loads(raw.decode("utf-8"))
+    value = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+    )
     if not isinstance(value, dict) or value.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
         raise ValueError(f"{path}: input comparison report is not a passing report")
     for field in ("baseline_run_id", "variant_run_id", "symbol", "timeframe",
