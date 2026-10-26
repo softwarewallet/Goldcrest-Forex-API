@@ -263,6 +263,19 @@ def audit_model_evaluation_report(report_path: str | Path) -> dict[str, Any]:
                             "boundaries and test sample counts.",
                         )
 
+        # A declared fold count describes the complete ordered walk-forward plan.
+        # Missing or sparse indices can hide skipped evaluation windows while the raw
+        # list length still matches fold_count, so require exactly 0..fold_count-1.
+        if expected_fold_count is not None:
+            expected_indices = set(range(expected_fold_count))
+            if seen_fold_indices != expected_indices:
+                error(
+                    "fold_indices_not_contiguous",
+                    f"{exp_loc}.fold_results",
+                    f"Expected fold indices 0..{expected_fold_count - 1}; "
+                    f"found {sorted(seen_fold_indices)}.",
+                )
+
         # Test windows from different folds should not overlap: otherwise the matrix
         # may repeatedly score some of the same future observations as separate folds.
         ordered_test_windows = sorted(test_windows_by_index.items())
