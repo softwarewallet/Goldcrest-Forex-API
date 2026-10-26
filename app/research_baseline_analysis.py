@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from app.research_results_summary import summarize_research_run
+from app.research_strict_json import strict_json_loads
 
 _EPS = 1e-15
 _BASELINES = {
@@ -26,7 +27,7 @@ _SAFETY_FLAGS = ("actionable", "automatic_winner_selection", "test_metrics_used_
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    value = strict_json_loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value
@@ -530,7 +531,7 @@ def analyze_research_run(
         matrix_hash = hashlib.sha256(matrix_bytes).hexdigest()
         if matrix_hash != manifest.get("experiment_matrix_report_sha256"):
             raise ValueError("experiment_matrix_report_sha256_mismatch")
-        matrix = json.loads(matrix_bytes.decode("utf-8"))
+        matrix = strict_json_loads(matrix_bytes.decode("utf-8"))
         if not isinstance(matrix, dict):
             raise ValueError("experiment_matrix_report_not_object")
         if matrix.get("run_id") != manifest.get("run_id"):
