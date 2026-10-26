@@ -177,7 +177,7 @@ def test_registry_nonempty_errors_fails_closed(tmp_path):
         audit_evaluation_output_integrity(plan, registry, registry_root=tmp_path)
 
 
-@pytest.mark.parametrize("warnings", [{"bad": "shape"}, [""], [None], ["ok", 1]])
+@pytest.mark.parametrize("warnings", [None, {"bad": "shape"}, [""], [None], ["ok", 1]])
 def test_registry_malformed_warnings_fails_closed(tmp_path, warnings):
     plan = make_plan()
     registry = registry_for(tmp_path, plan)
