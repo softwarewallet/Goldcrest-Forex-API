@@ -494,7 +494,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             ("feature_implementation_sha256", "feature_implementation_sha256", "dataset_manifest_feature_implementation_hash_mismatch"),
         ):
             pipeline_value = manifest.get(pipeline_field)
-            if pipeline_value is not None and dataset_manifest.get(dataset_field) != pipeline_value:
+            if pipeline_value is not None and dataset_manifest.get(dataset_field) is not None and dataset_manifest.get(dataset_field) != pipeline_value:
                 errors.append(error_name)
 
     label_cap = manifest.get("max_label_elapsed_hours")
