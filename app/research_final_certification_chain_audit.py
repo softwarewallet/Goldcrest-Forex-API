@@ -68,6 +68,17 @@ def audit_final_certification_chain(
                 "expected": audit_name,
                 "actual": payload.get("audit_name"),
             })
+        input_schema_version = payload.get("schema_version")
+        if (
+            not isinstance(input_schema_version, int)
+            or isinstance(input_schema_version, bool)
+            or input_schema_version != 1
+        ):
+            errors.append({
+                "code": "input_schema_version_invalid",
+                "report": name,
+                "schema_version": input_schema_version,
+            })
         input_status = payload.get("status")
         # A malformed JSON value such as a list/dict is unhashable; validate the
         # type before membership testing so hostile reports become FAIL diagnostics.
