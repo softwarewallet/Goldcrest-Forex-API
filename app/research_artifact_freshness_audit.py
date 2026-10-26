@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from app.research_strict_json import strict_json_loads
+from app.research_atomic_output import write_text_no_clobber
 
 def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
     payload = strict_json_loads(raw.decode("utf-8"))
@@ -267,12 +268,9 @@ def main() -> int:
             current_config_sha256=fingerprint_path(args.config_path),
             current_dataset_sha256=fingerprint_path(args.dataset_path),
         )
-        if args.output.exists():
-            raise ValueError(f"output_already_exists:{args.output}")
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
+        write_text_no_clobber(
+            args.output,
             json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n",
-            encoding="utf-8",
         )
         print(json.dumps({
             "status": report["status"],
