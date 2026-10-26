@@ -36,7 +36,7 @@ def audit_experiment_registry(registry: dict[str, Any], *, base_dir: Path) -> di
     if registry.get("schema_version") != 1:
         raise ValueError("registry_schema_version_unsupported")
     registry_id = registry.get("registry_id")
-    if not isinstance(registry_id, str) or not registry_id.strip():
+    if not isinstance(registry_id, str) or not registry_id.strip() or registry_id != registry_id.strip():
         raise ValueError("registry_id_invalid")
     entries = registry.get("runs")
     if not isinstance(entries, list) or not entries:
@@ -122,7 +122,7 @@ def audit_experiment_registry(registry: dict[str, Any], *, base_dir: Path) -> di
     expected_ids = registry.get("expected_run_ids")
     if expected_ids is not None:
         if (not isinstance(expected_ids, list) or
-                any(not isinstance(item, str) or not item.strip() for item in expected_ids) or
+                any(not isinstance(item, str) or not item.strip() or item != item.strip() for item in expected_ids) or
                 len(set(expected_ids)) != len(expected_ids)):
             errors.append({"code": "expected_run_ids_invalid"})
         else:
@@ -145,7 +145,7 @@ def audit_experiment_registry(registry: dict[str, Any], *, base_dir: Path) -> di
                 errors.append({"code": "expected_seed_missing", "seed": seed})
     if expected_folds is not None:
         if (not isinstance(expected_folds, list) or not expected_folds or
-                any(not isinstance(x, (str, int)) or isinstance(x, bool) for x in expected_folds) or
+                any(not isinstance(x, (str, int)) or isinstance(x, bool) or (isinstance(x, str) and (not x.strip() or x != x.strip())) for x in expected_folds) or
                 len({str(x) for x in expected_folds}) != len(expected_folds)):
             errors.append({"code": "expected_folds_invalid"})
         else:

@@ -132,3 +132,28 @@ def test_missing_expected_run_fails_closed(tmp_path):
 def test_strict_json_loader_rejects_ambiguous_inputs(raw):
     with pytest.raises(ValueError):
         _load_json_object(raw, source="registry.json")
+
+
+def test_registry_rejects_noncanonical_registry_id(tmp_path):
+    registry = write_registry(tmp_path, [run_manifest("run-a", 11)])
+    registry["registry_id"] = " test-registry "
+
+    with pytest.raises(ValueError, match="registry_id_invalid"):
+        audit_experiment_registry(registry, base_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_code"),
+    [
+        (lambda registry: registry.update({"expected_run_ids": [" run-a "]}), "expected_run_ids_invalid"),
+        (lambda registry: registry.update({"expected_folds": [" fold-1 "]}), "expected_folds_invalid"),
+    ],
+)
+def test_registry_reports_noncanonical_expected_identity_fields(tmp_path, mutation, error_code):
+    registry = write_registry(tmp_path, [run_manifest("run-a", 11)])
+    mutation(registry)
+
+    report = audit_experiment_registry(registry, base_dir=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == error_code for error in report["errors"])
