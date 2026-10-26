@@ -422,7 +422,7 @@ def test_common_cohort_rejects_duplicate_json_keys(tmp_path):
     a.write_text(
         original.replace(
             '"variant_run_id": "cap-1.0",',
-            '"variant_run_id": "cap1.0",\\n  "variant_run_id": "shadow-run",',
+            '"variant_run_id": "cap-1.0",\n  "variant_run_id": "shadow-run",',
             1,
         ),
         encoding="utf-8",
