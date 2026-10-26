@@ -45,7 +45,7 @@ def manifest(revision=REV):
     }
 
 
-def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False):
+def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=None, include_seal=True, inventory_override=None, include_inventory_seal=True, fingerprint_error=False, final_certification_error=False, provenance_error=False, gate_error=False):
     import app.research_unified_provenance_certification as module
 
     if repo_path is None:
@@ -97,11 +97,14 @@ def call(monkeypatch, tmp_path, provenance=None, gate_status="PASS", repo_path=N
             {"audit_name": "evidence_bundle_verification", "status": "PASS", "reports_verified": 6, "errors": [], **FLAGS},
             {"audit_name": "research_final_certification_chain", "status": "PASS", "readiness": "FINAL_CERTIFICATION_CHAIN_VERIFIED", "errors": [], **FLAGS},
         ))
-    monkeypatch.setattr(module, "gate_freshness_certification", lambda fresh, cert: {
-        "status": gate_status,
-        "errors": [] if gate_status == "PASS" else [{"code": "gate_failed"}],
-        "warnings": [],
-    })
+    if gate_error:
+        monkeypatch.setattr(module, "gate_freshness_certification", lambda *a, **k: (_ for _ in ()).throw(ValueError("injected_component_failure")))
+    else:
+        monkeypatch.setattr(module, "gate_freshness_certification", lambda fresh, cert: {
+            "status": gate_status,
+            "errors": [] if gate_status == "PASS" else [{"code": "gate_failed"}],
+            "warnings": [],
+        })
     selected_manifest = provenance or manifest()
     inventory_spec = inventory_override or {
         "schema_version": 1,
@@ -475,3 +478,31 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+ 
+@pytest.mark.parametrize(
+    "target,error_code",
+    [
+        ("verify_manifest_seal", "PROVENANCE_SEAL_VERIFICATION_EXECUTION_FAILED"),
+        ("verify_inventory_spec_seal", "INVENTORY_SPEC_SEAL_VERIFICATION_EXECUTION_FAILED"),
+        ("gate_freshness_certification", "FRESHNESS_CERTIFICATION_GATE_EXECUTION_FAILED"),
+    ],
+)
+def test_component_verifier_exceptions_return_consolidated_failure(
+    monkeypatch, tmp_path, target, error_code
+):
+    import app.research_unified_provenance_certification as module
+
+    def fail(*args, **kwargs):
+        raise ValueError("injected_component_failure")
+
+    monkeypatch.setattr(module, target, fail)
+    report = call(monkeypatch, tmp_path, gate_error=(target == "gate_freshness_certification"))
+    assert report["status"] == "FAIL"
+    assert report["deployment_authorized"] is False
+    assert any(error["code"] == error_code for error in (
+        report["errors"]
+        + report["provenance_manifest_seal_verification"].get("errors", [])
+        + report["artifact_inventory_spec_seal_verification"].get("errors", [])
+        + report["freshness_certification_gate"].get("errors", [])
+    ))
