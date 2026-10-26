@@ -131,6 +131,50 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"raw_ohlc_audit_path_invalid_json:{type(exc).__name__}")
 
+    # Newer runs include a point-in-time feature invariance receipt. Verify its
+    # content hash, identity, source snapshot binding, and non-actionable safety flags.
+    if (
+        manifest.get("point_in_time_feature_invariance_audit_path")
+        or manifest.get("point_in_time_feature_invariance_audit_sha256")
+    ):
+        field = "point_in_time_feature_invariance_audit"
+        resolved = _resolve_artifact_path(
+            manifest.get(f"{field}_path"), manifest_path
+        )
+        expected_hash = manifest.get(f"{field}_sha256")
+        if resolved is None:
+            errors.append(f"{field}_path_missing")
+        elif not resolved.is_file():
+            errors.append(f"{field}_path_not_found")
+        else:
+            actual_hash = _sha256(resolved)
+            checked_artifacts[f"{field}_path"] = {
+                "path": str(resolved),
+                "sha256": actual_hash,
+            }
+            if not isinstance(expected_hash, str) or actual_hash != expected_hash:
+                errors.append(f"{field}_path_sha256_mismatch")
+            try:
+                related[f"{field}_path"] = _read_json(resolved)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
+
+        point_in_time = related.get(f"{field}_path", {})
+        if point_in_time:
+            if point_in_time.get("audit_name") != "research_point_in_time_feature_invariance_audit":
+                errors.append(f"{field}_audit_name_mismatch")
+            if point_in_time.get("status") != manifest.get(f"{field}_status"):
+                errors.append(f"{field}_status_mismatch")
+            if point_in_time.get("source_sha256") != checked_artifacts.get("raw_ohlc_path", {}).get("sha256"):
+                errors.append(f"{field}_source_ohlc_hash_mismatch")
+            for flag in ("actionable", "execution_connected", "model_training_performed", "automatic_model_selection"):
+                if point_in_time.get(flag) is not False:
+                    errors.append(f"{field}_{flag}_must_be_false")
+            if point_in_time.get("status") != "PASS" or point_in_time.get("errors") != []:
+                errors.append(f"{field}_not_pass")
+            if point_in_time.get("status") == "PASS" and point_in_time.get("cutoff_count", 0) < 1:
+                errors.append(f"{field}_cutoff_coverage_missing")
+
     # Newer runs also include a calibration-stability receipt derived from the
     # persisted experiment matrix. Keep older schema-v1 manifests readable.
     if manifest.get("temporal_calibration_audit_path") or manifest.get("temporal_calibration_audit_sha256"):
