@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,12 @@ def certify_evaluation_integrity(
     plan_id = plan.get("plan_id")
     plan_sha = plan.get("plan_sha256")
     registry_id = registry.get("registry_id")
+    if not isinstance(plan_id, str) or not plan_id.strip() or plan_id != plan_id.strip():
+        errors.append({"code": "plan_id_invalid"})
+    if not isinstance(plan_sha, str) or re.fullmatch(r"[0-9a-f]{64}", plan_sha) is None:
+        errors.append({"code": "plan_sha256_invalid"})
+    if not isinstance(registry_id, str) or not registry_id.strip() or registry_id != registry_id.strip():
+        errors.append({"code": "registry_id_invalid"})
     for name, payload in (
         ("output_integrity", output_integrity),
         ("row_window_lineage", row_window_lineage),
