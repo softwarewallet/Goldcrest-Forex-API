@@ -142,3 +142,19 @@ def test_allow_no_artifacts_is_explicit_opt_out(tmp_path):
     )
     assert report["status"] == "PASS"
     assert report["require_output_artifact"] is False
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"schema_version":1,"schema_version":1}',
+    b'{"metrics":{"net_pnl":NaN}}',
+    b'{"metrics":{"net_pnl":Infinity}}',
+    b'{"metrics":{"net_pnl":-Infinity}}',
+])
+def test_manifest_strict_json_rejects_ambiguous_or_nonstandard_values(tmp_path, raw):
+    plan = make_plan()
+    registry = registry_for(tmp_path, plan)
+    (tmp_path / "manifest.json").write_bytes(raw)
+    registry["run_results"][0]["manifest_sha256"] = sha(raw)
+    report = audit_evaluation_output_integrity(plan, registry, registry_root=tmp_path)
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "manifest_json_invalid" for error in report["errors"])
