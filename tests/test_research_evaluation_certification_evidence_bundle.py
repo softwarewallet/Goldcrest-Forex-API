@@ -438,3 +438,47 @@ def test_verifier_rejects_symlinked_report_even_when_target_is_inside_root(tmp_p
         error["code"] == "bundle_report_symlink_not_allowed" and error["role"] == "plan"
         for error in report["errors"]
     )
+
+
+
+@pytest.mark.parametrize(
+    ("role", "field", "bad_value", "error"),
+    [
+        ("plan", "plan_id", "../plan", "plan_id_invalid:plan"),
+        ("plan", "plan_id", "métrics", "plan_id_invalid:plan"),
+        ("plan", "plan_id", "x" * 129, "plan_id_invalid:plan"),
+        ("registry", "registry_id", "registry/name", "registry_id_invalid:registry"),
+        ("registry", "registry_id", " registry-1 ", "registry_id_invalid:registry"),
+        ("registry", "registry_id", "x" * 129, "registry_id_invalid:registry"),
+    ],
+)
+def test_builder_rejects_noncanonical_plan_and_registry_ids(tmp_path, role, field, bad_value, error):
+    paths = fixture(tmp_path)
+    payload = json.loads(paths[role].read_text(encoding="utf-8"))
+    payload[field] = bad_value
+    paths[role].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=error):
+        build_evidence_bundle(paths)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value", "error_code"),
+    [
+        ("plan_id", "../plan", "bundle_plan_id_invalid"),
+        ("plan_id", "métrics", "bundle_plan_id_invalid"),
+        ("plan_id", "x" * 129, "bundle_plan_id_invalid"),
+        ("registry_id", "registry/name", "bundle_registry_id_invalid"),
+        ("registry_id", "x" * 129, "bundle_registry_id_invalid"),
+    ],
+)
+def test_verifier_rejects_noncanonical_top_level_identity_values(tmp_path, field, bad_value, error_code):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    bundle[field] = bad_value
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == error_code for error in report["errors"])
