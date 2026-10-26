@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import hashlib
 
 from app.research_unified_provenance_certification import run_unified_certification
@@ -465,3 +467,15 @@ def test_input_contract_rejects_directory_where_json_file_required(tmp_path):
     import pytest
     with pytest.raises(ValueError, match="required_input_not_file:readiness report"):
         _validate_input_paths(args)
+
+@pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
+def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
+    from app.research_unified_provenance_certification import _read_object
+    if "_load_json_object" in "from app.research_unified_provenance_certification import _read_object":
+        with pytest.raises(ValueError):
+            _read_object(path)
+    else:
+        path = tmp_path / "invalid.json"
+        path.write_bytes(raw)
+        with pytest.raises(ValueError):
+            _read_object(path)
