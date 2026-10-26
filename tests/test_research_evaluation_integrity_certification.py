@@ -26,6 +26,7 @@ def fixtures():
         "plan_id": "plan-1",
         "plan_sha256": "a" * 64,
         "expected_runs": 2,
+        "expected_run_ids": ["r1", "r2"],
         "run_matrix": [{"run_id": "r1"}, {"run_id": "r2"}],
         **FALSE_FLAGS,
     }
@@ -198,3 +199,35 @@ def test_explicit_null_diagnostics_fail_closed(report_index, field, expected_rep
         for error in report["errors"]
     )
 
+
+
+def test_plan_run_count_must_match_run_matrix():
+    values = list(fixtures())
+    values[0]["expected_runs"] = 3
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "planned_run_count_matrix_mismatch" for error in report["errors"])
+
+
+def test_plan_expected_run_ids_must_match_matrix_order_and_identity():
+    values = list(fixtures())
+    values[0]["expected_run_ids"] = ["r1", "other"]
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "expected_run_ids_matrix_mismatch" for error in report["errors"])
+
+
+def test_plan_duplicate_run_ids_fail_even_when_reported_counts_match():
+    values = list(fixtures())
+    values[0]["run_matrix"] = [{"run_id": "r1"}, {"run_id": "r1"}]
+    values[0]["expected_run_ids"] = ["r1", "r1"]
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == "planned_run_matrix_duplicate_run_id" for error in report["errors"])
+    assert any(error["code"] == "expected_run_ids_invalid" for error in report["errors"])
