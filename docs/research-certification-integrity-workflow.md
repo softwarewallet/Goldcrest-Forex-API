@@ -88,3 +88,7 @@ Completion and final-certification audits reject duplicate JSON object keys in t
 ## Strict JSON input syntax
 
 The completion, run-integrity, and final-certification-chain readers reject duplicate object keys and non-standard numeric constants (NaN, Infinity, and -Infinity). These tokens are accepted by Python's JSON decoder by default but are not valid RFC 8259 JSON. A report containing one is treated as malformed and cannot pass an integrity gate. This syntax check complements, rather than replaces, exact-byte SHA-256 binding and schema/status validation. The audits remain offline and report-only; passing them does not authorize model selection, training, deployment, or trading.
+
+## Strict JSON parsing across certification readers
+
+The evidence-bundle, evaluation-integrity, readiness, artifact-bundle, unified-provenance, final-certification, report-seal, and provenance-manifest readers reject duplicate object keys and non-standard numeric constants (`NaN`, `Infinity`, `-Infinity`). This prevents Python's permissive JSON decoder from silently normalizing ambiguous or non-RFC-8259 inputs before audit checks. Malformed input must fail closed; digest checks continue to bind the exact source bytes where defined. These offline integrity checks do not establish model validity or authorize deployment or trading.

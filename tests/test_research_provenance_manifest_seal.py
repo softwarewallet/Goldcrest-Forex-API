@@ -102,3 +102,11 @@ def test_missing_manifest_safety_flag_cannot_be_sealed():
     del payload["deployment_authorized"]
     with pytest.raises(ValueError, match="safety_flag_not_explicitly_false"):
         create_manifest_seal(payload)
+
+@pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
+def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
+    from app.research_provenance_manifest_seal import _read_object
+    path = tmp_path / "invalid.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _read_object(path)

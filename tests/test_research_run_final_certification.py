@@ -129,3 +129,11 @@ def test_pair_writer_rolls_back_first_output_if_second_publish_fails(tmp_path, m
     assert not first.exists()
     assert not second.exists()
     assert list(first.parent.glob(".*.tmp")) == []
+
+@pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
+def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
+    from app.research_run_final_certification import _read_object
+    path = tmp_path / "invalid.json"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError):
+        _read_object(path)

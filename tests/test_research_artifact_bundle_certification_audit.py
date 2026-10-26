@@ -136,3 +136,9 @@ def test_invalid_manifest_and_hash_are_rejected(tmp_path):
         audit_research_artifact_bundle([], manifest_sha256=sha(b"manifest"), base_dir=tmp_path)
     with pytest.raises(ValueError, match="manifest_sha256_invalid"):
         audit_research_artifact_bundle({"artifacts": []}, manifest_sha256="bad", base_dir=tmp_path)
+
+@pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
+def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
+    from app.research_artifact_bundle_certification_audit import _load_json_object
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="fixture.json")
