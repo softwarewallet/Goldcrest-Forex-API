@@ -7,6 +7,7 @@ import pytest
 from pathlib import Path
 
 from app.research_label_eligibility_common_cohort import (
+    _read_report,
     _write_report_no_clobber,
     audit_common_heldout_cohort,
     main,
@@ -434,3 +435,19 @@ def test_common_cohort_rejects_duplicate_json_keys(tmp_path):
     assert any("duplicate_json_key:variant_run_id" in error for error in result["errors"])
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_report(path)
