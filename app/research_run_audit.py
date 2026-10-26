@@ -315,6 +315,40 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                 warnings.append("pipeline_completion_audit_passed_with_warnings")
             if completion.get("warnings") and not isinstance(completion.get("warnings"), list):
                 errors.append("pipeline_completion_audit_warnings_invalid")
+
+            # Schema v2 records the exact source-report bytes observed when the completion
+            # receipt was produced. Re-check those hashes so later edits to validation or
+            # reproducibility receipts cannot pass merely because their run IDs still match.
+            if completion.get("schema_version") == 2:
+                validation_path = manifest_path.parent / f"{manifest.get('run_id', '')}_validation_report.json"
+                reproducibility_path = _resolve_artifact_path(
+                    manifest.get("reproducibility_audit_path"), manifest_path
+                )
+                evaluation_path = _resolve_artifact_path(
+                    manifest.get("model_evaluation_gate_path"), manifest_path
+                )
+                source_specs = (
+                    ("validation_report_sha256", validation_path, "validation_report"),
+                    ("reproducibility_audit_sha256", reproducibility_path, "reproducibility_audit"),
+                    ("model_evaluation_gate_sha256", evaluation_path, "model_evaluation_gate"),
+                )
+                for hash_field, source_path, label in source_specs:
+                    expected_hash = completion.get(hash_field)
+                    if source_path is None or not source_path.is_file():
+                        errors.append(f"pipeline_completion_audit_{label}_source_missing")
+                        continue
+                    try:
+                        actual_hash = _sha256(source_path)
+                    except OSError:
+                        errors.append(f"pipeline_completion_audit_{label}_source_unreadable")
+                        continue
+                    if not isinstance(expected_hash, str) or actual_hash != expected_hash:
+                        errors.append(f"pipeline_completion_audit_{label}_source_hash_mismatch")
+            elif completion.get("schema_version") == 1:
+                # Existing receipts remain readable, but they predate source-byte binding.
+                warnings.append("pipeline_completion_audit_source_hashes_unavailable")
+            else:
+                errors.append("pipeline_completion_audit_schema_version_unsupported")
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             errors.append(f"pipeline_completion_audit_unreadable:{type(exc).__name__}")
 
