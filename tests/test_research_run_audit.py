@@ -303,6 +303,8 @@ def _write_v2_completion_receipt(manifest_path: Path):
         "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
         "status": "PASS",
         "run_id": run_id,
+        "symbol": manifest["symbol"],
+        "timeframe": manifest["timeframe"],
         "source_matrix_sha256": _sha(Path(manifest["experiment_matrix_report"])),
         "experiment_count": 1,
         "folds_checked": 1,
