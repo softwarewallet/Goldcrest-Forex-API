@@ -133,3 +133,33 @@ def test_atomic_writer_refuses_competing_destination_without_clobber(tmp_path, m
         _write_report_no_clobber(output, {"status": "PASS"}, [])
     assert output.read_text(encoding="utf-8") == "created by competing writer"
     assert list(tmp_path.glob(".audit.json.*.tmp")) == []
+
+
+def test_cross_report_integrity_rejects_malformed_provenance_digest(tmp_path):
+    first = _report(tmp_path / "cap1.json", 1.0)
+    second = _report(tmp_path / "cap8.json", 8.0)
+    payload = json.loads(second.read_text(encoding="utf-8"))
+    payload["raw_ohlc_sha256"] = "not-a-sha256"
+    second.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = audit_cross_report_integrity([str(first), str(second)])
+
+    assert result["status"] == "FAIL"
+    assert any("invalid_or_missing_raw_ohlc_sha256" in error for error in result["errors"])
+    assert result["actionable"] is False
+
+
+def test_cross_report_integrity_rejects_duplicate_input_paths_and_variant_ids(tmp_path):
+    first = _report(tmp_path / "cap1.json", 1.0)
+    second = _report(tmp_path / "cap8.json", 8.0)
+
+    duplicate_path = audit_cross_report_integrity([str(first), str(first)])
+    assert duplicate_path["status"] == "FAIL"
+    assert any("duplicate_input_report_path" in error for error in duplicate_path["errors"])
+
+    payload = json.loads(second.read_text(encoding="utf-8"))
+    payload["variant_run_id"] = "cap-1.0"
+    second.write_text(json.dumps(payload), encoding="utf-8")
+    duplicate_variant = audit_cross_report_integrity([str(first), str(second)])
+    assert duplicate_variant["status"] == "FAIL"
+    assert any("duplicate_variant_run_id" in error for error in duplicate_variant["errors"])
