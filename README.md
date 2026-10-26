@@ -220,3 +220,13 @@ The consolidated research evidence report withholds positive/negative bootstrap-
 
 
 The consolidated evidence report also includes a **multiplicity context ledger**: it counts comparisons across baseline-loss intervals, calibration changes, regime intervals, and chronological OOS summaries, and states that no multiplicity adjustment is applied. These summaries remain exploratory and do not support confirmatory significance claims.
+
+
+
+## Final offline research evidence pack
+
+Use `python -m app.research_evidence_pack_audit --input <pack-manifest.json> --output <new-audit.json>`
+to verify supplied report hashes, required experiment-registry and validation-workflow coverage,
+dataset fingerprint consistency, and explicit non-actionable safety flags. The audit publishes
+its output atomically without replacing existing files. See
+`docs/research-evidence-pack-audit.md` for the manifest contract and exit codes.
