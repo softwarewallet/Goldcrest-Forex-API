@@ -45,6 +45,25 @@ def audit_cross_report_integrity(
         if len(report_paths) < 2:
             raise ValueError("provide at least two comparison reports")
         before = [_snapshot(path) for path in report_paths]
+        resolved_paths = [str(Path(item["path"]).expanduser().resolve()) for item in before]
+        if len(set(resolved_paths)) != len(resolved_paths):
+            raise ValueError("duplicate_input_report_path")
+        variant_ids = [item.get("variant_run_id") for item in before]
+        if any(not isinstance(item, str) or not item.strip() for item in variant_ids):
+            raise ValueError("invalid_or_missing_variant_run_id")
+        if len(set(variant_ids)) != len(variant_ids):
+            raise ValueError("duplicate_variant_run_id")
+        for item in before:
+            for field in ("baseline_run_id", "symbol", "timeframe"):
+                value = item.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"invalid_or_missing_{field}")
+            for field in ("raw_ohlc_sha256", "baseline_dataset_sha256"):
+                digest = item.get(field)
+                if not isinstance(digest, str) or len(digest) != 64 or any(
+                    char not in "0123456789abcdefABCDEF" for char in digest
+                ):
+                    raise ValueError(f"invalid_or_missing_{field}")
         cohort = audit_common_heldout_cohort(
             report_paths,
             allow_baseline_id_variation=allow_baseline_id_variation,
