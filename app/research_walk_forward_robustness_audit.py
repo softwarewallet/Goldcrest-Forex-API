@@ -15,6 +15,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
 def _reject_nonstandard_json_constant(value: str) -> None:
     """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
     raise ValueError(f"nonstandard_json_constant:{value}")
