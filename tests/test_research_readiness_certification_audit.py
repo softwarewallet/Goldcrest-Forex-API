@@ -338,3 +338,22 @@ def test_readiness_rejects_boolean_bundle_artifact_count(tmp_path):
         and error["audit_name"] == "research_artifact_bundle_certification"
         for error in report["errors"]
     )
+
+
+
+@pytest.mark.parametrize("schema_version", [True, False, 1.0, "1", None, 2])
+def test_readiness_rejects_invalid_upstream_schema_version(tmp_path, schema_version):
+    reports = standard_reports(tmp_path)
+    path = reports["feature_backend_parity"]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["schema_version"] = schema_version
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    report = run_audit(tmp_path, manifest_for(reports))
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "schema_version_invalid"
+        and error["audit_name"] == "feature_backend_parity"
+        for error in report["errors"]
+    )

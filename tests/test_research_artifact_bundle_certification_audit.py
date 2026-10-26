@@ -14,6 +14,7 @@ def sha(value: bytes) -> str:
 
 def write_report(tmp_path, name="feature_temporal_integrity", status="PASS"):
     payload = {
+        "schema_version": 1,
         "audit_name": name,
         "status": status,
         "errors": [],
@@ -230,3 +231,29 @@ def test_missing_warnings_collection_fails_closed(tmp_path):
     codes = {item["code"] for item in report["errors"]}
     assert report["status"] == "FAIL"
     assert "upstream_warnings_field_invalid" in codes
+
+
+
+@pytest.mark.parametrize("schema_version", [True, False, 1.0, "1", None, 2])
+def test_bundle_audit_rejects_invalid_upstream_schema_version(tmp_path, schema_version):
+    path, payload, _ = write_report(tmp_path)
+    payload["schema_version"] = schema_version
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    manifest = {
+        "artifacts": [{"audit_name": "feature_temporal_integrity", "path": path.name}],
+        "required_audits": ["feature_temporal_integrity"],
+        "expected_dataset_sha256": sha(b"dataset"),
+    }
+
+    report = audit_research_artifact_bundle(
+        manifest,
+        manifest_sha256=sha(b"manifest"),
+        base_dir=tmp_path,
+    )
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "schema_version_invalid"
+        and error["audit_name"] == "feature_temporal_integrity"
+        for error in report["errors"]
+    )
