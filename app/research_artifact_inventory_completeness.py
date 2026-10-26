@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -53,6 +54,8 @@ def _index(entries: Any, label: str) -> tuple[dict[str, str], list[dict[str, str
             raise ValueError(f"{label}_artifact_id_required:{position}")
         if artifact_id != artifact_id.strip():
             raise ValueError(f"{label}_artifact_id_must_be_canonical_unpadded:{position}")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", artifact_id) is None:
+            raise ValueError(f"{label}_artifact_id_must_be_canonical_token:{position}")
         path = _safe_relative_path(item.get("path"), label)
         if artifact_id in by_id:
             errors.append({"code": "DUPLICATE_ARTIFACT_ID", "inventory": label, "artifact_id": artifact_id})
@@ -104,6 +107,8 @@ def audit_artifact_inventory_completeness(
         errors.append({"code": "UNEXPECTED_ARTIFACTS_PRESENT", "count": len(unexpected)})
     canonical_spec = (json.dumps(inventory_spec, sort_keys=True, separators=(",", ":"),
                                  ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
+    canonical_manifest = (json.dumps(manifest, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
     status = "FAIL" if errors else "PASS"
     return {
         "schema_version": 1,
@@ -111,6 +116,7 @@ def audit_artifact_inventory_completeness(
         "status": status,
         "readiness": "INVENTORY_INCOMPLETE" if errors else "INVENTORY_COMPLETE",
         "manifest_artifact_count": len(manifest_normalized),
+        "manifest_sha256": hashlib.sha256(canonical_manifest).hexdigest(),
         "expected_artifact_count": len(spec_normalized),
         "missing_or_mislocated_artifacts": missing,
         "unexpected_or_mislocated_artifacts": unexpected,
