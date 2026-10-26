@@ -198,11 +198,5 @@ def test_missing_optional_pipeline_evidence_warns_not_passes_silently(tmp_path):
 @pytest.mark.parametrize("raw", [b'{"metric":NaN}', b'{"metric":Infinity}', b'{"metric":-Infinity}', b'{"value":1,"value":2}'])
 def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     from app.research_readiness_certification_audit import _load_json_object
-    if "_load_json_object" in "from app.research_readiness_certification_audit import _load_json_object":
-        with pytest.raises(ValueError):
-            _load_json_object(raw, source="fixture.json")
-    else:
-        path = tmp_path / "invalid.json"
-        path.write_bytes(raw)
-        with pytest.raises(ValueError):
-            _load_json_object(raw, source="fixture.json")
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="fixture.json")
