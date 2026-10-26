@@ -123,6 +123,7 @@ def test_safety_flag_must_be_explicitly_false():
 def test_warning_is_preserved():
     values = fixtures()
     values[3]["status"] = "PASS_WITH_WARNINGS"
+    values[3]["warnings"] = ["fixture warning"]
     report = run(values)
     assert report["status"] == "PASS_WITH_WARNINGS"
     assert "row_window_lineage_passed_with_warnings" in report["warnings"]
