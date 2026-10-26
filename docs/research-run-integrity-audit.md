@@ -22,7 +22,7 @@ receipt must bind to the exact experiment-matrix SHA-256, have a verified embedd
 payload hash, retain non-actionable/no-execution safeguards, and agree with the manifest status.
 It also verifies the pipeline-manifest fingerprint. Exit code 0 means the cross-artifact checks
 passed (possibly with warnings); exit code 3 means the audit failed. Invalid or missing files
-are reported as findings rather than exposing tracebacks.
+are reported as findings rather than exposing tracebacks. Audited JSON is parsed strictly: duplicate object keys are rejected rather than silently interpreted using the last occurrence.
 
 This is a consistency audit, not a model-quality certification. It does not recompute
 metrics, prove that feature engineering is leakage-free, verify provider data rights, or
