@@ -165,9 +165,9 @@ def audit_pipeline_completion(
     try:
         if evaluation_path is None or not evaluation_path.is_file():
             raise OSError("model_evaluation_gate_missing")
-        if _sha256(evaluation_path) != expected_evaluation_hash:
-            raise ValueError("model_evaluation_gate_sha256_mismatch")
         evaluation, evaluation_source_hash = _read_object_with_hash(evaluation_path)
+        if evaluation_source_hash != expected_evaluation_hash:
+            raise ValueError("model_evaluation_gate_sha256_mismatch")
         checks["model_evaluation_gate_file_hash"] = "PASS"
         if evaluation.get("status") not in _PASS:
             warnings.append("model_evaluation_gate_did_not_pass")
