@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -37,8 +38,11 @@ def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+
+
 def _valid_identity_string(value: object) -> bool:
-    return isinstance(value, str) and bool(value.strip()) and value == value.strip()
+    return isinstance(value, str) and IDENTITY_RE.fullmatch(value) is not None
 
 
 def _valid_sha256(value: object) -> bool:
