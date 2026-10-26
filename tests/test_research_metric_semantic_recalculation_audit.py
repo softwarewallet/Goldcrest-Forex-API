@@ -65,6 +65,8 @@ def fixture(tmp_path):
         "audit_name": "research_experiment_registry",
         "registry_id": "registry-metric-test",
         "status": "PASS",
+        "errors": [],
+        "warnings": [],
         "run_results": [{
             "run_id": run["run_id"],
             "status": "PASS",
@@ -143,3 +145,34 @@ def test_unsafe_rows_path_fails(tmp_path):
 def test_strict_json_loader_rejects_ambiguous_inputs(raw):
     with pytest.raises(ValueError):
         _load_json_object(raw, source="metric-manifest.json")
+
+def test_registry_missing_errors_fails_closed(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry.pop("errors")
+    with pytest.raises(ValueError, match="registry_report_errors_schema_invalid"):
+        audit_metric_semantics(plan, registry, registry_root=tmp_path)
+
+
+def test_registry_nonempty_errors_fails_closed(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry["errors"] = [{"code": "upstream_error"}]
+    with pytest.raises(ValueError, match="registry_report_contains_errors"):
+        audit_metric_semantics(plan, registry, registry_root=tmp_path)
+
+
+@pytest.mark.parametrize("warnings", [None, {"bad": "shape"}, [""], [None], ["ok", 1]])
+def test_registry_malformed_warnings_fails_closed(tmp_path, warnings):
+    plan, registry = fixture(tmp_path)
+    registry["warnings"] = warnings
+    with pytest.raises(ValueError, match="registry_report_warnings_schema_invalid"):
+        audit_metric_semantics(plan, registry, registry_root=tmp_path)
+
+
+def test_registry_warnings_are_propagated(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry["status"] = "PASS_WITH_WARNINGS"
+    registry["warnings"] = ["registry_notice"]
+    report = audit_metric_semantics(plan, registry, registry_root=tmp_path)
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert "registry_report_has_warnings" in report["warnings"]
+

@@ -66,6 +66,19 @@ def audit_evaluation_output_integrity(
         raise ValueError("registry_report_invalid")
     if registry_report.get("status") not in PASS_STATUSES:
         raise ValueError("registry_report_not_passing")
+    registry_errors = registry_report.get("errors")
+    if not isinstance(registry_errors, list):
+        raise ValueError("registry_report_errors_schema_invalid")
+    if registry_errors:
+        raise ValueError("registry_report_contains_errors")
+    registry_warnings = registry_report.get("warnings")
+    if "warnings" in registry_report and (
+        not isinstance(registry_warnings, list)
+        or any(not isinstance(item, str) or not item.strip() for item in registry_warnings)
+    ):
+        raise ValueError("registry_report_warnings_schema_invalid")
+    if registry_report.get("status") == "PASS_WITH_WARNINGS" or registry_warnings:
+        warnings.append("registry_report_has_warnings")
 
     matrix = plan.get("run_matrix")
     if not isinstance(matrix, list) or not matrix:
