@@ -112,6 +112,25 @@ def test_evaluation_gate_rejects_naive_timestamps_and_reversed_windows(tmp_path:
     assert "invalid_fold_window" in codes
 
 
+def test_evaluation_gate_rejects_overlapping_temporal_partitions(tmp_path: Path) -> None:
+    report = _report()
+    fold = report["experiments"][0]["fold_results"][0]
+    # Training ends after validation has already started: this is temporal leakage.
+    fold["train_end_utc"] = "2026-01-01T01:20:00Z"
+    result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
+    assert result["status"] == "FAIL"
+    assert "fold_partition_overlap" in {item["code"] for item in result["errors"]}
+
+
+def test_evaluation_gate_accepts_touching_non_overlapping_partitions(tmp_path: Path) -> None:
+    report = _report()
+    fold = report["experiments"][0]["fold_results"][0]
+    fold["train_end_utc"] = fold["validation_start_utc"]
+    fold["validation_end_utc"] = fold["test_start_utc"]
+    result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
+    assert result["status"] == "PASS"
+
+
 def test_evaluation_gate_rejects_cross_experiment_fold_window_mismatch(tmp_path: Path) -> None:
     report = _report()
     second_experiment = {
