@@ -582,9 +582,10 @@ def test_output_rollback_preserves_concurrent_replacement_of_published_target(mo
         calls += 1
         if calls == 1:
             return original_link(source, target)
-        report_path.unlink()
-        report_path.write_text(competitor_payload, encoding="utf-8")
         from pathlib import Path
+        replacement = tmp_path / "replacement.json"
+        replacement.write_text(competitor_payload, encoding="utf-8")
+        replacement.replace(report_path)
         Path(target).write_text('{"owner":"second-writer"}\\n', encoding="utf-8")
         raise FileExistsError(target)
 
