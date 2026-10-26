@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.research_temporal_stability import analyze_prediction_temporal_stability
+import pytest
+
+from app.research_temporal_stability import analyze_prediction_temporal_stability, _read_json
 
 
 def _fixture():
@@ -169,3 +171,11 @@ def test_temporal_stability_fails_closed_when_prediction_timestamp_is_missing():
     assert "prediction_timestamps_missing_from_ohlc:1" in result["errors"]
     assert result["actionable"] is False
     assert result["execution_connected"] is False
+
+
+@pytest.mark.parametrize("payload", ['{"a":1,"a":2}', '{"a":NaN}', '{"a":Infinity}', '{"a":-Infinity}'])
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "input.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)
