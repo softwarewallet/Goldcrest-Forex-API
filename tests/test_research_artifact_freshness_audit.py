@@ -198,3 +198,32 @@ def test_fingerprint_rejects_symlinked_directory_root(tmp_path):
     link.symlink_to(target, target_is_directory=True)
     with pytest.raises(ValueError, match="symlink_not_allowed_in_fingerprint"):
         fingerprint_path(link)
+
+
+def test_cli_output_does_not_overwrite_existing_target(monkeypatch, tmp_path):
+    import json
+    import sys
+    from app import research_artifact_freshness_audit as module
+
+    config = tmp_path / "config.json"
+    dataset = tmp_path / "dataset.csv"
+    config.write_text('{"config":true}', encoding="utf-8")
+    dataset.write_text("timestamp,close\\n2026-01-01T00:00:00Z,1.0\\n", encoding="utf-8")
+    source_manifest = tmp_path / "freshness-manifest.json"
+    source_manifest.write_text(json.dumps(manifest(artifact("metrics"))), encoding="utf-8")
+    output = tmp_path / "reports" / "freshness-audit.json"
+    output.parent.mkdir()
+    original = '{"owner":"existing"}\\n'
+    output.write_text(original, encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", [
+        "research_artifact_freshness_audit",
+        "--manifest", str(source_manifest),
+        "--current-revision", REV,
+        "--config-path", str(config),
+        "--dataset-path", str(dataset),
+        "--output", str(output),
+    ])
+
+    assert module.main() == 2
+    assert output.read_text(encoding="utf-8") == original
