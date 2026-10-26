@@ -3,6 +3,10 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+
+import pytest
+
+from app import research_label_gap_policy_equivalence_audit as gap_audit
 from datetime import datetime, timedelta, timezone
 
 from app.research_label_gap_policy_equivalence_audit import audit_gap_policy_equivalence
