@@ -25,6 +25,7 @@ def fixture(tmp_path, evaluation_status="PASS"):
     evaluation = _write(tmp_path / "evaluation.json", {
         "audit_name": "research_model_evaluation_gate",
         "status": evaluation_status,
+        "run_id": "eurusd-m15-test",
         "errors": [] if evaluation_status == "PASS" else [{"code": "metric_gate_failed"}],
         "warnings": [],
         "actionable": False,
@@ -108,6 +109,27 @@ def test_tampered_model_evaluation_receipt_blocks_integrity_gate(tmp_path):
     assert report["status"] == "FAIL"
     assert any(item["code"] == "model_evaluation_gate_missing_unreadable_or_tampered" for item in report["errors"])
 
+
+def test_model_evaluation_gate_from_another_run_fails_identity_check(tmp_path):
+    manifest, validation, reproducibility, evaluation, _ = fixture(tmp_path)
+    payload = json.loads(evaluation.read_text(encoding="utf-8"))
+    payload["run_id"] = "different-run"
+    _write(evaluation, payload)
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["model_evaluation_gate_sha256"] = hashlib.sha256(evaluation.read_bytes()).hexdigest()
+    manifest_payload.pop("pipeline_manifest_sha256", None)
+    manifest_payload["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest_payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
+    _write(manifest, manifest_payload)
+    validation_payload = json.loads(validation.read_text(encoding="utf-8"))
+    validation_payload["manifest_path"] = str(manifest.resolve())
+    _write(validation, validation_payload)
+
+    report = audit_pipeline_completion(manifest, validation, reproducibility)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "model_evaluation_gate_run_id_mismatch" for item in report["errors"])
 
 def test_failed_model_evaluation_is_reported_but_does_not_claim_model_qualified(tmp_path):
     manifest, validation, reproducibility, _, _ = fixture(tmp_path, evaluation_status="FAIL")
