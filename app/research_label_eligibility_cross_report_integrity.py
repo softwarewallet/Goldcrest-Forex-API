@@ -29,6 +29,7 @@ def _snapshot(path: str) -> dict:
     value = json.loads(
         raw.decode("utf-8"),
         object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
     )
     if not isinstance(value, dict):
         raise ValueError(f"{path}: report must be a JSON object")
