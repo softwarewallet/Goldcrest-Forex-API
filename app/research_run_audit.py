@@ -324,6 +324,46 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                 if fingerprint.get(flag) is not False:
                     errors.append(f"{field}_{flag}_must_be_false")
 
+    # Verify the persisted model-evaluation gate receipt when the manifest declares it.
+    # The gate must be tied to the exact experiment-matrix bytes checked above.
+    if manifest.get("model_evaluation_gate_path") or manifest.get("model_evaluation_gate_sha256"):
+        field = "model_evaluation_gate"
+        resolved = _resolve_artifact_path(manifest.get(f"{field}_path"), manifest_path)
+        expected_hash = manifest.get(f"{field}_sha256")
+        if resolved is None:
+            errors.append(f"{field}_path_missing")
+        elif not resolved.is_file():
+            errors.append(f"{field}_path_not_found")
+        else:
+            actual_hash = _sha256(resolved)
+            checked_artifacts[f"{field}_path"] = {
+                "path": str(resolved),
+                "sha256": actual_hash,
+            }
+            if not isinstance(expected_hash, str) or actual_hash != expected_hash:
+                errors.append(f"{field}_path_sha256_mismatch")
+            try:
+                related[f"{field}_path"] = _read_json(resolved)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
+
+        evaluation = related.get(f"{field}_path", {})
+        if evaluation:
+            if evaluation.get("scope") != "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE":
+                errors.append(f"{field}_scope_invalid")
+            if evaluation.get("run_id") != manifest.get("run_id"):
+                errors.append(f"{field}_run_id_mismatch")
+            matrix_hash = checked_artifacts.get("experiment_matrix_report", {}).get("sha256")
+            if evaluation.get("source_matrix_sha256") != matrix_hash:
+                errors.append(f"{field}_source_matrix_hash_mismatch")
+            if evaluation.get("status") != manifest.get(f"{field}_status"):
+                errors.append(f"{field}_status_mismatch")
+            if evaluation.get("status") != "PASS" or evaluation.get("errors") != []:
+                errors.append(f"{field}_not_pass")
+            for flag in ("actionable", "automatic_winner_selection", "test_metrics_used_for_selection"):
+                if evaluation.get(flag) is not False:
+                    errors.append(f"{field}_{flag}_must_be_false")
+
     # Newer pipeline runs include a feature-source provenance receipt. Verify its
     # exact file hash, dataset binding, dataset-manifest fingerprints, and safety flags.
     # Legacy manifests without this receipt remain readable.

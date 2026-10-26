@@ -282,12 +282,27 @@ def _write_v2_completion_receipt(manifest_path: Path):
     evaluation_path = manifest_path.parent / f"{run_id}_model_evaluation_gate.json"
     _write_json(validation_path, {"status": "PASS", "run_id": run_id, "actionable": False})
     _write_json(reproducibility_path, {"status": "PASS", "run_id": run_id, "actionable": False})
-    _write_json(evaluation_path, {"status": "PASS", "run_id": run_id, "actionable": False})
+    _write_json(evaluation_path, {
+        "schema_version": 1,
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "status": "PASS",
+        "run_id": run_id,
+        "source_matrix_sha256": _sha(Path(manifest["experiment_matrix_report"])),
+        "experiment_count": 1,
+        "folds_checked": 1,
+        "fold_metric_objects_checked": 1,
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+        "automatic_winner_selection": False,
+        "test_metrics_used_for_selection": False,
+    })
 
     manifest.update({
         "reproducibility_audit_path": str(reproducibility_path),
         "model_evaluation_gate_path": str(evaluation_path),
         "model_evaluation_gate_sha256": _sha(evaluation_path),
+        "model_evaluation_gate_status": "PASS",
     })
     manifest.pop("pipeline_manifest_sha256", None)
     canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -584,3 +599,70 @@ def test_run_audit_rejects_experiment_fingerprint_for_different_dataset(tmp_path
     result = audit_research_run_manifest(manifest_path)
     assert result["status"] == "FAIL"
     assert "experiment_fingerprint_dataset_hash_mismatch" in result["errors"]
+
+
+def _attach_model_evaluation_gate(manifest_path: Path) -> Path:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    matrix_path = Path(manifest["experiment_matrix_report"])
+    receipt_path = manifest_path.parent / "run_model_evaluation_gate.json"
+    receipt = {
+        "schema_version": 1,
+        "scope": "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE",
+        "status": "PASS",
+        "run_id": manifest["run_id"],
+        "source_matrix_sha256": _sha(matrix_path),
+        "experiment_count": 1,
+        "folds_checked": 1,
+        "fold_metric_objects_checked": 1,
+        "errors": [],
+        "warnings": [],
+        "actionable": False,
+        "automatic_winner_selection": False,
+        "test_metrics_used_for_selection": False,
+    }
+    _write_json(receipt_path, receipt)
+    manifest.update({
+        "model_evaluation_gate_path": str(receipt_path),
+        "model_evaluation_gate_sha256": _sha(receipt_path),
+        "model_evaluation_gate_status": "PASS",
+    })
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+    return receipt_path
+
+
+def test_run_audit_verifies_model_evaluation_gate_source_binding(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_model_evaluation_gate(manifest_path)
+
+    valid = audit_research_run_manifest(manifest_path)
+    assert valid["status"] == "PASS"
+    assert valid["errors"] == []
+    assert "model_evaluation_gate_path" in valid["checked_artifacts"]
+
+    receipt_path.write_bytes(receipt_path.read_bytes() + b"\\n")
+    tampered = audit_research_run_manifest(manifest_path)
+    assert tampered["status"] == "FAIL"
+    assert "model_evaluation_gate_path_sha256_mismatch" in tampered["errors"]
+
+
+def test_run_audit_rejects_model_evaluation_gate_bound_to_other_matrix(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    receipt_path = _attach_model_evaluation_gate(manifest_path)
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["source_matrix_sha256"] = "f" * 64
+    _write_json(receipt_path, receipt)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["model_evaluation_gate_sha256"] = _sha(receipt_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "FAIL"
+    assert "model_evaluation_gate_source_matrix_hash_mismatch" in result["errors"]
