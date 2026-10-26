@@ -641,3 +641,14 @@ and exact SHA-256 binding to the persisted experiment matrix. A clean run audit 
 gate to report PASS with no errors and to retain explicit non-actionable, no-winner-selection,
 and no-test-metric-selection flags. This verifies the receipt linkage; it does not rerun the
 gate or establish predictive validity.
+
+
+## Run-auditor reproducibility receipt verification
+
+The run auditor now independently checks the reproducibility receipt even if the final completion
+receipt is absent. It requires the reproducibility report to be readable, to report PASS with no
+errors, to retain research-only safety flags, and to point back to the exact pipeline manifest.
+When the manifest includes an experiment fingerprint, the receipt's fingerprint path and file
+hash must match that checked artifact. This complements the completion receipt's byte-level
+hashing and avoids treating a missing completion receipt as permission to skip reproducibility
+verification.
