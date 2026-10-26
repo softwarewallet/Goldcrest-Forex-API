@@ -41,6 +41,18 @@ def _valid_identity_string(value: object) -> bool:
     return isinstance(value, str) and bool(value.strip()) and value == value.strip()
 
 
+def _valid_bundle_filename(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and value == value.strip()
+        and value not in {".", ".."}
+        and "/" not in value
+        and chr(92) not in value
+        and Path(value).name == value
+    )
+
+
 def _valid_sha256(value: object) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(
         character in "0123456789abcdef" for character in value
@@ -52,6 +64,10 @@ def _canonical(value: Any) -> bytes:
 
 
 def _read_report(path: Path) -> tuple[dict[str, Any], bytes]:
+    if path.is_symlink():
+        raise ValueError(f"report_symlink_not_allowed:{path}")
+    if not path.is_file():
+        raise ValueError(f"report_must_be_regular_file:{path}")
     raw = path.read_bytes()
     try:
         payload = strict_json_loads(raw.decode("utf-8"))
@@ -80,6 +96,8 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
     shared_plan_id = shared_plan_sha = shared_registry_id = None
     for role in REPORT_SPECS:
         path = report_paths[role]
+        if not _valid_bundle_filename(path.name):
+            raise ValueError(f"report_filename_must_be_canonical_basename:{role}")
         payload, raw = _read_report(path)
         expected_name, allowed_statuses = REPORT_SPECS[role]
         if payload.get("audit_name") != expected_name:
@@ -200,10 +218,14 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
             errors.append({"code": "bundle_report_entry_invalid", "role": role})
             continue
         name = entry.get("path")
-        if not isinstance(name, str) or not name or Path(name).is_absolute() or ".." in Path(name).parts:
+        if not _valid_bundle_filename(name):
             errors.append({"code": "bundle_report_path_invalid", "role": role})
             continue
-        path = (root / name).resolve()
+        candidate = root / name
+        if candidate.is_symlink():
+            errors.append({"code": "bundle_report_symlink_not_allowed", "role": role})
+            continue
+        path = candidate.resolve()
         try:
             path.relative_to(root)
         except ValueError:
