@@ -74,3 +74,24 @@ def test_gate_rejects_non_uri_terms_reference(tmp_path):
     result = audit_research_release_readiness(manifest, evidence_path)
     assert result["status"] == "FAIL"
     assert "provider_terms_reference_must_be_http_or_https_uri" in result["errors"]
+
+
+def test_gate_rejects_angle_bracket_placeholder_reference(tmp_path):
+    manifest, evidence_path = build_inputs(tmp_path)
+    placeholder = "<EXACT PROVIDER TERMS REFERENCE FROM PREVIOUS RUN>"
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["terms_reference"] = placeholder
+    payload["terms_reference_sha256"] = hashlib.sha256(
+        placeholder.encode("utf-8")
+    ).hexdigest()
+    write_json(manifest, payload)
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence["terms_reference"] = placeholder
+    evidence["terms_reference_sha256"] = payload["terms_reference_sha256"]
+    write_json(evidence_path, evidence)
+
+    result = audit_research_release_readiness(manifest, evidence_path)
+
+    assert result["status"] == "FAIL"
+    assert "provider_terms_reference_is_placeholder" in result["errors"]
+    assert "provider_terms_reference_must_be_http_or_https_uri" in result["errors"]
