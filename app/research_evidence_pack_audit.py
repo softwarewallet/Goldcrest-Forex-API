@@ -79,6 +79,7 @@ def audit_research_evidence_pack(
     seen_paths: set[str] = set()
     seen_run_ids: set[str] = set()
     dataset_fingerprints: set[str] = set()
+    release_run_ids: set[str] = set()
 
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict):
@@ -202,6 +203,21 @@ def audit_research_evidence_pack(
                 compared = payload.get("runs_compared")
                 if not isinstance(compared, int) or isinstance(compared, bool) or compared < 2:
                     item_errors.append("comparison_run_coverage_insufficient")
+            elif role == "release_readiness":
+                release_status = payload.get("status")
+                if release_status != "PASS":
+                    item_errors.append("release_readiness_not_clean_pass")
+                if payload.get("readiness") != "RELEASE_READY_FOR_HUMAN_REVIEW":
+                    item_errors.append("release_readiness_not_ready")
+                run_id = payload.get("run_id")
+                if not isinstance(run_id, str) or not run_id.strip():
+                    item_errors.append("release_readiness_run_id_missing")
+                else:
+                    release_run_ids.add(run_id)
+                if payload.get("model_qualified") is not False:
+                    item_errors.append("release_readiness_model_qualified_must_be_false")
+                if payload.get("deployment_authorized") is not False:
+                    item_errors.append("release_readiness_deployment_authorized_must_be_false")
 
         for code in item_errors:
             errors.append({"code": code, "role": role, "path": relpath})
@@ -216,6 +232,12 @@ def audit_research_evidence_pack(
 
     for role in sorted(set(required_roles) - seen_roles):
         errors.append({"code": "required_report_role_missing", "role": role})
+    if "release_readiness" in seen_roles:
+        for release_run_id in sorted(release_run_ids - seen_run_ids):
+            errors.append({
+                "code": "release_readiness_run_not_in_experiment_registry",
+                "run_id": release_run_id,
+            })
     if len(dataset_fingerprints) > 1:
         errors.append({
             "code": "dataset_fingerprint_mismatch",
