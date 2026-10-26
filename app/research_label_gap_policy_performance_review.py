@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.research_strict_json import strict_json_loads
+
 _POLICY_SCOPE = "GOLDCREST_LABEL_GAP_POLICY_EQUIVALENCE_AUDIT"
 _THRESHOLD_AUDIT_SCOPE = "GOLDCREST_LABEL_ELIGIBILITY_THRESHOLD_PROFILE_AUDIT"
 _SWEEP_SCOPE = "GOLDCREST_LABEL_ELIGIBILITY_THRESHOLD_SWEEP"
@@ -27,7 +29,7 @@ _EPS = 1e-9
 def _read_json(path: str | Path) -> dict[str, Any]:
     resolved = Path(path).expanduser().resolve()
     try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        payload = strict_json_loads(resolved.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"json_unreadable:{resolved}") from exc
     if not isinstance(payload, dict):

@@ -280,3 +280,22 @@ def test_review_rejects_non_hex_eligibility_mask_fingerprint(tmp_path):
 
     with pytest.raises(ValueError, match="gap_policy_eligible_mask_hash_invalid:elapsed_cap_1h"):
         review_gap_policy_performance(policy, audit)
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"audit_name":"first","audit_name":"shadowed"}',
+        b'{"metric":NaN}',
+        b'{"metric":Infinity}',
+        b'{"metric":-Infinity}',
+    ],
+)
+def test_gap_policy_review_reader_rejects_ambiguous_json(tmp_path, raw):
+    from app.research_label_gap_policy_performance_review import _read_json
+
+    path = tmp_path / "audit.json"
+    path.write_bytes(raw)
+
+    with pytest.raises(ValueError):
+        _read_json(path)
+
