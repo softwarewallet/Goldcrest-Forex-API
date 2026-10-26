@@ -134,3 +134,38 @@ def test_certification_json_readers_reject_nonstandard_json(tmp_path, raw):
     path.write_bytes(raw)
     with pytest.raises(ValueError):
         _read_object(path)
+
+
+@pytest.mark.parametrize(
+    ("artifacts", "error"),
+    [
+        (
+            [
+                {"artifact_id": "metrics", "path": "metrics.csv", "sha256": "b" * 64, "source_revision": "a" * 40},
+                {"artifact_id": "metrics", "path": "other.csv", "sha256": "c" * 64, "source_revision": "a" * 40},
+            ],
+            "manifest_artifact_id_duplicate",
+        ),
+        (
+            [
+                {"artifact_id": "metrics", "path": "metrics.csv", "sha256": "b" * 64, "source_revision": "a" * 40},
+                {"artifact_id": "equity", "path": "metrics.csv", "sha256": "c" * 64, "source_revision": "a" * 40},
+            ],
+            "manifest_artifact_path_duplicate",
+        ),
+        (
+            [{"artifact_id": "metrics", "path": "../metrics.csv", "sha256": "b" * 64, "source_revision": "a" * 40}],
+            "manifest_artifact_path_noncanonical",
+        ),
+        (
+            [{"artifact_id": "metrics", "path": "/tmp/metrics.csv", "sha256": "b" * 64, "source_revision": "a" * 40}],
+            "manifest_artifact_path_noncanonical",
+        ),
+    ],
+)
+def test_manifest_with_duplicate_or_unsafe_artifact_paths_cannot_be_sealed(artifacts, error):
+    payload = manifest()
+    payload["artifacts"] = artifacts
+    payload["artifact_count"] = len(artifacts)
+    with pytest.raises(ValueError, match=error):
+        create_manifest_seal(payload)
