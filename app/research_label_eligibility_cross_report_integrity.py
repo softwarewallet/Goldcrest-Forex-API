@@ -71,6 +71,12 @@ def audit_cross_report_integrity(
         after = [_snapshot(path) for path in report_paths]
         if before != after:
             raise ValueError("input comparison report changed during audit")
+        cohort_receipts = cohort.get("input_report_receipts")
+        if cohort.get("status") == "PASS":
+            if not isinstance(cohort_receipts, list) or [
+                item.get("sha256") for item in cohort_receipts if isinstance(item, dict)
+            ] != [item["sha256"] for item in before]:
+                raise ValueError("input snapshot receipts do not match wrapper snapshots")
         if cohort.get("status") != "PASS":
             raise ValueError("common-cohort audit failed: " + "; ".join(cohort.get("errors", [])))
         return {
