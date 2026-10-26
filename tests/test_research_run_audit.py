@@ -332,3 +332,23 @@ def test_run_audit_verifies_completion_receipt_source_hashes(tmp_path):
     tampered = audit_research_run_manifest(manifest_path)
     assert tampered["status"] == "FAIL"
     assert "pipeline_completion_audit_validation_report_source_hash_mismatch" in tampered["errors"]
+
+
+
+def test_run_audit_detects_tampering_of_each_completion_source_report(tmp_path):
+    for label in ("validation_report", "reproducibility_audit", "model_evaluation_gate"):
+        case_dir = tmp_path / label
+        case_dir.mkdir()
+        manifest_path = _build_valid_run(case_dir)
+        _write_v2_completion_receipt(manifest_path)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if label == "validation_report":
+            source_path = case_dir / f"{manifest['run_id']}_validation_report.json"
+        else:
+            source_path = Path(manifest[f"{label}_path"])
+        source_path.write_bytes(source_path.read_bytes() + bytes([10]))
+
+        result = audit_research_run_manifest(manifest_path)
+
+        assert result["status"] == "FAIL"
+        assert f"pipeline_completion_audit_{label}_source_hash_mismatch" in result["errors"]
