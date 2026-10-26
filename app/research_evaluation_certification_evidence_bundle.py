@@ -78,12 +78,12 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
         report_errors = payload.get("errors")
         if role != "plan" and not isinstance(report_errors, list):
             raise ValueError(f"report_errors_schema_invalid:{role}")
-        if report_errors is not None and not isinstance(report_errors, list):
+        if "errors" in payload and not isinstance(report_errors, list):
             raise ValueError(f"report_errors_schema_invalid:{role}")
         if report_errors:
             raise ValueError(f"report_contains_errors:{role}")
         report_warnings = payload.get("warnings")
-        if report_warnings is not None and (
+        if "warnings" in payload and (
             not isinstance(report_warnings, list)
             or any(not isinstance(item, str) or not item.strip() for item in report_warnings)
         ):
@@ -190,14 +190,14 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
         if role != "plan" and not isinstance(report_errors, list):
             errors.append({"code": "bundle_report_errors_schema_invalid", "role": role})
             continue
-        if report_errors is not None and not isinstance(report_errors, list):
+        if "errors" in payload and not isinstance(report_errors, list):
             errors.append({"code": "bundle_report_errors_schema_invalid", "role": role})
             continue
         if report_errors:
             errors.append({"code": "bundle_report_contains_errors", "role": role})
             continue
         report_warnings = payload.get("warnings")
-        if report_warnings is not None and (
+        if "warnings" in payload and (
             not isinstance(report_warnings, list)
             or any(not isinstance(item, str) or not item.strip() for item in report_warnings)
         ):
