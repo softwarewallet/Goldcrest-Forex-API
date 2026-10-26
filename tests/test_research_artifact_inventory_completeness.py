@@ -205,3 +205,29 @@ def test_inventory_completeness_rejects_non_integer_schema_version(schema_versio
 
     with pytest.raises(ValueError, match="schema_version_unsupported"):
         audit_artifact_inventory_completeness(manifest(), payload)
+
+
+@pytest.mark.parametrize(
+    "artifact_id",
+    [
+        "metrics report",
+        "/metrics",
+        ".metrics",
+        "-metrics",
+        "metrics\\nreport",
+        "métrics",
+        "x" * 129,
+    ],
+)
+def test_noncanonical_artifact_identifiers_are_rejected(artifact_id):
+    entries = [{"artifact_id": artifact_id, "path": "reports/metrics.json"}]
+    with pytest.raises(ValueError, match="artifact_id_must_be_canonical_token"):
+        audit_artifact_inventory_completeness(manifest(entries), spec(entries))
+
+
+def test_canonical_artifact_identifier_punctuation_is_supported():
+    entries = [
+        {"artifact_id": "metrics.v2:primary", "path": "reports/metrics.json"},
+    ]
+    report = audit_artifact_inventory_completeness(manifest(entries), spec(entries))
+    assert report["status"] == "PASS"
