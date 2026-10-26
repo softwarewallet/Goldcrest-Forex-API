@@ -225,3 +225,27 @@ def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
     result = audit_model_evaluation_report(path)
     assert result["status"] == "FAIL"
     assert result["errors"][0]["code"] == "report_unreadable"
+
+
+def test_evaluation_gate_rejects_sparse_fold_indices_even_when_fold_count_matches(tmp_path: Path) -> None:
+    report = _report()
+    first = report["experiments"][0]["fold_results"][0]
+    second = {
+        **first,
+        "fold_index": 2,
+        "train_start_utc": "2025-12-31T00:00:00Z",
+        "train_end_utc": "2026-01-01T01:00:00Z",
+        "validation_start_utc": "2026-01-01T01:00:00Z",
+        "validation_end_utc": "2026-01-01T01:30:00Z",
+        "test_start_utc": "2026-01-01T02:15:00Z",
+        "test_end_utc": "2026-01-01T02:30:00Z",
+    }
+    report["fold_count"] = 2
+    report["experiments"][0]["fold_results"].append(second)
+
+    result = audit_model_evaluation_report(_write(tmp_path / "report.json", report))
+
+    assert result["status"] == "FAIL"
+    errors = [item for item in result["errors"] if item["code"] == "fold_indices_not_contiguous"]
+    assert len(errors) == 1
+    assert errors[0]["location"] == "experiments[0].fold_results"
