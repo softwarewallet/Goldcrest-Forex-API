@@ -488,3 +488,19 @@ def test_pipeline_stops_before_dataset_preparation_when_point_in_time_audit_fail
     report_path = tmp_path / "run" / "point-in-time-gate_point_in_time_feature_invariance.json"
     assert report_path.is_file()
     assert not (tmp_path / "run" / "point-in-time-gate_EURUSD_M15_research_dataset.csv").exists()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        research_pipeline._read_json_object(path)

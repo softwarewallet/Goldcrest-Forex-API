@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+
+import pytest
 from pathlib import Path
 
 from app import research_evidence_report as evidence
@@ -1201,3 +1203,19 @@ def test_sha256_hex_validator_accepts_only_64_hex_characters():
     assert not evidence._is_sha256_hex("a" * 63)
     assert not evidence._is_sha256_hex("g" * 64)
     assert not evidence._is_sha256_hex(123)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        evidence._read_json(path)

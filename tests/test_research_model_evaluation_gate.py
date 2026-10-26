@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+
+import pytest
 from pathlib import Path
 
 from app.research_model_evaluation_gate import audit_model_evaluation_report
@@ -142,5 +144,22 @@ def test_evaluation_gate_reports_unreadable_json(tmp_path: Path) -> None:
     source = tmp_path / "broken.json"
     source.write_text("{", encoding="utf-8")
     result = audit_model_evaluation_report(source)
+    assert result["status"] == "FAIL"
+    assert result["errors"][0]["code"] == "report_unreadable"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_json_reader_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    result = audit_model_evaluation_report(path)
     assert result["status"] == "FAIL"
     assert result["errors"][0]["code"] == "report_unreadable"
