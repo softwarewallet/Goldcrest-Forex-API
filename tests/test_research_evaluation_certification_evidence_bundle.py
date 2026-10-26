@@ -252,3 +252,39 @@ def test_builder_rejects_missing_registry_identity(tmp_path):
 
     with pytest.raises(ValueError, match="registry_id_invalid:registry"):
         build_evidence_bundle(paths)
+
+
+@pytest.mark.parametrize(
+    ("role", "field", "value", "error_code"),
+    [
+        ("plan", "plan_id", " plan-1 ", "plan_id_invalid:plan"),
+        ("registry", "registry_id", " registry-1 ", "registry_id_invalid:registry"),
+    ],
+)
+def test_builder_rejects_whitespace_padded_identity_strings(tmp_path, role, field, value, error_code):
+    paths = fixture(tmp_path)
+    payload = json.loads(paths[role].read_text(encoding="utf-8"))
+    payload[field] = value
+    paths[role].write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=error_code):
+        build_evidence_bundle(paths)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error_code"),
+    [
+        ("plan_id", " plan-1 ", "bundle_plan_id_invalid"),
+        ("registry_id", " registry-1 ", "bundle_registry_id_invalid"),
+    ],
+)
+def test_verifier_rejects_whitespace_padded_top_level_identities(tmp_path, field, value, error_code):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    bundle[field] = value
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(error["code"] == error_code for error in report["errors"])
