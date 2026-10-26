@@ -111,7 +111,7 @@ def certify_evaluation_integrity(
         seen_run_ids: set[str] = set()
         for index, entry in enumerate(run_matrix):
             run_id = entry.get("run_id") if isinstance(entry, dict) else None
-            if not isinstance(run_id, str) or not run_id.strip():
+            if not isinstance(run_id, str) or not run_id.strip() or run_id != run_id.strip():
                 errors.append({"code": "planned_run_matrix_entry_invalid", "index": index})
                 matrix_valid = False
                 continue
@@ -124,7 +124,7 @@ def certify_evaluation_integrity(
     expected_run_ids = plan.get("expected_run_ids")
     expected_ids_valid = (
         isinstance(expected_run_ids, list)
-        and all(isinstance(run_id, str) and bool(run_id.strip()) for run_id in expected_run_ids)
+        and all(isinstance(run_id, str) and bool(run_id.strip()) and run_id == run_id.strip() for run_id in expected_run_ids)
         and len(expected_run_ids) == len(set(expected_run_ids))
     )
     if not expected_ids_valid:
