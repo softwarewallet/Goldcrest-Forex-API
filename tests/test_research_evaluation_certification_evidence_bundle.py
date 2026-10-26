@@ -482,3 +482,25 @@ def test_verifier_rejects_noncanonical_top_level_identity_values(tmp_path, field
 
     assert report["status"] == "FAIL"
     assert any(error["code"] == error_code for error in report["errors"])
+
+
+
+def test_verifier_parses_the_exact_hashed_bytes_and_fails_closed_on_invalid_json(tmp_path):
+    paths = fixture(tmp_path)
+    bundle = build_evidence_bundle(paths)
+    invalid_bytes = b'{"audit_name":"unterminated"'
+    paths["metric_semantics"].write_bytes(invalid_bytes)
+
+    from app.research_evaluation_certification_evidence_bundle import _sha
+    entry = bundle["reports"]["metric_semantics"]
+    entry["sha256"] = _sha(invalid_bytes)
+    entry["size_bytes"] = len(invalid_bytes)
+    _refresh_bundle_digest(bundle)
+
+    report = verify_evidence_bundle(bundle, evidence_root=tmp_path)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        error["code"] == "bundle_report_json_invalid" and error["role"] == "metric_semantics"
+        for error in report["errors"]
+    )
