@@ -176,3 +176,25 @@ def test_plan_may_omit_errors_array_but_cannot_supply_malformed_one():
     report = run(values)
     assert report["status"] == "FAIL"
     assert any(e["code"] == "upstream_errors_schema_invalid" and e["report"] == "plan" for e in report["errors"])
+
+@pytest.mark.parametrize(
+    ("report_index", "field", "expected_report"),
+    [
+        (0, "errors", "plan"),
+        (3, "warnings", "row_window_lineage"),
+        (4, "warnings", "metric_semantics"),
+    ],
+)
+def test_explicit_null_diagnostics_fail_closed(report_index, field, expected_report):
+    values = fixtures()
+    values[report_index][field] = None
+
+    report = run(values)
+
+    assert report["status"] == "FAIL"
+    expected_code = "upstream_errors_schema_invalid" if field == "errors" else "upstream_warnings_schema_invalid"
+    assert any(
+        error["code"] == expected_code and error["report"] == expected_report
+        for error in report["errors"]
+    )
+
