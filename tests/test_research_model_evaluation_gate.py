@@ -60,6 +60,8 @@ def test_evaluation_gate_accepts_consistent_non_actionable_report(tmp_path: Path
     assert result["scope"] == "GOLDCREST_MODEL_EVALUATION_INTEGRITY_GATE"
     assert result["run_id"] == "fixture-evaluation-gate"
     assert result["source_matrix_sha256"]
+    assert result["test_metrics_used_for_selection"] is False
+    assert result["automatic_winner_selection"] is False
 
 
 def test_evaluation_gate_rejects_test_metric_selection(tmp_path: Path) -> None:

@@ -465,16 +465,7 @@ def run_research_pipeline(
     manifest_path = destination / f"{run_id}_pipeline_manifest.json"
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
 
-    # Keep the validation report separate so the manifest hash remains stable.
-    # Non-strict mode records validation findings; strict mode controls only the CLI exit code.
-    validation_path = destination / f"{run_id}_validation_report.json"
-    validation = validate_completed_run(manifest_path, output_path=validation_path)
     result = dict(payload)
-    result["validation_report_path"] = str(validation_path)
-    result["validation_status"] = validation["status"]
-    result["validation_errors"] = validation["errors"]
-    result["validation_warnings"] = validation["warnings"]
-    result["strict_validation"] = strict_validation
 
     # Audit the persisted pipeline manifest and all linked artifacts after the run. The
     # receipt is separate so it cannot create a hash cycle with the pipeline manifest.
@@ -490,6 +481,16 @@ def run_research_pipeline(
     result["reproducibility_audit_sha256"] = _sha256(reproducibility_audit_path)
     result["reproducibility_audit_status"] = reproducibility_audit["status"]
     result["reproducibility_audit_errors"] = reproducibility_audit["errors"]
+
+    # Keep the validation report separate so the manifest hash remains stable.
+    # Non-strict mode records validation findings; strict mode controls only the CLI exit code.
+    validation_path = destination / f"{run_id}_validation_report.json"
+    validation = validate_completed_run(manifest_path, output_path=validation_path)
+    result["validation_report_path"] = str(validation_path)
+    result["validation_status"] = validation["status"]
+    result["validation_errors"] = validation["errors"]
+    result["validation_warnings"] = validation["warnings"]
+    result["strict_validation"] = strict_validation
 
     # Final receipt binds the immutable manifest to its validation and reproducibility
     # reports. It is intentionally external to the manifest to avoid a hash cycle.
