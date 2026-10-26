@@ -76,7 +76,6 @@ For this role, the report must have `status: PASS`, readiness
 `RELEASE_READY_FOR_HUMAN_REVIEW`, explicit false model-qualification/deployment flags, a
 dataset fingerprint, and a run ID present in the experiment registry. A warning-status or
 unregistered run fails the pack. Dataset fingerprints are reconciled across the supplied
-reports. Use one release-readiness report per run when a batch has multiple runs; report roles
-must remain unique, so use distinct role names such as `release_readiness_run_a` only if your
-pack schema and auditor are extended to support them, rather than duplicating the current
-`release_readiness` role. A pack PASS still does not authorize deployment.
+reports. Use one release-readiness report per run when a batch has multiple runs. Roles must remain unique,
+so name additional entries `release_readiness_run_a`, `release_readiness_run_b`, and so on; all
+roles beginning `release_readiness_` receive the same qualification checks. A pack PASS still does not authorize deployment.
