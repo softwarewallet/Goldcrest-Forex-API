@@ -32,10 +32,10 @@ def _fixtures(tmp_path: Path):
     )
     dataset = _write_csv(
         tmp_path / "dataset.csv",
-        ["symbol", "timeframe", "timestamp", "close", "label", "label_available_at"],
+        ["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "label", "label_available_at"],
         [
-            ["EURUSD", "M15", "2026-01-01T00:00:00Z", 1.00, 1, "2026-01-01T00:30:00Z"],
-            ["EURUSD", "M15", "2026-01-01T00:15:00Z", 1.10, 0, "2026-01-01T00:45:00Z"],
+            ["EURUSD", "M15", "2026-01-01T00:00:00Z", 1.00, 1.01, 0.99, 1.00, 1, "2026-01-01T00:30:00Z"],
+            ["EURUSD", "M15", "2026-01-01T00:15:00Z", 1.10, 1.11, 1.09, 1.10, 0, "2026-01-01T00:45:00Z"],
         ],
     )
     return raw, dataset
@@ -73,10 +73,13 @@ def test_label_maturity_audit_rejects_maturity_timestamp_mismatch(tmp_path):
 
 def test_label_maturity_audit_rejects_label_value_mismatch(tmp_path):
     raw, dataset = _fixtures(tmp_path)
-    content = dataset.read_text(encoding="utf-8").replace(
-        "2026-01-01T00:00:00Z,1.0,1,", "2026-01-01T00:00:00Z,1.0,0,", 1
+    rows = list(csv.DictReader(dataset.open("r", encoding="utf-8", newline="")))
+    rows[0]["label"] = "0"
+    _write_csv(
+        dataset,
+        ["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "label", "label_available_at"],
+        [[row[field] for field in ["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "label", "label_available_at"]] for row in rows],
     )
-    dataset.write_text(content, encoding="utf-8")
 
     report = audit_label_maturity(
         raw, dataset, symbol="EURUSD", timeframe="M15",
@@ -91,10 +94,10 @@ def test_label_maturity_audit_checks_eligibility_mask_against_elapsed_time(tmp_p
     raw, dataset = _fixtures(tmp_path)
     dataset = _write_csv(
         tmp_path / "dataset-capped.csv",
-        ["symbol", "timeframe", "timestamp", "close", "label", "label_available_at", "label_elapsed_hours", "label_eligible"],
+        ["symbol", "timeframe", "timestamp", "open", "high", "low", "close", "label", "label_available_at", "label_elapsed_hours", "label_eligible"],
         [
-            ["EURUSD", "M15", "2026-01-01T00:00:00Z", 1.00, 1, "2026-01-01T00:30:00Z", 0.5, 1],
-            ["EURUSD", "M15", "2026-01-01T00:15:00Z", 1.10, 0, "2026-01-01T00:45:00Z", 0.5, 1],
+            ["EURUSD", "M15", "2026-01-01T00:00:00Z", 1.00, 1.01, 0.99, 1.00, 1, "2026-01-01T00:30:00Z", 0.5, 1],
+            ["EURUSD", "M15", "2026-01-01T00:15:00Z", 1.10, 1.11, 1.09, 1.10, 0, "2026-01-01T00:45:00Z", 0.5, 1],
         ],
     )
 
