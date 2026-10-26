@@ -169,7 +169,7 @@ def audit_artifact_freshness(
             reasons.append("MISSING_OR_INVALID_DATASET_FINGERPRINT")
         elif recorded_dataset != current_dataset_sha256:
             reasons.append("STALE_DATASET")
-        if item.get("path") is None:
+        if not isinstance(item.get("path"), str) or not item.get("path").strip():
             reasons.append("MISSING_ARTIFACT_PATH")
         results[artifact_id] = {
             "artifact_id": artifact_id,
