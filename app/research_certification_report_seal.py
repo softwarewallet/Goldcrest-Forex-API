@@ -31,7 +31,8 @@ def canonical_report_bytes(report: dict[str, Any]) -> bytes:
         raise ValueError("certification_report_must_be_object")
     if report.get("audit_name") != "research_unified_provenance_certification":
         raise ValueError("certification_report_audit_name_invalid")
-    if report.get("status") not in {"PASS", "PASS_WITH_WARNINGS", "FAIL"}:
+    status_value = report.get("status")
+    if not isinstance(status_value, str) or status_value not in {"PASS", "PASS_WITH_WARNINGS", "FAIL"}:
         raise ValueError("certification_report_status_invalid")
     errors = report.get("errors")
     if not isinstance(errors, list) or any(not isinstance(item, dict) for item in errors):
