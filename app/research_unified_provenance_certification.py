@@ -25,6 +25,45 @@ from app.research_provenance_manifest_seal import verify_manifest_seal
 from app.research_certification_report_seal import create_report_seal
 from app.research_run_final_certification import run_final_certification
 
+def _normalize_component_report(name: str, report: Any) -> dict[str, Any]:
+    """Fail closed when a verifier returns a malformed or internally inconsistent report."""
+    if not isinstance(report, dict):
+        return {
+            "audit_name": name,
+            "status": "FAIL",
+            "errors": [{"code": "COMPONENT_REPORT_CONTRACT_INVALID",
+                        "component": name, "reason": "report_must_be_object"}],
+        }
+
+    status = report.get("status")
+    errors = report.get("errors")
+    warnings = report.get("warnings", [])
+    reasons: list[str] = []
+    if not isinstance(status, str) or not status.strip():
+        reasons.append("status_must_be_nonempty_string")
+    if not isinstance(errors, list) or any(not isinstance(item, dict) for item in errors):
+        reasons.append("errors_must_be_list_of_objects")
+    elif status == "PASS" and errors:
+        reasons.append("pass_status_must_not_contain_errors")
+    if not isinstance(warnings, list) or any(not isinstance(item, str) or not item.strip() for item in warnings):
+        reasons.append("warnings_must_be_list_of_nonempty_strings")
+    elif status == "PASS" and warnings:
+        reasons.append("pass_with_warnings_must_use_pass_with_warnings_status")
+
+    if reasons:
+        return {
+            "audit_name": name,
+            "status": "FAIL",
+            "errors": [{
+                "code": "COMPONENT_REPORT_CONTRACT_INVALID",
+                "component": name,
+                "reasons": reasons,
+            }],
+            "component_report_rejected": True,
+        }
+    return report
+
+
 FALSE_FLAGS = {
     "actionable": False,
     "inferential": False,
@@ -232,7 +271,59 @@ def run_unified_certification(
             "warnings": [],
         }
 
+    # Verifier status and its structured diagnostics must agree. A component that
+    # claims PASS while reporting errors cannot be allowed to certify the run.
+    component_reports = (
+        ("artifact_inventory_spec_seal_verification", inventory_seal_report),
+        ("artifact_inventory_completeness", inventory_report),
+        ("provenance_manifest_seal_verification", seal_report),
+        ("provenance_verification", provenance_report),
+        ("bundle_verification", bundle_verification),
+        ("final_certification_chain", certification_report),
+        ("freshness_audit", freshness_report),
+        ("freshness_certification_gate", gate_report),
+    )
+    for component_name, component_report in component_reports:
+        normalized = _normalize_component_report(component_name, component_report)
+        if normalized is not component_report:
+            if component_name == "artifact_inventory_spec_seal_verification":
+                inventory_seal_report = normalized
+            elif component_name == "artifact_inventory_completeness":
+                inventory_report = normalized
+            elif component_name == "provenance_manifest_seal_verification":
+                seal_report = normalized
+            elif component_name == "provenance_verification":
+                provenance_report = normalized
+            elif component_name == "bundle_verification":
+                bundle_verification = normalized
+            elif component_name == "final_certification_chain":
+                certification_report = normalized
+            elif component_name == "freshness_audit":
+                freshness_report = normalized
+            elif component_name == "freshness_certification_gate":
+                gate_report = normalized
+
     errors: list[dict[str, Any]] = list(fingerprint_errors)
+    for component_name, component_report in component_reports:
+        # Use the normalized bindings above, rather than the original untrusted object.
+        current_report = {
+            "artifact_inventory_spec_seal_verification": inventory_seal_report,
+            "artifact_inventory_completeness": inventory_report,
+            "provenance_manifest_seal_verification": seal_report,
+            "provenance_verification": provenance_report,
+            "bundle_verification": bundle_verification,
+            "final_certification_chain": certification_report,
+            "freshness_audit": freshness_report,
+            "freshness_certification_gate": gate_report,
+        }[component_name]
+        if current_report.get("component_report_rejected") is True:
+            errors.append({
+                "code": "CERTIFICATION_COMPONENT_REPORT_INVALID",
+                "component": component_name,
+                "reasons": current_report["errors"][0].get("reasons", [
+                    current_report["errors"][0].get("reason", "invalid_report")
+                ]),
+            })
     if git_error is not None or (git_report is not None and git_report.get("status") != "PASS"):
         errors.append({
             "code": "GIT_SOURCE_PROVENANCE_FAILED",
