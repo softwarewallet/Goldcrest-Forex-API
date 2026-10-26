@@ -116,6 +116,8 @@ def audit_evaluation_window_lineage(
     root = registry_root.resolve()
     errors: list[dict[str, Any]] = []
     warnings: list[str] = []
+    if registry_report.get("status") == "PASS_WITH_WARNINGS" or registry_warnings:
+        warnings.append("registry_report_has_warnings")
     seen: set[str] = set()
     runs_checked = 0
     rows_checked = 0
