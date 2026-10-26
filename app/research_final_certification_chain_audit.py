@@ -96,12 +96,17 @@ def audit_final_certification_chain(
             errors.append({"code": "input_errors_schema_invalid", "report": name})
         elif input_errors:
             errors.append({"code": "input_report_contains_errors", "report": name})
-        if "warnings" in payload:
-            input_warnings = payload.get("warnings")
-            if not isinstance(input_warnings, list) or any(
-                not isinstance(item, str) or not item.strip() for item in input_warnings
-            ):
-                errors.append({"code": "input_warnings_schema_invalid", "report": name})
+        input_warnings = payload.get("warnings", [])
+        if "warnings" in payload and (
+            not isinstance(input_warnings, list)
+            or any(not isinstance(item, str) or not item.strip() for item in input_warnings)
+        ):
+            errors.append({"code": "input_warnings_schema_invalid", "report": name})
+        elif (
+            (payload.get("status") == "PASS" and input_warnings)
+            or (payload.get("status") == "PASS_WITH_WARNINGS" and not input_warnings)
+        ):
+            errors.append({"code": "input_status_warning_mismatch", "report": name})
         if payload.get("status") == "PASS_WITH_WARNINGS":
             warnings.append(f"{name}_passed_with_warnings")
 
