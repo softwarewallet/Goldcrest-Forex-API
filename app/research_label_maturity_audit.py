@@ -117,7 +117,7 @@ def audit_label_maturity(
     try:
         with data_path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
-            required = {"timestamp", "close", "label", "label_available_at"}
+            required = {"timestamp", "open", "high", "low", "close", "label", "label_available_at"}
             missing = required - set(reader.fieldnames or ())
             if missing:
                 raise ValueError(f"dataset_missing_columns:{','.join(sorted(missing))}")
@@ -158,9 +158,19 @@ def audit_label_maturity(
                     continue
                 if label not in (0, 1):
                     errors.append(f"dataset_label_not_binary_line_{line}")
-                raw_close = raw_rows[start_index]["close"]
-                if not math.isfinite(current_close) or not math.isclose(current_close, raw_close, rel_tol=0.0, abs_tol=1e-10):
-                    errors.append(f"dataset_close_mismatch_raw_ohlc_line_{line}")
+                raw_start = raw_rows[start_index]
+                for price_field in ("open", "high", "low", "close"):
+                    try:
+                        dataset_price = float(row[price_field])
+                    except (TypeError, ValueError, KeyError):
+                        errors.append(f"dataset_{price_field}_invalid_line_{line}")
+                        continue
+                    raw_price = raw_start[price_field]
+                    if not math.isfinite(dataset_price) or not math.isclose(
+                        dataset_price, raw_price, rel_tol=0.0, abs_tol=1e-10
+                    ):
+                        errors.append(f"dataset_{price_field}_mismatch_raw_ohlc_line_{line}")
+                raw_close = raw_start["close"]
                 target_close = raw_rows[target_index]["close"]
                 expected_label = int(target_close > raw_close) if meaning == "UP" else int(target_close < raw_close)
                 if label != expected_label:
