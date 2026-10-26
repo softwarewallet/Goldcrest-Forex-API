@@ -68,11 +68,14 @@ def audit_final_certification_chain(
                 "expected": audit_name,
                 "actual": payload.get("audit_name"),
             })
-        if payload.get("status") not in statuses:
+        input_status = payload.get("status")
+        # A malformed JSON value such as a list/dict is unhashable; validate the
+        # type before membership testing so hostile reports become FAIL diagnostics.
+        if not isinstance(input_status, str) or input_status not in statuses:
             errors.append({
                 "code": "input_report_not_passing",
                 "report": name,
-                "status": payload.get("status"),
+                "status": input_status,
             })
         for flag in REQUIRED_FALSE_FLAGS:
             if payload.get(flag) is not False:
