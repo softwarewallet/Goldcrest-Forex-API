@@ -184,7 +184,11 @@ def audit_pipeline_completion(
         if not path.is_file():
             checks[f"{label}_file_hash"] = "FAIL"
             errors.append({"code": "required_report_file_missing", "report": label})
+        elif label not in source_hashes:
+            checks[f"{label}_file_hash"] = "FAIL"
+            errors.append({"code": "required_report_hash_unavailable", "report": label})
         else:
+            # The digest was computed from the exact JSON bytes parsed above.
             checks[f"{label}_file_hash"] = "PASS"
 
     return _report(
