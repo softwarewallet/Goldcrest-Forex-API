@@ -8,6 +8,7 @@ import pytest
 from app.research_validation_workflow_audit import (
     REQUIRED_AUDITS,
     audit_research_validation_workflow,
+    _load_json_object,
 )
 
 
@@ -135,3 +136,14 @@ def test_manifest_rejects_duplicate_required_audits(tmp_path):
     manifest["required_audits"] = ["feature_temporal_integrity", "feature_temporal_integrity"]
     with pytest.raises(ValueError, match="required_audits_must_be_unique"):
         run_audit(tmp_path, manifest)
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}',
+    b'{"metric":NaN}',
+    b'{"metric":Infinity}',
+    b'{"metric":-Infinity}',
+])
+def test_json_loader_rejects_duplicate_keys_and_nonstandard_constants(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="test-manifest.json")
