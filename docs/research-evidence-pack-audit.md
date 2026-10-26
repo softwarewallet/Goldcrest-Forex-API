@@ -37,3 +37,45 @@ integrity/coverage failures, and `2` for an invalid invocation or unsafe output 
 A passing pack means only that the supplied reports' hashes, declared coverage, dataset
 fingerprints, and safety flags are consistent. It is not proof of predictive validity,
 profitability, absence of all leakage, or suitability for deployment.
+
+
+## Release-readiness receipts across a run registry
+
+A pack can additionally require the `release_readiness` role:
+
+```json
+{
+  "schema_version": 1,
+  "pack_id": "reviewed-release-batch-20261026",
+  "required_roles": [
+    "experiment_registry",
+    "validation_workflow",
+    "release_readiness"
+  ],
+  "reports": [
+    {
+      "role": "experiment_registry",
+      "path": "experiment_registry.json",
+      "expected_sha256": "<sha256>"
+    },
+    {
+      "role": "validation_workflow",
+      "path": "validation_workflow.json",
+      "expected_sha256": "<sha256>"
+    },
+    {
+      "role": "release_readiness",
+      "path": "run-a_release_readiness.json",
+      "expected_sha256": "<sha256>"
+    }
+  ]
+}
+```
+
+For this role, the report must have `status: PASS`, readiness
+`RELEASE_READY_FOR_HUMAN_REVIEW`, explicit false model-qualification/deployment flags, a
+dataset fingerprint, and a run ID present in the experiment registry. A warning-status or
+unregistered run fails the pack. Dataset fingerprints are reconciled across the supplied
+reports. Use one release-readiness report per run when a batch has multiple runs. Roles must remain unique,
+so name additional entries `release_readiness_run_a`, `release_readiness_run_b`, and so on; all
+roles beginning `release_readiness_` receive the same qualification checks. A pack PASS still does not authorize deployment.

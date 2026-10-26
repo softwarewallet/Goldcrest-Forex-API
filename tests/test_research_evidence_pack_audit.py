@@ -338,3 +338,102 @@ def test_evidence_pack_status_warning_contract_is_enforced(tmp_path, status, war
     report = audit(tmp_path, manifest)
     assert report["status"] == "FAIL"
     assert any(item["code"] == "status_warnings_mismatch" for item in report["errors"])
+
+
+def release_readiness_report(run_id="run-a", dataset_digest=None):
+    digest = dataset_digest or sha(b"dataset")
+    return {
+        "status": "PASS",
+        "readiness": "RELEASE_READY_FOR_HUMAN_REVIEW",
+        "errors": [],
+        "warnings": [],
+        "run_id": run_id,
+        "dataset_fingerprints": {digest: [run_id]},
+        "model_qualified": False,
+        "deployment_authorized": False,
+        **FALSE_FLAGS,
+    }
+
+
+def test_release_readiness_role_must_be_clean_and_registry_linked(tmp_path):
+    digest = sha(b"dataset")
+    manifest = write_pack(
+        tmp_path,
+        [
+            ("experiment_registry", registry_report()),
+            ("validation_workflow", workflow_report(digest)),
+            ("release_readiness", release_readiness_report("run-a", digest)),
+        ],
+        required_roles=["experiment_registry", "validation_workflow", "release_readiness"],
+    )
+
+    report = audit(tmp_path, manifest)
+
+    assert report["status"] == "PASS"
+    assert report["run_ids_reconciled"] == ["run-a", "run-b"]
+
+
+def test_release_readiness_role_rejects_run_missing_from_registry(tmp_path):
+    digest = sha(b"dataset")
+    manifest = write_pack(
+        tmp_path,
+        [
+            ("experiment_registry", registry_report()),
+            ("validation_workflow", workflow_report(digest)),
+            ("release_readiness", release_readiness_report("run-not-registered", digest)),
+        ],
+        required_roles=["experiment_registry", "validation_workflow", "release_readiness"],
+    )
+
+    report = audit(tmp_path, manifest)
+
+    assert report["status"] == "FAIL"
+    assert any(
+        item["code"] == "release_readiness_run_not_in_experiment_registry"
+        for item in report["errors"]
+    )
+
+
+def test_release_readiness_role_rejects_warning_status(tmp_path):
+    digest = sha(b"dataset")
+    release = release_readiness_report("run-a", digest)
+    release["status"] = "PASS_WITH_WARNINGS"
+    release["readiness"] = "READY_WITH_WARNINGS"
+    manifest = write_pack(
+        tmp_path,
+        [
+            ("experiment_registry", registry_report()),
+            ("validation_workflow", workflow_report(digest)),
+            ("release_readiness", release),
+        ],
+        required_roles=["experiment_registry", "validation_workflow", "release_readiness"],
+    )
+
+    report = audit(tmp_path, manifest)
+
+    assert report["status"] == "FAIL"
+    assert any(item["code"] == "release_readiness_not_clean_pass" for item in report["errors"])
+
+
+def test_evidence_pack_accepts_multiple_registered_release_receipts(tmp_path):
+    digest = sha(b"dataset")
+    manifest = write_pack(
+        tmp_path,
+        [
+            ("experiment_registry", registry_report()),
+            ("validation_workflow", workflow_report(digest)),
+            ("release_readiness_run_a", release_readiness_report("run-a", digest)),
+            ("release_readiness_run_b", release_readiness_report("run-b", digest)),
+        ],
+        required_roles=[
+            "experiment_registry",
+            "validation_workflow",
+            "release_readiness_run_a",
+            "release_readiness_run_b",
+        ],
+    )
+
+    report = audit(tmp_path, manifest)
+
+    assert report["status"] == "PASS"
+    assert report["run_ids_reconciled"] == ["run-a", "run-b"]

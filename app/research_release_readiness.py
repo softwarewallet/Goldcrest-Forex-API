@@ -93,8 +93,17 @@ def audit_research_release_readiness(
     elif run_audit.get("status") == "PASS_WITH_WARNINGS":
         warnings.extend(f"integrity:{item}" for item in run_audit.get("warnings", []))
 
-    for flag in _FALSE_FLAGS:
+    manifest_required_false_flags = (
+        "actionable",
+        "execution_connected",
+        "automatic_winner_selection",
+        "test_metrics_used_for_selection",
+    )
+    for flag in manifest_required_false_flags:
         if manifest.get(flag) is not False:
+            errors.append(f"pipeline_{flag}_must_be_false")
+    for flag in ("automatic_model_selection", "deployment_authorized"):
+        if flag in manifest and manifest.get(flag) is not False:
             errors.append(f"pipeline_{flag}_must_be_false")
 
     run_id = manifest.get("run_id")
@@ -109,7 +118,7 @@ def audit_research_release_readiness(
     else:
         normalized_reference = reference.strip()
         if re.search(
-            r"<[^>]+>|\\b(?:TODO|TBD|PLACEHOLDER|REPLACE THIS|EXACT PROVIDER TERMS REFERENCE)\\b",
+            r"<[^>]+>|\b(?:TODO|TBD|PLACEHOLDER|REPLACE THIS|EXACT PROVIDER TERMS REFERENCE)\b",
             normalized_reference,
             flags=re.IGNORECASE,
         ):
@@ -117,7 +126,7 @@ def audit_research_release_readiness(
         actual_terms_hash = hashlib.sha256(normalized_reference.encode("utf-8")).hexdigest()
         if declared_terms_hash != actual_terms_hash:
             errors.append("provider_terms_reference_hash_mismatch")
-        if not re.match(r"^https?://[^\\s]+$", normalized_reference, flags=re.IGNORECASE):
+        if not re.match(r"^https?://[^\s]+$", normalized_reference, flags=re.IGNORECASE):
             errors.append("provider_terms_reference_must_be_http_or_https_uri")
 
     try:
@@ -177,14 +186,66 @@ def audit_research_release_readiness(
     if run_audit.get("status") == "PASS_WITH_WARNINGS":
         errors.append("release_blocked_by_cross_artifact_warnings")
 
-    for field in ("raw_ohlc_audit_status", "feature_source_audit_status",
-                  "point_in_time_feature_invariance_audit_status",
-                  "label_maturity_audit_status", "provenance_audit_status",
-                  "temporal_calibration_audit_status", "model_evaluation_gate_status",
-                  "reproducibility_audit_status"):
-        value = manifest.get(field)
-        if value != "PASS":
-            errors.append(f"required_{field}_not_clean_pass")
+    required_receipts = (
+        ("raw_ohlc_audit_path", "raw_ohlc_audit_status"),
+        ("feature_source_audit_path", "feature_source_audit_status"),
+        ("point_in_time_feature_invariance_audit_path", "point_in_time_feature_invariance_audit_status"),
+        ("label_maturity_audit_path", "label_maturity_audit_status"),
+        ("provenance_audit_path", "provenance_audit_status"),
+        ("temporal_calibration_audit_path", "temporal_calibration_audit_status"),
+        ("model_evaluation_gate_path", "model_evaluation_gate_status"),
+    )
+    for path_field, status_field in required_receipts:
+        if manifest.get(status_field) != "PASS":
+            errors.append(f"required_{status_field}_not_clean_pass")
+        receipt_path = _resolve_path(manifest.get(path_field), manifest_file.parent)
+        if receipt_path is None or not receipt_path.is_file():
+            errors.append(f"required_receipt_missing:{path_field}")
+            checks[path_field] = "FAIL"
+            continue
+        try:
+            receipt, receipt_bytes = _read_object(receipt_path)
+            checks[path_field] = "PASS"
+            if receipt.get("status") != "PASS":
+                errors.append(f"required_receipt_status_not_clean_pass:{path_field}")
+            if receipt.get("errors") != []:
+                errors.append(f"required_receipt_contains_errors:{path_field}")
+            for safety_flag in ("actionable", "execution_connected", "automatic_model_selection",
+                                "automatic_winner_selection", "test_metrics_used_for_selection"):
+                if safety_flag in receipt and receipt.get(safety_flag) is not False:
+                    errors.append(f"required_receipt_safety_flag_invalid:{path_field}:{safety_flag}")
+            expected_hash_field = {
+                "raw_ohlc_audit_path": "raw_ohlc_audit_sha256",
+                "feature_source_audit_path": "feature_source_audit_sha256",
+                "point_in_time_feature_invariance_audit_path": "point_in_time_feature_invariance_audit_sha256",
+                "label_maturity_audit_path": "label_maturity_audit_sha256",
+                "provenance_audit_path": "provenance_audit_sha256",
+                "temporal_calibration_audit_path": "temporal_calibration_audit_sha256",
+                "model_evaluation_gate_path": "model_evaluation_gate_sha256",
+            }[path_field]
+            if _sha256(receipt_bytes) != manifest.get(expected_hash_field):
+                errors.append(f"required_receipt_file_hash_mismatch:{path_field}")
+            if receipt.get("run_id") is not None and receipt.get("run_id") != run_id:
+                errors.append(f"required_receipt_run_id_mismatch:{path_field}")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            checks[path_field] = "FAIL"
+            errors.append(f"required_receipt_unreadable:{path_field}:{type(exc).__name__}")
+
+    reproducibility_path = _resolve_path(manifest.get("reproducibility_audit_path"), manifest_file.parent)
+    if reproducibility_path is None or not reproducibility_path.is_file():
+        errors.append("required_reproducibility_audit_missing")
+        checks["reproducibility_audit"] = "FAIL"
+    else:
+        try:
+            reproducibility, reproducibility_bytes = _read_object(reproducibility_path)
+            checks["reproducibility_audit"] = "PASS"
+            if reproducibility.get("status") != "PASS" or reproducibility.get("errors") != []:
+                errors.append("required_reproducibility_audit_not_clean_pass")
+            if reproducibility.get("actionable") is not False or reproducibility.get("execution_connected") is not False:
+                errors.append("required_reproducibility_audit_safety_flags_invalid")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            checks["reproducibility_audit"] = "FAIL"
+            errors.append(f"required_reproducibility_audit_unreadable:{type(exc).__name__}")
 
     completion_path = manifest_file.parent / f"{run_id}_pipeline_completion_audit.json" if isinstance(run_id, str) else None
     if completion_path is None or not completion_path.is_file():
@@ -200,8 +261,22 @@ def audit_research_release_readiness(
                 errors.append("pipeline_completion_receipt_manifest_hash_mismatch")
             if completion.get("status") != "PASS" or completion.get("errors") != [] or completion.get("warnings") != []:
                 errors.append("pipeline_completion_receipt_not_clean_pass")
-            if _sha256(completion_bytes) == "":
-                errors.append("pipeline_completion_receipt_hash_unavailable")
+            if completion.get("schema_version") != 2:
+                errors.append("pipeline_completion_receipt_schema_not_source_bound")
+            source_specs = (
+                ("validation_report_sha256", manifest_file.parent / f"{run_id}_validation_report.json"),
+                ("reproducibility_audit_sha256", reproducibility_path),
+                ("model_evaluation_gate_sha256", _resolve_path(manifest.get("model_evaluation_gate_path"), manifest_file.parent)),
+            )
+            for hash_field, source_path in source_specs:
+                if source_path is None or not source_path.is_file():
+                    errors.append(f"pipeline_completion_source_missing:{hash_field}")
+                else:
+                    try:
+                        if completion.get(hash_field) != _sha256(source_path.read_bytes()):
+                            errors.append(f"pipeline_completion_source_hash_mismatch:{hash_field}")
+                    except OSError:
+                        errors.append(f"pipeline_completion_source_unreadable:{hash_field}")
             for flag in ("actionable", "execution_connected", "model_qualified", "deployment_authorized"):
                 if completion.get(flag) is not False:
                     errors.append(f"pipeline_completion_{flag}_must_be_false")
@@ -232,9 +307,21 @@ def audit_research_release_readiness(
         "checks": checks,
         "errors": sorted(set(errors)),
         "warnings": sorted(set(warnings)),
+        "dataset_fingerprints": (
+            {manifest["dataset_sha256"]: [run_id]}
+            if isinstance(manifest.get("dataset_sha256"), str)
+            and re.fullmatch(r"[0-9a-fA-F]{64}", manifest["dataset_sha256"])
+            else {}
+        ),
         "actionable": False,
+        "inferential": False,
+        "statistical_significance_claimed": False,
         "execution_connected": False,
+        "model_training_performed": False,
         "automatic_model_selection": False,
+        "automatic_winner_selection": False,
+        "test_metrics_used_for_selection": False,
+        "automatic_repair_performed": False,
         "model_qualified": False,
         "deployment_authorized": False,
         "scope_limitations": [
