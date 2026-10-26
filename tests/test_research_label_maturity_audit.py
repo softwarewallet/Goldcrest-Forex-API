@@ -20,8 +20,14 @@ def _fixtures(tmp_path: Path):
         tmp_path / "raw.csv",
         ["symbol", "timeframe", "timestamp", "open", "high", "low", "close"],
         [
-            ["EURUSD", "M15", f"2026-01-01T00:{minute:02d}:00Z", close, close + 0.01, close - 0.01, close]
-            for minute, close in [(0, 1.00), (15, 1.10), (30, 1.20), (45, 1.00), (60, 0.90)]
+            ["EURUSD", "M15", timestamp, close, close + 0.01, close - 0.01, close]
+            for timestamp, close in [
+                ("2026-01-01T00:00:00Z", 1.00),
+                ("2026-01-01T00:15:00Z", 1.10),
+                ("2026-01-01T00:30:00Z", 1.20),
+                ("2026-01-01T00:45:00Z", 1.00),
+                ("2026-01-01T01:00:00Z", 0.90),
+            ]
         ],
     )
     dataset = _write_csv(
