@@ -324,6 +324,56 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                 if fingerprint.get(flag) is not False:
                     errors.append(f"{field}_{flag}_must_be_false")
 
+    # Verify the reproducibility receipt directly, even when no completion receipt
+    # exists. It must be a clean PASS and refer to this manifest and (when present) its
+    # exact experiment fingerprint file.
+    if manifest.get("reproducibility_audit_path") or manifest.get("reproducibility_audit_sha256"):
+        field = "reproducibility_audit"
+        resolved = _resolve_artifact_path(manifest.get(f"{field}_path"), manifest_path)
+        if resolved is None:
+            errors.append(f"{field}_path_missing")
+        elif not resolved.is_file():
+            errors.append(f"{field}_path_not_found")
+        else:
+            actual_hash = _sha256(resolved)
+            checked_artifacts[f"{field}_path"] = {
+                "path": str(resolved),
+                "sha256": actual_hash,
+            }
+            try:
+                related[f"{field}_path"] = _read_json(resolved)
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
+
+        reproducibility = related.get(f"{field}_path", {})
+        if reproducibility:
+            if reproducibility.get("audit_name") != "research_experiment_reproducibility_audit":
+                errors.append(f"{field}_audit_name_mismatch")
+            if reproducibility.get("status") != "PASS" or reproducibility.get("errors") != []:
+                errors.append(f"{field}_not_pass")
+            if reproducibility.get("actionable") is not False:
+                errors.append(f"{field}_actionable_must_be_false")
+            for flag in ("execution_connected", "automatic_model_selection"):
+                if reproducibility.get(flag) is not False:
+                    errors.append(f"{field}_{flag}_must_be_false")
+            recorded_manifest_path = reproducibility.get("pipeline_manifest_path")
+            if not isinstance(recorded_manifest_path, str) or Path(recorded_manifest_path).expanduser().resolve() != manifest_path.expanduser().resolve():
+                errors.append(f"{field}_pipeline_manifest_path_mismatch")
+
+            fingerprint_path_value = manifest.get("experiment_fingerprint_path")
+            if fingerprint_path_value:
+                expected_fingerprint_path = _resolve_artifact_path(fingerprint_path_value, manifest_path)
+                recorded_fingerprint_path = reproducibility.get("fingerprint_path")
+                if (
+                    expected_fingerprint_path is None
+                    or not isinstance(recorded_fingerprint_path, str)
+                    or Path(recorded_fingerprint_path).expanduser().resolve() != expected_fingerprint_path.resolve()
+                ):
+                    errors.append(f"{field}_fingerprint_path_mismatch")
+                expected_fingerprint_hash = checked_artifacts.get("experiment_fingerprint_path", {}).get("sha256")
+                if reproducibility.get("fingerprint_file_sha256") != expected_fingerprint_hash:
+                    errors.append(f"{field}_fingerprint_file_hash_mismatch")
+
     # Verify the persisted model-evaluation gate receipt when the manifest declares it.
     # The gate must be tied to the exact experiment-matrix bytes checked above.
     if manifest.get("model_evaluation_gate_path") or manifest.get("model_evaluation_gate_sha256"):
