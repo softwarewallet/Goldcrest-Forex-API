@@ -182,6 +182,8 @@ def audit_pipeline_completion(
         if evaluation_source_hash != expected_evaluation_hash:
             raise ValueError("model_evaluation_gate_sha256_mismatch")
         checks["model_evaluation_gate_file_hash"] = "PASS"
+        if evaluation.get("run_id") != run_id:
+            errors.append({"code": "model_evaluation_gate_run_id_mismatch", "report": "model_evaluation_gate"})
         evaluation_errors = evaluation.get("errors")
         if not isinstance(evaluation_errors, list):
             errors.append({"code": "model_evaluation_gate_errors_schema_invalid", "report": "model_evaluation_gate"})
