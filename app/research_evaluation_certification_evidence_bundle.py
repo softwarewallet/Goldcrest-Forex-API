@@ -76,7 +76,9 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
         if payload.get("status") not in allowed_statuses:
             raise ValueError(f"report_not_passing:{role}")
         report_errors = payload.get("errors")
-        if not isinstance(report_errors, list):
+        if role != "plan" and not isinstance(report_errors, list):
+            raise ValueError(f"report_errors_schema_invalid:{role}")
+        if report_errors is not None and not isinstance(report_errors, list):
             raise ValueError(f"report_errors_schema_invalid:{role}")
         if report_errors:
             raise ValueError(f"report_contains_errors:{role}")
@@ -185,7 +187,10 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
             errors.append({"code": "bundle_report_identity_or_status_mismatch", "role": role})
             continue
         report_errors = payload.get("errors")
-        if not isinstance(report_errors, list):
+        if role != "plan" and not isinstance(report_errors, list):
+            errors.append({"code": "bundle_report_errors_schema_invalid", "role": role})
+            continue
+        if report_errors is not None and not isinstance(report_errors, list):
             errors.append({"code": "bundle_report_errors_schema_invalid", "role": role})
             continue
         if report_errors:
