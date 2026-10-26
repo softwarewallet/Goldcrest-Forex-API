@@ -63,8 +63,19 @@ def certify_evaluation_integrity(
             errors.append({"code": "deployment_must_remain_unauthorized", "report": name})
         if payload.get("status") == "PASS_WITH_WARNINGS":
             warnings.append(f"{name}_passed_with_warnings")
-        if payload.get("errors"):
+        upstream_errors = payload.get("errors")
+        if name != "plan" and not isinstance(upstream_errors, list):
+            errors.append({"code": "upstream_errors_schema_invalid", "report": name})
+        elif upstream_errors is not None and not isinstance(upstream_errors, list):
+            errors.append({"code": "upstream_errors_schema_invalid", "report": name})
+        elif upstream_errors:
             errors.append({"code": "upstream_report_contains_errors", "report": name})
+        upstream_warnings = payload.get("warnings")
+        if upstream_warnings is not None and (
+            not isinstance(upstream_warnings, list)
+            or any(not isinstance(item, str) or not item.strip() for item in upstream_warnings)
+        ):
+            errors.append({"code": "upstream_warnings_schema_invalid", "report": name})
 
     if any(not isinstance(payload, dict) for payload in inputs.values()):
         return _result(plan, registry, output_integrity, row_window_lineage, metric_semantics, errors, warnings)
