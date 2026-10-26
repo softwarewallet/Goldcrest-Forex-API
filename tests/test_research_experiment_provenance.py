@@ -166,14 +166,20 @@ def test_cli_output_does_not_overwrite_existing_target(monkeypatch, tmp_path):
     import sys
     import app.research_experiment_provenance as module
 
-    manifest_path = tmp_path / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest()), encoding="utf-8")
+    first_path = tmp_path / "first-report.json"
+    second_path = tmp_path / "second-report.json"
+    first_path.write_text(json.dumps(
+        validate_experiment_manifest(manifest("run-1"), base_dir=tmp_path)
+    ), encoding="utf-8")
+    second_path.write_text(json.dumps(
+        validate_experiment_manifest(manifest("run-2"), base_dir=tmp_path)
+    ), encoding="utf-8")
     output = tmp_path / "report.json"
-    original = '{"owner":"existing"}\n'
+    original = '{"owner":"existing"}\\n'
     output.write_text(original, encoding="utf-8")
     monkeypatch.setattr(sys, "argv", [
-        "research_experiment_provenance", "validate",
-        str(manifest_path), "--output", str(output),
+        "research_experiment_provenance", "compare",
+        str(first_path), str(second_path), "--output", str(output),
     ])
     with pytest.raises(ValueError, match="output_already_exists"):
         module.main()
