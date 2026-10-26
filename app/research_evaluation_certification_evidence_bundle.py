@@ -84,7 +84,8 @@ def build_evidence_bundle(report_paths: dict[str, Path]) -> dict[str, Any]:
         expected_name, allowed_statuses = REPORT_SPECS[role]
         if payload.get("audit_name") != expected_name:
             raise ValueError(f"audit_name_mismatch:{role}")
-        if payload.get("status") not in allowed_statuses:
+        report_status = payload.get("status")
+        if not isinstance(report_status, str) or report_status not in allowed_statuses:
             raise ValueError(f"report_not_passing:{role}")
         report_errors = payload.get("errors")
         if role != "plan" and not isinstance(report_errors, list):
@@ -211,7 +212,8 @@ def verify_evidence_bundle(bundle: dict[str, Any], *, evidence_root: Path) -> di
             errors.append({"code": "bundle_report_size_mismatch", "role": role})
             continue
         payload = _read_report(path)[0]
-        if payload.get("audit_name") != audit_name or payload.get("status") not in allowed_statuses:
+        report_status = payload.get("status")
+        if payload.get("audit_name") != audit_name or not isinstance(report_status, str) or report_status not in allowed_statuses:
             errors.append({"code": "bundle_report_identity_or_status_mismatch", "role": role})
             continue
         report_errors = payload.get("errors")
