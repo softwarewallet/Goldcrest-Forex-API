@@ -44,8 +44,10 @@ def _metrics(rows: Sequence[Mapping[str, Any]], probability_field: str) -> dict[
     }
 
 
-def _read_report(path: str | Path) -> dict[str, Any]:
-    value = json.loads(Path(path).read_text(encoding="utf-8"))
+def _read_report(path: str | Path, *, raw_bytes: bytes | None = None) -> dict[str, Any]:
+    # Parse the exact byte snapshot whose digest is recorded by the caller.
+    raw = Path(path).read_bytes() if raw_bytes is None else raw_bytes
+    value = json.loads(raw.decode("utf-8"))
     if not isinstance(value, dict) or value.get("status") not in {"PASS", "PASS_WITH_WARNINGS"}:
         raise ValueError(f"{path}: input comparison report is not a passing report")
     for field in ("baseline_run_id", "variant_run_id", "symbol", "timeframe",
@@ -186,7 +188,25 @@ def audit_common_heldout_cohort(
     try:
         if len(report_paths) < 2:
             raise ValueError("provide at least two comparison reports")
-        loaded = [(str(path), _read_report(path)) for path in report_paths]
+        loaded = []
+        input_report_receipts = []
+        for path_value in report_paths:
+            path = str(path_value)
+            raw_snapshot = Path(path_value).read_bytes()
+            report = _read_report(path_value, raw_bytes=raw_snapshot)
+            loaded.append((path, report))
+            input_report_receipts.append({
+                "path": path,
+                "sha256": hashlib.sha256(raw_snapshot).hexdigest(),
+                "baseline_run_id": report.get("baseline_run_id"),
+                "variant_run_id": report.get("variant_run_id"),
+                "max_label_elapsed_hours": report.get("max_label_elapsed_hours"),
+                "symbol": report.get("symbol"),
+                "timeframe": report.get("timeframe"),
+                "label_horizon_bars": report.get("label_horizon_bars"),
+                "raw_ohlc_sha256": report.get("raw_ohlc_sha256"),
+                "baseline_dataset_sha256": report.get("baseline_dataset_sha256"),
+            })
         base = loaded[0][1]
         if allow_baseline_id_variation:
             for path, report in loaded:
@@ -377,6 +397,7 @@ def audit_common_heldout_cohort(
             "label_horizon_bars": base["label_horizon_bars"],
             "raw_ohlc_sha256": base["raw_ohlc_sha256"],
             "input_comparison_reports": [path for path, _ in loaded],
+            "input_report_receipts": input_report_receipts,
             "caps_hours": caps,
             "experiments": results,
             "warnings": warnings,

@@ -200,6 +200,24 @@ def test_dataset_hash_equivalence_mode_requires_valid_baseline_dataset_hash(tmp_
     assert result["actionable"] is False
 
 
+
+def test_common_cohort_receipts_hash_the_exact_parsed_input_snapshot(tmp_path):
+    a = _report(tmp_path / "cap1.json", 1.0, _rows())
+    b = _report(tmp_path / "cap8.json", 8.0, _rows())
+    original_bytes = [a.read_bytes(), b.read_bytes()]
+
+    result = audit_common_heldout_cohort([a, b])
+
+    assert result["status"] == "PASS"
+    receipts = result["input_report_receipts"]
+    assert [item["sha256"] for item in receipts] == [
+        hashlib.sha256(raw).hexdigest() for raw in original_bytes
+    ]
+    assert [item["variant_run_id"] for item in receipts] == ["cap-1.0", "cap-8.0"]
+    assert [item["max_label_elapsed_hours"] for item in receipts] == [1.0, 8.0]
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
+
 def test_common_cohort_rejects_pass_status_with_errors(tmp_path):
     a = _report(tmp_path / "cap1.json", 1.0, _rows())
     b = _report(tmp_path / "cap8.json", 8.0, _rows())

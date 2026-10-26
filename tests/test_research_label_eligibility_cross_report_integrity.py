@@ -163,3 +163,29 @@ def test_cross_report_integrity_rejects_duplicate_input_paths_and_variant_ids(tm
     duplicate_variant = audit_cross_report_integrity([str(first), str(second)])
     assert duplicate_variant["status"] == "FAIL"
     assert any("duplicate_variant_run_id" in error for error in duplicate_variant["errors"])
+
+
+
+def test_cross_report_integrity_detects_transient_mutation_restored_before_final_snapshot(tmp_path, monkeypatch):
+    import app.research_label_eligibility_cross_report_integrity as module
+
+    first = _report(tmp_path / "cap1.json", 1.0)
+    second = _report(tmp_path / "cap8.json", 8.0)
+    original = second.read_bytes()
+    real_audit = module.audit_common_heldout_cohort
+
+    def mutate_during_snapshot(paths, *, allow_baseline_id_variation=False):
+        payload = json.loads(original.decode("utf-8"))
+        payload["variant_run_id"] = "transient-mutated-run"
+        second.write_text(json.dumps(payload), encoding="utf-8")
+        result = real_audit(paths, allow_baseline_id_variation=allow_baseline_id_variation)
+        second.write_bytes(original)
+        return result
+
+    monkeypatch.setattr(module, "audit_common_heldout_cohort", mutate_during_snapshot)
+    result = audit_cross_report_integrity([str(first), str(second)])
+
+    assert result["status"] == "FAIL"
+    assert any("snapshot receipts do not match" in error for error in result["errors"])
+    assert second.read_bytes() == original
+    assert result["actionable"] is False
