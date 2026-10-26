@@ -3,12 +3,14 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+
+import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app import ctrader_history_ingest
 from app.research_provenance_auditor import audit_experiment_matrix_file
-from app.research_validation import collect_research_preflight, summarize_experiment_matrix, validate_completed_run, validate_prepared_dataset
+from app.research_validation import _read_json, collect_research_preflight, summarize_experiment_matrix, validate_completed_run, validate_prepared_dataset
 
 
 def _sha(path: Path) -> str:
@@ -337,3 +339,19 @@ def test_research_preflight_reads_ctrader_values_from_dotenv(tmp_path, monkeypat
     assert all(result["ctrader_demo_config"]["required_variables_present"].values())
     assert result["ctrader_demo_config"]["network_checked"] is False
     assert "dotenv-access-token" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"a": 1, "a": 2}',
+        '{"a": NaN}',
+        '{"a": Infinity}',
+        '{"a": -Infinity}',
+    ],
+)
+def test_read_json_rejects_ambiguous_or_nonstandard_json(tmp_path, payload):
+    path = tmp_path / "malformed.json"
+    path.write_text(payload, encoding="utf-8")
+    with pytest.raises(ValueError):
+        _read_json(path)
