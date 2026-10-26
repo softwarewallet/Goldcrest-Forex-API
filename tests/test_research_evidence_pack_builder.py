@@ -135,3 +135,43 @@ def test_builder_never_overwrites_existing_manifest(tmp_path):
         )
 
     assert output.read_text(encoding="utf-8") == "preserve me"
+
+
+def test_builder_adds_optional_required_roles_without_dropping_core_roles(tmp_path):
+    registry_path, validation_path = source_reports(tmp_path)
+    dataset_hash = digest("dataset")
+    release_path = tmp_path / "reports" / "release.json"
+    write_json(release_path, {
+        "status": "PASS",
+        "readiness": "RELEASE_READY_FOR_HUMAN_REVIEW",
+        "errors": [],
+        "warnings": [],
+        "run_id": "run-a",
+        "dataset_fingerprints": {dataset_hash: ["run-a"]},
+        "model_qualified": False,
+        "deployment_authorized": False,
+        "actionable": False,
+        "inferential": False,
+        "statistical_significance_claimed": False,
+        "execution_connected": False,
+        "model_training_performed": False,
+        "automatic_model_selection": False,
+        "automatic_repair_performed": False,
+    })
+
+    result = assemble_evidence_pack(
+        pack_id="release-pack",
+        report_specs=[
+            f"experiment_registry={registry_path}",
+            f"validation_workflow={validation_path}",
+            f"release_readiness_run_a={release_path}",
+        ],
+        required_roles=["release_readiness_run_a"],
+        output_path=tmp_path / "release-pack.json",
+    )
+
+    assert result["status"] == "PASS"
+    manifest = json.loads((tmp_path / "release-pack.json").read_text(encoding="utf-8"))
+    assert set(manifest["required_roles"]) == {
+        "experiment_registry", "validation_workflow", "release_readiness_run_a"
+    }
