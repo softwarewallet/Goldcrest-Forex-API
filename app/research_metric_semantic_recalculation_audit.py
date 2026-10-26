@@ -95,7 +95,8 @@ def audit_metric_semantics(
 ) -> dict[str, Any]:
     if plan.get("audit_name") != "research_experiment_plan" or plan.get("status") != "PASS":
         raise ValueError("plan_report_invalid_or_not_passing")
-    if registry_report.get("audit_name") != "research_experiment_registry" or registry_report.get("status") not in PASS_STATUSES:
+    registry_status = registry_report.get("status")
+    if registry_report.get("audit_name") != "research_experiment_registry" or not isinstance(registry_status, str) or registry_status not in PASS_STATUSES:
         raise ValueError("registry_report_invalid_or_not_passing")
     registry_errors = registry_report.get("errors")
     if not isinstance(registry_errors, list):
