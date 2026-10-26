@@ -284,6 +284,9 @@ class FakeReactor:
     def stop(self):
         return None
 
+    def callLater(self, _delay, callback, *args, **kwargs):
+        return callback(*args, **kwargs)
+
 
 def test_trendbar_windows_are_minute_aligned_bounded_and_overlap_without_gaps():
     minute_ms = 60_000
@@ -456,3 +459,59 @@ def test_history_download_paginates_with_older_sdk_count_fallback(tmp_path, monk
     assert result["pagination"]["pages_requested"] == 2
     assert result["pagination"]["has_more_flag_available"] is False
     assert result["rows"] == 3
+
+
+
+def test_transient_ctrader_request_timeout_retries_with_bounded_attempts(tmp_path):
+    latest_minute = int(datetime.now(timezone.utc).timestamp() // 60)
+    bars = [SimpleNamespace(utcTimestampInMinutes=latest_minute, low=110000,
+                            deltaOpen=100, deltaHigh=500, deltaClose=300)]
+
+    class TimeoutDeferred:
+        def addCallbacks(self, _callback, errback):
+            errback(SimpleNamespace(value=TimeoutError("private detail")))
+            return self
+
+    class RetryClient(FakeClient):
+        def send(self, request):
+            self.sent.append(request)
+            name = type(request).__name__
+            if name == "ProtoOAApplicationAuthReq" and sum(
+                type(item).__name__ == name for item in self.sent
+            ) == 1:
+                return TimeoutDeferred()
+            return FakeDeferred(self.responses[name])
+
+    responses = {
+        "ProtoOAApplicationAuthReq": object(),
+        "ProtoOAAccountAuthReq": object(),
+        "ProtoOASymbolsListReq": SimpleNamespace(symbol=[SimpleNamespace(symbolName="EURUSD", symbolId=1)]),
+        "ProtoOAGetTrendbarsReq": SimpleNamespace(trendbar=bars),
+    }
+    clients = []
+    def factory(host, port, protocol):
+        client = RetryClient(host, port, protocol, responses)
+        clients.append(client)
+        return client
+
+    sdk = {
+        "Client": factory,
+        "Protobuf": SimpleNamespace(extract=lambda value: value),
+        "TcpProtocol": object(),
+        "EndPoints": SimpleNamespace(PROTOBUF_DEMO_HOST="demo-host", PROTOBUF_PORT=5035),
+        "ProtoOAApplicationAuthReq": type("ProtoOAApplicationAuthReq", (FakeRequest,), {}),
+        "ProtoOAAccountAuthReq": type("ProtoOAAccountAuthReq", (FakeRequest,), {}),
+        "ProtoOASymbolsListReq": type("ProtoOASymbolsListReq", (FakeRequest,), {}),
+        "ProtoOAGetTrendbarsReq": type("ProtoOAGetTrendbarsReq", (FakeRequest,), {}),
+        "ProtoOATrendbarPeriod": SimpleNamespace(M15=15),
+        "reactor": FakeReactor(),
+    }
+    output = tmp_path / "EURUSD_M15_retry.csv"
+    report = download_ctrader_history(
+        symbol="EURUSD", timeframe="M15", lookback_days=7, output_csv=output,
+        config=CTraderResearchConfig("id", "secret", "token", 12345, "demo"), sdk=sdk,
+    )
+    auth_requests = [request for request in clients[0].sent if type(request).__name__ == "ProtoOAApplicationAuthReq"]
+    assert len(auth_requests) == 2
+    assert report["pagination"]["complete"] is True
+    assert output.is_file()
