@@ -15,6 +15,32 @@ from typing import Any
 from app.prediction_ledger import PredictionLedger
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 @dataclass(frozen=True)
 class ResearchArtifactAudit:
     run_id: str
@@ -41,8 +67,8 @@ def verify_research_artifacts(
     """
     path = Path(report_path)
     try:
-        report: Any = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        report: Any = _load_json_object(path.read_bytes(), source=str(path))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"report artifact cannot be read as JSON: {exc}") from exc
     if not isinstance(report, dict):
         raise ValueError("report artifact must contain a JSON object")

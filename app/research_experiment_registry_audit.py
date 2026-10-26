@@ -17,6 +17,32 @@ from typing import Any
 from app.research_experiment_provenance import validate_experiment_manifest, valid_sha256
 
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently accepting the last duplicate."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate_json_key:{key}")
+        result[key] = value
+    return result
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    """Reject NaN and Infinity tokens, which are not valid RFC 8259 JSON."""
+    raise ValueError(f"nonstandard_json_constant:{value}")
+
+
+def _load_json_object(raw: bytes, *, source: str) -> dict[str, Any]:
+    payload = json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_reject_duplicate_json_keys,
+        parse_constant=_reject_nonstandard_json_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError(f"json_root_must_be_object:{source}")
+    return payload
+
+
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
@@ -64,11 +90,11 @@ def audit_experiment_registry(registry: dict[str, Any], *, base_dir: Path) -> di
             continue
         try:
             raw = resolved.read_bytes()
-            manifest = json.loads(raw.decode("utf-8"))
+            manifest = _load_json_object(raw, source=str(resolved))
         except OSError:
             errors.append({"code": "manifest_unreadable", "path": rel})
             continue
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             errors.append({"code": "manifest_json_invalid", "path": rel})
             continue
         if not isinstance(manifest, dict):
@@ -199,7 +225,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     registry_path = args.registry.resolve()
-    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    registry = _load_json_object(registry_path.read_bytes(), source=str(registry_path))
     report = audit_experiment_registry(registry, base_dir=registry_path.parent)
     encoded = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
     if args.output:

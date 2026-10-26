@@ -3,9 +3,11 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+
+import pytest
 from pathlib import Path
 
-from app.research_feature_source_provenance_audit import audit_feature_source_provenance
+from app.research_feature_source_provenance_audit import audit_feature_source_provenance, _load_json_object
 
 
 def _canonical(payload):
@@ -106,3 +108,12 @@ def test_feature_source_provenance_rejects_schema_and_manifest_tampering(tmp_pat
     assert "manifest_sha256_mismatch" in report["errors"]
     assert "feature_schema_sha256_mismatch" in report["errors"]
     assert "dataset_feature_columns_mismatch" in report["errors"]
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="feature-source-manifest.json")

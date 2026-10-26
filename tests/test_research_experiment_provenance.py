@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 
+import pytest
+
 from app.research_experiment_provenance import (
     compare_experiment_manifests,
     validate_experiment_manifest,
+    _load_json_object,
 )
 
 
@@ -117,3 +120,12 @@ def test_invalid_window_fails_closed(tmp_path):
     payload["evaluation_window"]["end"] = "2025-12-31T00:00:00Z"
     report = validate_experiment_manifest(payload, base_dir=tmp_path)
     assert any(e["code"] == "evaluation_window_order_invalid" for e in report["errors"])
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="experiment-manifest.json")

@@ -102,3 +102,8 @@ The artifact freshness audit, artifact-inventory specification seal, backtest-re
 ## Strict JSON parsing in certification workflow gates
 
 The freshness certification gate, reproducibility readiness audit, consolidated validation workflow audit, research report audit, and experiment-matrix provenance auditor now reject duplicate JSON object keys and non-standard numeric constants (`NaN`, `Infinity`, `-Infinity`) in JSON artifacts they read. The experiment-matrix provenance auditor also calculates the source SHA-256 from the exact byte snapshot it parsed, preventing a separate second read from binding the receipt to different bytes. This is offline provenance/integrity hardening only; no model training, automatic model selection, broker access, or trading execution behavior changes.
+
+
+## Strict JSON in remaining provenance and data audits
+
+The report-artifact audit, artifact-provenance reader, raw-data audit, experiment-manifest provenance validator, experiment-registry audit, and feature-source provenance audit now reject duplicate JSON keys and non-standard numeric constants. The behavior is exercised by focused malformed-input regression tests. These readers remain offline and read-only; the changes do not enable data acquisition, model training/selection, or broker/trading execution.

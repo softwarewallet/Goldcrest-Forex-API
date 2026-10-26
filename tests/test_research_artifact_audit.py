@@ -4,7 +4,7 @@ import pytest
 
 from app.experiment_report import build_experiment_report, write_experiment_report
 from app.prediction_ledger import PredictionLedger, PredictionRecord
-from app.research_artifact_audit import verify_research_artifacts
+from app.research_artifact_audit import verify_research_artifacts, _load_json_object
 
 
 def _fixture(tmp_path):
@@ -114,3 +114,12 @@ def test_audit_rejects_running_attempt_under_completed_run(tmp_path):
         )
     with pytest.raises(ValueError, match="attempt history does not reconcile"):
         verify_research_artifacts(report_path, ledger=ledger)
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="artifact-report.json")

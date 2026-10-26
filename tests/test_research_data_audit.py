@@ -14,6 +14,7 @@ from app.research_data_audit import (
     _within_session_gap_diagnostics,
     audit_raw_ohlc_file,
     main as audit_main,
+    _load_json_object,
 )
 
 
@@ -516,3 +517,12 @@ def test_audit_cli_allows_manifestless_operator_csv_referenced_by_pipeline_manif
     assert report["status"] == "PASS_WITH_WARNINGS"
     assert "snapshot_manifest_missing_provenance_hash_unverified" in report["warnings"]
     assert report["pipeline_manifest_raw_ohlc_sha256_verified"] is True
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"PASS","status":"FAIL"}', b'{"metric":NaN}',
+    b'{"metric":Infinity}', b'{"metric":-Infinity}',
+])
+def test_strict_json_loader_rejects_ambiguous_inputs(raw):
+    with pytest.raises(ValueError):
+        _load_json_object(raw, source="pipeline-manifest.json")
