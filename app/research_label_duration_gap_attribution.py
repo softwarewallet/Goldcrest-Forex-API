@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from app.research_strict_json import strict_json_loads
+
 _PIPELINE_SCOPE = "GOLDCREST_OFFLINE_RESEARCH_PIPELINE"
 _PROFILE_SCOPE = "GOLDCREST_LABEL_ELAPSED_DURATION_CAP_BOUNDARY_PROFILE"
 _ATTRIBUTION_SCOPE = "GOLDCREST_LABEL_DURATION_GAP_ATTRIBUTION_AUDIT"
@@ -28,7 +30,7 @@ _EPSILON_SECONDS = 1e-6
 def _read_json(path: str | Path) -> dict[str, Any]:
     resolved = Path(path).expanduser().resolve()
     try:
-        payload = json.loads(resolved.read_text(encoding="utf-8"))
+        payload = strict_json_loads(resolved.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"json_unreadable:{resolved}") from exc
     if not isinstance(payload, dict):
