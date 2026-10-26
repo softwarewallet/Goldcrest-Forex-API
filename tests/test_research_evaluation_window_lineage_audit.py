@@ -192,3 +192,11 @@ def test_registry_malformed_warnings_fail_closed(tmp_path, warnings):
     with pytest.raises(ValueError, match="registry_report_warnings_schema_invalid"):
         audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
 
+def test_registry_warnings_are_propagated(tmp_path):
+    plan, registry = fixture(tmp_path)
+    registry["status"] = "PASS_WITH_WARNINGS"
+    registry["warnings"] = ["registry_notice"]
+    report = audit_evaluation_window_lineage(plan, registry, registry_root=tmp_path)
+    assert report["status"] == "PASS_WITH_WARNINGS"
+    assert "registry_report_has_warnings" in report["warnings"]
+
