@@ -268,3 +268,16 @@ The report can be supplied as the `experiment_registry` role to the evidence-pac
 Any non-clean run, protocol mismatch, reused seed, or data fingerprint mismatch fails closed.
 The registry never selects models or authorizes deployment. See
 `docs/research-experiment-registry.md`.
+
+
+## Automated research evidence-pack assembly
+
+Create a hash-addressed evidence-pack manifest and run its audit in one step:
+
+    python -m app.research_evidence_pack_builder \
+      --pack-id <pack-id> \
+      --report experiment_registry=data/research/evidence/<registry>.json \
+      --report validation_workflow=data/research/evidence/<validation>.json \
+      --output data/research/evidence/<pack-id>.json
+
+The builder confines referenced reports to the pack directory, rejects duplicate roles/paths, calculates exact SHA-256 hashes, and never overwrites existing outputs. Add per-run release receipts with distinct roles and mark them required with repeated --required-role arguments. A failed audit remains visible in the generated audit receipt and does not authorize deployment. See docs/research-evidence-pack-builder.md.
