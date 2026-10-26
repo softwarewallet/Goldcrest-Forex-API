@@ -41,8 +41,9 @@ def _resolve_artifact_path(value: object, manifest_path: Path) -> Path | None:
     return candidate
 
 
-def _read_json(path: Path) -> Mapping[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def _read_json(path: Path, *, raw_bytes: bytes | None = None) -> Mapping[str, Any]:
+    raw = path.read_bytes() if raw_bytes is None else raw_bytes
+    value = json.loads(raw.decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return value
@@ -55,9 +56,24 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
     warnings: list[str] = []
     checked_artifacts: dict[str, dict[str, str]] = {}
     related: dict[str, Mapping[str, Any]] = {}
+    # Bind every digest and parsed JSON object to the same byte snapshot.
+    # Recheck all observed files at the end to detect mutation during the audit.
+    snapshots: dict[Path, bytes] = {}
+
+    def snapshot_bytes(path: Path) -> bytes:
+        key = Path(path).resolve()
+        if key not in snapshots:
+            snapshots[key] = key.read_bytes()
+        return snapshots[key]
+
+    def snapshot_hash(path: Path) -> str:
+        return hashlib.sha256(snapshot_bytes(path)).hexdigest()
+
+    def snapshot_json(path: Path) -> Mapping[str, Any]:
+        return _read_json(path, raw_bytes=snapshot_bytes(path))
 
     try:
-        manifest = _read_json(manifest_path)
+        manifest = snapshot_json(manifest_path)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         return {
             "schema_version": 1,
@@ -98,7 +114,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         if not resolved.is_file():
             errors.append(f"{path_field}_not_found")
             continue
-        actual_hash = _sha256(resolved)
+        actual_hash = snapshot_hash(resolved)
         checked_artifacts[path_field] = {
             "path": str(resolved),
             "sha256": actual_hash,
@@ -107,7 +123,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             errors.append(f"{path_field}_sha256_mismatch")
         if path_field in {"dataset_manifest_path", "experiment_matrix_report", "provenance_audit_path"}:
             try:
-                related[path_field] = _read_json(resolved)
+                related[path_field] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"{path_field}_invalid_json:{type(exc).__name__}")
 
@@ -121,7 +137,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif not resolved.is_file():
             errors.append("raw_ohlc_audit_path_not_found")
         else:
-            actual_hash = _sha256(resolved)
+            actual_hash = snapshot_hash(resolved)
             checked_artifacts["raw_ohlc_audit_path"] = {
                 "path": str(resolved),
                 "sha256": actual_hash,
@@ -129,7 +145,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if not isinstance(expected_hash, str) or actual_hash != expected_hash:
                 errors.append("raw_ohlc_audit_path_sha256_mismatch")
             try:
-                related["raw_ohlc_audit_path"] = _read_json(resolved)
+                related["raw_ohlc_audit_path"] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"raw_ohlc_audit_path_invalid_json:{type(exc).__name__}")
 
@@ -149,7 +165,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif not resolved.is_file():
             errors.append(f"{field}_path_not_found")
         else:
-            actual_hash = _sha256(resolved)
+            actual_hash = snapshot_hash(resolved)
             checked_artifacts[f"{field}_path"] = {
                 "path": str(resolved),
                 "sha256": actual_hash,
@@ -157,7 +173,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if not isinstance(expected_hash, str) or actual_hash != expected_hash:
                 errors.append(f"{field}_path_sha256_mismatch")
             try:
-                related[f"{field}_path"] = _read_json(resolved)
+                related[f"{field}_path"] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
 
@@ -187,7 +203,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif not resolved.is_file():
             errors.append("temporal_calibration_audit_path_not_found")
         else:
-            actual_hash = _sha256(resolved)
+            actual_hash = snapshot_hash(resolved)
             checked_artifacts["temporal_calibration_audit_path"] = {
                 "path": str(resolved),
                 "sha256": actual_hash,
@@ -195,7 +211,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if not isinstance(expected_hash, str) or actual_hash != expected_hash:
                 errors.append("temporal_calibration_audit_path_sha256_mismatch")
             try:
-                related["temporal_calibration_audit_path"] = _read_json(resolved)
+                related["temporal_calibration_audit_path"] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"temporal_calibration_audit_path_invalid_json:{type(exc).__name__}")
 
@@ -279,7 +295,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif not resolved.is_file():
             errors.append(f"{field}_path_not_found")
         else:
-            actual_file_hash = _sha256(resolved)
+            actual_file_hash = snapshot_hash(resolved)
             checked_artifacts[f"{field}_path"] = {
                 "path": str(resolved),
                 "sha256": actual_file_hash,
@@ -287,7 +303,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if not isinstance(expected_file_hash, str) or actual_file_hash != expected_file_hash:
                 errors.append(f"{field}_file_sha256_mismatch")
             try:
-                related[f"{field}_path"] = _read_json(resolved)
+                related[f"{field}_path"] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
 
@@ -308,7 +324,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                 errors.append(f"{field}_dataset_manifest_file_hash_mismatch")
             if dataset_manifest_path:
                 try:
-                    dataset_manifest_payload = _read_json(Path(dataset_manifest_path))
+                    dataset_manifest_payload = snapshot_json(Path(dataset_manifest_path))
                     unhashed_dataset_manifest = dict(dataset_manifest_payload)
                     unhashed_dataset_manifest.pop("manifest_sha256", None)
                     actual_content_hash = hashlib.sha256(canonical_json(unhashed_dataset_manifest)).hexdigest()
@@ -335,13 +351,13 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif not resolved.is_file():
             errors.append(f"{field}_path_not_found")
         else:
-            actual_hash = _sha256(resolved)
+            actual_hash = snapshot_hash(resolved)
             checked_artifacts[f"{field}_path"] = {
                 "path": str(resolved),
                 "sha256": actual_hash,
             }
             try:
-                related[f"{field}_path"] = _read_json(resolved)
+                related[f"{field}_path"] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
 
@@ -385,7 +401,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif not resolved.is_file():
             errors.append(f"{field}_path_not_found")
         else:
-            actual_hash = _sha256(resolved)
+            actual_hash = snapshot_hash(resolved)
             checked_artifacts[f"{field}_path"] = {
                 "path": str(resolved),
                 "sha256": actual_hash,
@@ -393,7 +409,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if not isinstance(expected_hash, str) or actual_hash != expected_hash:
                 errors.append(f"{field}_path_sha256_mismatch")
             try:
-                related[f"{field}_path"] = _read_json(resolved)
+                related[f"{field}_path"] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
 
@@ -452,7 +468,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         elif not resolved.is_file():
             errors.append(f"{field}_path_not_found")
         else:
-            actual_hash = _sha256(resolved)
+            actual_hash = snapshot_hash(resolved)
             checked_artifacts[f"{field}_path"] = {
                 "path": str(resolved),
                 "sha256": actual_hash,
@@ -460,7 +476,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if not isinstance(expected_hash, str) or actual_hash != expected_hash:
                 errors.append(f"{field}_path_sha256_mismatch")
             try:
-                related[f"{field}_path"] = _read_json(resolved)
+                related[f"{field}_path"] = snapshot_json(resolved)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 errors.append(f"{field}_path_invalid_json:{type(exc).__name__}")
 
@@ -583,10 +599,10 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
     completion_path = manifest_path.parent / f"{manifest.get('run_id', '')}_pipeline_completion_audit.json"
     if completion_path.is_file():
         try:
-            completion = _read_json(completion_path)
+            completion = snapshot_json(completion_path)
             checked_artifacts["pipeline_completion_audit_path"] = {
                 "path": str(completion_path.resolve()),
-                "sha256": _sha256(completion_path),
+                "sha256": snapshot_hash(completion_path),
             }
             if completion.get("audit_name") != "research_pipeline_completion_audit":
                 errors.append("pipeline_completion_audit_name_mismatch")
@@ -639,7 +655,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
                         errors.append(f"pipeline_completion_audit_{label}_source_missing")
                         continue
                     try:
-                        actual_hash = _sha256(source_path)
+                        actual_hash = snapshot_hash(source_path)
                     except OSError:
                         errors.append(f"pipeline_completion_audit_{label}_source_unreadable")
                         continue
@@ -655,6 +671,16 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
 
     if manifest.get("provenance_audit_status") == "FAIL":
         errors.append("pipeline_provenance_audit_failed")
+
+    # The audit is only internally consistent if no observed artifact changed
+    # after its snapshot was captured, even if a mutation was later restored.
+    for observed_path, original_bytes in snapshots.items():
+        try:
+            if observed_path.read_bytes() != original_bytes:
+                errors.append(f"artifact_changed_during_audit:{observed_path.name}")
+        except OSError:
+            errors.append(f"artifact_unreadable_at_audit_end:{observed_path.name}")
+
     if not checked_artifacts:
         warnings.append("no_artifacts_were_verified")
 
@@ -663,7 +689,7 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
         "run_id": manifest.get("run_id"),
         "status": "FAIL" if errors else "PASS_WITH_WARNINGS" if warnings else "PASS",
         "manifest_path": str(manifest_path),
-        "manifest_sha256": _sha256(manifest_path),
+        "manifest_sha256": snapshot_hash(manifest_path),
         "checked_artifact_count": len(checked_artifacts),
         "checked_artifacts": checked_artifacts,
         "errors": sorted(set(errors)),

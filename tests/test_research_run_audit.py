@@ -829,3 +829,30 @@ def test_run_audit_rejects_model_evaluation_gate_with_wrong_symbol(tmp_path):
     result = audit_research_run_manifest(manifest_path)
     assert result["status"] == "FAIL"
     assert "model_evaluation_gate_symbol_mismatch" in result["errors"]
+
+
+def test_audit_detects_artifact_mutation_after_snapshot(tmp_path, monkeypatch):
+    manifest_path = _build_valid_run(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_path = Path(manifest["dataset_path"])
+    original_read_bytes = Path.read_bytes
+    reads = {"dataset": 0}
+
+    def mutate_on_final_dataset_read(path):
+        if path.resolve() == dataset_path.resolve():
+            reads["dataset"] += 1
+            if reads["dataset"] == 2:
+                dataset_path.write_text("mutated after snapshot\\n", encoding="utf-8")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", mutate_on_final_dataset_read)
+
+    result = audit_research_run_manifest(manifest_path)
+
+    assert result["status"] == "FAIL"
+    assert any(
+        error == f"artifact_changed_during_audit:{dataset_path.name}"
+        for error in result["errors"]
+    )
+    assert result["actionable"] is False
+    assert result["execution_connected"] is False
