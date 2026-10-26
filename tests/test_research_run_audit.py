@@ -728,3 +728,77 @@ def test_run_audit_rejects_reproducibility_receipt_bound_to_another_manifest(tmp
 
     assert result["status"] == "FAIL"
     assert "reproducibility_audit_pipeline_manifest_path_mismatch" in result["errors"]
+
+
+def _upgrade_dataset_manifest_integrity(manifest_path: Path) -> Path:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw_path = Path(manifest["raw_ohlc_path"])
+    dataset_path = Path(manifest["dataset_path"])
+    dataset_manifest_path = Path(manifest["dataset_manifest_path"])
+    dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest["input_snapshot_sha256"] = _sha(raw_path)
+    dataset_manifest["output_dataset_sha256"] = _sha(dataset_path)
+    dataset_manifest["feature_schema_sha256"] = "a" * 64
+    dataset_manifest["feature_implementation_sha256"] = "b" * 64
+    dataset_manifest.pop("manifest_sha256", None)
+    dataset_manifest["manifest_sha256"] = hashlib.sha256(
+        json.dumps(dataset_manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(dataset_manifest_path, dataset_manifest)
+    manifest["dataset_manifest_sha256"] = _sha(dataset_manifest_path)
+    manifest["feature_schema_sha256"] = dataset_manifest["feature_schema_sha256"]
+    manifest["feature_implementation_sha256"] = dataset_manifest["feature_implementation_sha256"]
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+    return dataset_manifest_path
+
+
+def test_run_audit_verifies_dataset_manifest_self_hash_and_raw_binding(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    _upgrade_dataset_manifest_integrity(manifest_path)
+
+    valid = audit_research_run_manifest(manifest_path)
+    assert valid["status"] == "PASS"
+    assert valid["errors"] == []
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest_path = Path(manifest["dataset_manifest_path"])
+    dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest["input_snapshot_sha256"] = "f" * 64
+    dataset_manifest.pop("manifest_sha256", None)
+    dataset_manifest["manifest_sha256"] = hashlib.sha256(
+        json.dumps(dataset_manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(dataset_manifest_path, dataset_manifest)
+    manifest["dataset_manifest_sha256"] = _sha(dataset_manifest_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "FAIL"
+    assert "dataset_manifest_input_snapshot_hash_mismatch" in result["errors"]
+
+
+def test_run_audit_rejects_invalid_dataset_manifest_self_hash(tmp_path):
+    manifest_path = _build_valid_run(tmp_path)
+    dataset_manifest_path = _upgrade_dataset_manifest_integrity(manifest_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest = json.loads(dataset_manifest_path.read_text(encoding="utf-8"))
+    dataset_manifest["manifest_sha256"] = "0" * 64
+    _write_json(dataset_manifest_path, dataset_manifest)
+    manifest["dataset_manifest_sha256"] = _sha(dataset_manifest_path)
+    manifest.pop("pipeline_manifest_sha256", None)
+    manifest["pipeline_manifest_sha256"] = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    _write_json(manifest_path, manifest)
+
+    result = audit_research_run_manifest(manifest_path)
+    assert result["status"] == "FAIL"
+    assert "dataset_manifest_self_hash_mismatch" in result["errors"]

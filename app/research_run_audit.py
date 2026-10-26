@@ -472,6 +472,31 @@ def audit_research_run_manifest(manifest_file: str | Path) -> dict[str, Any]:
             if declared_rows is not None and feature_audit.get("dataset_rows") != declared_rows:
                 errors.append(f"{field}_dataset_row_count_mismatch")
 
+    # Verify the dataset manifest's own canonical fingerprint and source linkage
+    # when the newer manifest fields are present. Older manifests remain readable.
+    if dataset_manifest:
+        declared_dataset_manifest_hash = dataset_manifest.get("manifest_sha256")
+        if declared_dataset_manifest_hash is not None:
+            unhashed_dataset_manifest = dict(dataset_manifest)
+            unhashed_dataset_manifest.pop("manifest_sha256", None)
+            try:
+                actual_dataset_manifest_hash = hashlib.sha256(canonical_json(unhashed_dataset_manifest)).hexdigest()
+                if declared_dataset_manifest_hash != actual_dataset_manifest_hash:
+                    errors.append("dataset_manifest_self_hash_mismatch")
+            except (TypeError, ValueError):
+                errors.append("dataset_manifest_not_canonical_json")
+        raw_hash = checked_artifacts.get("raw_ohlc_path", {}).get("sha256")
+        declared_raw_hash = dataset_manifest.get("input_snapshot_sha256")
+        if declared_raw_hash is not None and declared_raw_hash != raw_hash:
+            errors.append("dataset_manifest_input_snapshot_hash_mismatch")
+        for dataset_field, pipeline_field, error_name in (
+            ("feature_schema_sha256", "feature_schema_sha256", "dataset_manifest_feature_schema_hash_mismatch"),
+            ("feature_implementation_sha256", "feature_implementation_sha256", "dataset_manifest_feature_implementation_hash_mismatch"),
+        ):
+            pipeline_value = manifest.get(pipeline_field)
+            if pipeline_value is not None and dataset_manifest.get(dataset_field) is not None and dataset_manifest.get(dataset_field) != pipeline_value:
+                errors.append(error_name)
+
     label_cap = manifest.get("max_label_elapsed_hours")
     eligibility_mode = manifest.get("label_eligibility_mode", "all_labels_included")
     dataset_eligibility = dataset_manifest.get("label_eligibility")
