@@ -43,7 +43,7 @@ def test_walk_forward_rejects_mixed_instruments_and_bad_data():
     with pytest.raises(ValueError, match="one symbol/timeframe"):
         generate_walk_forward_folds(
             bars, initial_train_bars=40, validation_bars=20,
-            test_bars=15, step_bars=10, horizon_bars=2,
+            test_bars=15, step_bars=13, horizon_bars=2,
         )
 
 
@@ -61,7 +61,7 @@ def test_walk_forward_rejects_unsorted_and_duplicate_timestamps():
     with pytest.raises(ValueError, match="data-quality|chronological"):
         generate_walk_forward_folds(
             bars, initial_train_bars=40, validation_bars=20,
-            test_bars=15, step_bars=10, horizon_bars=2,
+            test_bars=15, step_bars=13, horizon_bars=2,
         )
 
 
