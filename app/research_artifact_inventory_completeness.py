@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -53,6 +54,8 @@ def _index(entries: Any, label: str) -> tuple[dict[str, str], list[dict[str, str
             raise ValueError(f"{label}_artifact_id_required:{position}")
         if artifact_id != artifact_id.strip():
             raise ValueError(f"{label}_artifact_id_must_be_canonical_unpadded:{position}")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", artifact_id) is None:
+            raise ValueError(f"{label}_artifact_id_must_be_canonical_token:{position}")
         path = _safe_relative_path(item.get("path"), label)
         if artifact_id in by_id:
             errors.append({"code": "DUPLICATE_ARTIFACT_ID", "inventory": label, "artifact_id": artifact_id})
