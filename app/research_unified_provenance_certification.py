@@ -33,6 +33,7 @@ def _normalize_component_report(name: str, report: Any) -> dict[str, Any]:
             "status": "FAIL",
             "errors": [{"code": "COMPONENT_REPORT_CONTRACT_INVALID",
                         "component": name, "reason": "report_must_be_object"}],
+            "component_report_rejected": True,
         }
 
     status = report.get("status")
